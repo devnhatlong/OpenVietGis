@@ -363,3 +363,28 @@ Spec 001 implementation validation completed after all task artifacts were prese
 
 - [X] T067 Make API composition validate required configuration before serving any request and add a startup-failure integration test in `apps/api/openvietgis_api/main.py` and `apps/api/tests/integration/test_startup_config.py` per FR-014 and US1/AC3 (partial)
 - [X] T068 Add a real API process terminate/restart create→persist→restart→retrieve test for 10 consecutive runs in `apps/api/tests/integration/test_foundation_process_restart.py` per SC-003, US2/AC2, and plan verification strategy (partial)
+
+## Pre-merge review corrections — 2026-11-18
+
+- [X] T069 Track the non-secret `.env.example` and add its explicit Git ignore exception;
+  verify source checkouts include the documented bootstrap input.
+- [X] T070 Restrict development reset to the exact documented local database names;
+  reject driver/query connection overrides; add production-prefix and DSN-override regressions.
+- [X] T071 Isolate integration/E2E validation on the dedicated local `openvietgis_test`
+  database; ignore inherited application database targets, guard destructive migration
+  paths, and update Compose/CI/documentation with regression coverage.
+
+Independent pre-merge review found the three gaps above after the original convergence report.
+They are corrected before promotion to main; earlier local-disk bootstrap evidence alone did
+not demonstrate that the then-committed source contained the environment template.
+
+Revalidation on Node 26.13.1: root `pnpm validate` PASS, including TypeScript lint/typecheck,
+SDK 2/2, web build, Python Ruff/mypy, 40 unit/contract/tool/architecture tests, 8 real PostGIS
+integration tests (including ten process restarts), and browser E2E 1/1. The dedicated test
+service uses port 54330; the existing development database on 54329 is not the test target.
+A dependency deprecation warning from FastAPI/Starlette remains non-blocking.
+
+- [X] T072 Re-run SC-001 from committed source with fresh dependency directories and
+  fresh PostGIS volumes after changing health checks to TCP readiness. Commit `3010090`
+  reached API/web readiness in 17.91 seconds with warm caches and zero download time;
+  see the dated quickstart evidence.

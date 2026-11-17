@@ -25,7 +25,7 @@ From the repository root:
 npm install --global pnpm@12.21.0
 pnpm install
 uv sync --project apps/api
-docker compose -f infra/dev/compose.yaml up -d postgres
+docker compose -f infra/dev/compose.yaml up -d postgres postgres-test
 ```
 
 Expected result:
@@ -220,3 +220,23 @@ was asked to use repository documentation only. It correctly located and explain
 
 Detailed evidence is recorded in
 [checklists/reviewer-navigation.md](checklists/reviewer-navigation.md).
+
+### 2026-11-18 — committed-source bootstrap remeasurement (SC-001)
+
+Source commit: `3010090`. A fresh detached worktree had no JavaScript dependencies, Python
+virtual environment, local configuration, build output, or database volumes. Its tracked
+`.env.example` was copied as documented; application configuration used explicit local
+environment overrides for the isolated ports.
+
+Measured runtime: Node 26.13.1, pnpm 12.21.0, Python 3.13.18, PostGIS 18/3.7. Package
+stores, Docker image and Chromium cache were warm; measured dependency download time was zero.
+An isolated Compose project used fresh dev/test volumes and host ports 54331/54332 to avoid
+the existing development services. API readiness and the served web shell both succeeded.
+
+Elapsed time from copying the environment template through dependency setup, fresh database
+startup, migration and API/web readiness: **17.91 seconds — PASS** (limit 20 minutes).
+The temporary application processes and isolated database volumes were removed afterwards.
+
+The first fresh-volume attempt exposed a health-check race: socket readiness could observe
+the image's temporary initialization server. Commit `3010090` changes checks to TCP
+(`pg_isready -h 127.0.0.1`); the successful measurement uses that fix.

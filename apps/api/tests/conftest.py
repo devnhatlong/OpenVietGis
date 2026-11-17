@@ -6,10 +6,11 @@ from pathlib import Path
 import pytest
 from alembic import command
 from alembic.config import Config
+from tools.test_database import assert_safe_test_target, build_test_environment
 
 pytest_plugins = ("tests.fixtures.identity_tenancy",)
 
-os.environ.setdefault("OPENVIETGIS_ENVIRONMENT", "test")
+os.environ.update(build_test_environment(os.environ))
 os.environ.setdefault(
     "OPENVIETGIS_BOOTSTRAP_SECRET",
     "openvietgis-test-bootstrap-secret",
@@ -29,10 +30,7 @@ os.environ.setdefault(
         '"client_id":"openvietgis-web","display_name":"OpenVietGIS Development"}}'
     ),
 )
-TEST_DATABASE_URL = os.environ.get(
-    "OPENVIETGIS_TEST_DATABASE_URL",
-    "postgresql+psycopg://openvietgis:openvietgis@localhost:54329/openvietgis",
-)
+TEST_DATABASE_URL = os.environ["OPENVIETGIS_TEST_DATABASE_URL"]
 os.environ.setdefault("OPENVIETGIS_DATABASE_URL", TEST_DATABASE_URL)
 os.environ["OPENVIETGIS_MIGRATION_DATABASE_URL"] = TEST_DATABASE_URL
 os.environ["OPENVIETGIS_RUNTIME_DATABASE_URL"] = TEST_DATABASE_URL
@@ -63,5 +61,6 @@ def clean_runtime_caches() -> None:
 
 @pytest.fixture(scope="session")
 def migrated_database() -> None:
+    assert_safe_test_target(TEST_DATABASE_URL)
     config = Config(str(ROOT / "apps" / "api" / "alembic.ini"))
     command.upgrade(config, "head")

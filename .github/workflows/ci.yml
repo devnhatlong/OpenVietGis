@@ -10,19 +10,20 @@ jobs:
     runs-on: ubuntu-latest
     env:
       OPENVIETGIS_ENVIRONMENT: test
-      OPENVIETGIS_DATABASE_URL: postgresql+psycopg://openvietgis:openvietgis@127.0.0.1:5432/openvietgis
+      OPENVIETGIS_DATABASE_URL: postgresql+psycopg://openvietgis:openvietgis@127.0.0.1:5432/openvietgis_test
+      OPENVIETGIS_TEST_DATABASE_URL: postgresql+psycopg://openvietgis:openvietgis@127.0.0.1:5432/openvietgis_test
 
     services:
       postgres:
         image: postgis/postgis:18-3.7
         env:
-          POSTGRES_DB: openvietgis
+          POSTGRES_DB: openvietgis_test
           POSTGRES_USER: openvietgis
           POSTGRES_PASSWORD: openvietgis
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U openvietgis -d openvietgis"
+          --health-cmd "pg_isready -h 127.0.0.1 -U openvietgis -d openvietgis_test"
           --health-interval 2s
           --health-timeout 3s
           --health-retries 30
