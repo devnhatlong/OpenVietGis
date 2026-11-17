@@ -1,0 +1,125 @@
+openapi: 3.1.0
+info:
+  title: OpenVietGIS Foundation API
+  version: 0.1.0
+  description: >
+    Temporary contract for Spec 001. It proves the application boundary and MUST NOT be treated as
+    the final Project, Organization, identity, or GIS API.
+servers:
+  - url: /api/v1
+paths:
+  /health/live:
+    get:
+      operationId: foundationLiveness
+      summary: Confirm that the API process is alive
+      responses:
+        "200":
+          description: API process is alive
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+  /health/ready:
+    get:
+      operationId: foundationReadiness
+      summary: Confirm that required foundation dependencies are ready
+      responses:
+        "200":
+          description: Foundation dependencies are ready
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReadyResponse"
+        "503":
+          description: A required foundation dependency is unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReadyResponse"
+  /foundation-records:
+    post:
+      operationId: createFoundationRecord
+      summary: Create a development-only foundation sample record
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FoundationRecordCreate"
+      responses:
+        "201":
+          description: Record created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FoundationRecord"
+        "422":
+          description: Invalid label
+  /foundation-records/{record_id}:
+    get:
+      operationId: getFoundationRecord
+      summary: Read a development-only foundation sample record
+      parameters:
+        - in: path
+          name: record_id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Record found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FoundationRecord"
+        "404":
+          description: Record not found
+components:
+  schemas:
+    HealthResponse:
+      type: object
+      additionalProperties: false
+      required: [status]
+      properties:
+        status:
+          type: string
+          const: ok
+    ReadyResponse:
+      type: object
+      additionalProperties: false
+      required: [status, database]
+      properties:
+        status:
+          type: string
+          enum: [ready, not_ready]
+        database:
+          type: string
+          enum: [ready, unavailable]
+    FoundationRecordCreate:
+      type: object
+      additionalProperties: false
+      required: [label]
+      properties:
+        label:
+          type: string
+          minLength: 1
+          maxLength: 120
+    FoundationRecord:
+      type: object
+      additionalProperties: false
+      required: [id, label, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        label:
+          type: string
+          minLength: 1
+          maxLength: 120
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
