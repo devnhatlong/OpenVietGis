@@ -383,3 +383,8 @@ SDK 2/2, web build, Python Ruff/mypy, 40 unit/contract/tool/architecture tests, 
 integration tests (including ten process restarts), and browser E2E 1/1. The dedicated test
 service uses port 54330; the existing development database on 54329 is not the test target.
 A dependency deprecation warning from FastAPI/Starlette remains non-blocking.
+
+- [X] T072 Re-run SC-001 from committed source with fresh dependency directories and
+  fresh PostGIS volumes after changing health checks to TCP readiness. Commit `3010090`
+  reached API/web readiness in 17.91 seconds with warm caches and zero download time;
+  see the dated quickstart evidence.
