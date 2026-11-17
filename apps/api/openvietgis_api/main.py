@@ -3,10 +3,13 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from openvietgis_api.adapters.http import foundation, health
 from openvietgis_api.adapters.http.errors import install_error_handlers
+from openvietgis_api.config import get_settings
 
 
 def create_app() -> FastAPI:
+    settings = get_settings()
     app = FastAPI(title="OpenVietGIS Foundation API", version="0.1.0")
+    app.state.settings = settings
     app.add_middleware(
         CORSMiddleware,
         allow_origins=[

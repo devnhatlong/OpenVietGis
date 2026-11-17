@@ -348,7 +348,7 @@ Spec 001 implementation validation completed after all task artifacts were prese
 - Accepted Node runtime gate: Node.js 26.13.1.
 - TypeScript/React: lint and strict typecheck passed; client SDK 2/2 tests passed; Vite production build passed.
 - Python: Ruff passed; mypy strict passed on 17 source files; 18 unit/contract/tool/architecture tests passed.
-- Database: PostgreSQL 18 + PostGIS 3.7 migration/integration suite passed 6/6 tests against a real database.
+- Database: PostgreSQL 18 + PostGIS 3.7 migration/integration suite passed 8/8 tests against a real database, including a real Uvicorn process terminate/restart persistence test across 10 consecutive restarts.
 - Browser: Playwright foundation vertical slice passed 1/1.
 - Architecture guard: Core-to-module prohibition passed, including empty/absent module validation.
 - Documentation navigation guard: passed.
@@ -358,3 +358,8 @@ Spec 001 implementation validation completed after all task artifacts were prese
 - Unfamiliar reviewer navigation (SC-006): PASS in 33.96 seconds using a fresh ephemeral read-only reviewer.
 - `git diff --check`: PASS after evidence formatting cleanup.
 - `graphify update .`: PASS; `graphify-out/` remains excluded from version control.
+
+## Phase 9: Convergence
+
+- [X] T067 Make API composition validate required configuration before serving any request and add a startup-failure integration test in `apps/api/openvietgis_api/main.py` and `apps/api/tests/integration/test_startup_config.py` per FR-014 and US1/AC3 (partial)
+- [X] T068 Add a real API process terminate/restart create→persist→restart→retrieve test for 10 consecutive runs in `apps/api/tests/integration/test_foundation_process_restart.py` per SC-003, US2/AC2, and plan verification strategy (partial)
