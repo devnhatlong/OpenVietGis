@@ -1,15 +1,21 @@
 from __future__ import annotations
 
 import re
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 from openvietgis_api.domains.audit.domain import AuditEvent, AuditOutcome
 from openvietgis_api.domains.audit.ports import AuditRepository
 from openvietgis_api.domains.authorization.context import Actor
+from openvietgis_api.domains.authorization.domain import ResourceGrant
+from openvietgis_api.domains.authorization.ports import ResourceGrantRepository
+from openvietgis_api.domains.identity.ports import IdentityRepository
 from openvietgis_api.domains.tenancy.domain import (
     ActorType,
+    Invitation,
+    InvitationStatus,
+    InvitationTargetKind,
     MembershipRole,
     MembershipStatus,
     Organization,
@@ -17,10 +23,18 @@ from openvietgis_api.domains.tenancy.domain import (
     OrganizationStatus,
     Project,
     ProjectStatus,
+    ResourceRole,
+    ResourceScopeKind,
     Workspace,
     WorkspaceStatus,
 )
 from openvietgis_api.domains.tenancy.ports import InstallationStateReader, TenancyRepository
+from openvietgis_api.security.secrets import (
+    digest_secret,
+    generate_secret,
+    safe_prefix,
+    verify_secret,
+)
 
 SLUG_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 
@@ -51,6 +65,40 @@ class InvalidLifecycleTransitionError(ValueError):
 
 class CrossOrganizationWorkspaceError(ValueError):
     pass
+
+
+class OrganizationNotFoundError(LookupError):
+    pass
+
+
+class MembershipNotFoundError(LookupError):
+    pass
+
+
+class LastOwnerError(RuntimeError):
+    pass
+
+
+class OwnerRequiredError(PermissionError):
+    pass
+
+
+class InvitationNotFoundError(LookupError):
+    pass
+
+
+class InvalidInvitationError(ValueError):
+    pass
+
+
+class InvitationTargetMismatchError(PermissionError):
+    pass
+
+
+@dataclass(frozen=True, slots=True)
+class IssuedInvitation:
+    invitation: Invitation
+    secret: str
 
 
 def _actor_type(actor: Actor) -> ActorType:
@@ -382,3 +430,479 @@ class TenancyService:
             now=now,
         )
         return updated
+
+    def update_organization(
+        self,
+        *,
+        actor: Actor,
+        organization_id: UUID,
+        name: str | None = None,
+        status: OrganizationStatus | None = None,
+        now: datetime | None = None,
+    ) -> Organization:
+        organization = self._repository.get_organization(
+            organization_id,
+            for_update=status is not None,
+        )
+        if organization is None:
+            raise OrganizationNotFoundError("organization not found")
+
+        if actor.actor_type != "human" or actor.actor_id is None:
+            raise OwnerRequiredError("human Owner required")
+        membership = self._repository.get_membership_for_user(
+            organization_id=organization_id,
+            user_id=actor.actor_id,
+            for_update=status is not None,
+        )
+        if membership is None:
+            raise OwnerRequiredError("active membership required")
+        if status is not None and (
+            membership.role != MembershipRole.OWNER
+            or membership.status != MembershipStatus.ACTIVE
+        ):
+            raise OwnerRequiredError("Owner required for organization lifecycle")
+
+        now = now or datetime.now(UTC)
+        new_status = status or organization.status
+        if organization.status == OrganizationStatus.DELETED and new_status not in {
+            OrganizationStatus.DELETED,
+            OrganizationStatus.ACTIVE,
+        }:
+            raise InvalidLifecycleTransitionError("deleted organization can only be restored")
+        updated = replace(
+            organization,
+            name=_clean_name(name) if name is not None else organization.name,
+            status=new_status,
+            updated_at=now,
+            deleted_at=(
+                now
+                if new_status == OrganizationStatus.DELETED
+                else None
+                if new_status == OrganizationStatus.ACTIVE
+                else organization.deleted_at
+            ),
+        )
+        self._repository.update_organization(updated)
+        self._audit(
+            actor=actor,
+            organization_id=organization_id,
+            action="organization.update",
+            resource_type="organization",
+            resource_id=organization_id,
+            metadata={"status": updated.status.value},
+            now=now,
+        )
+        return updated
+
+    def update_membership(
+        self,
+        *,
+        actor: Actor,
+        organization_id: UUID,
+        membership_id: UUID,
+        role: MembershipRole | None = None,
+        status: MembershipStatus | None = None,
+        now: datetime | None = None,
+    ) -> OrganizationMembership:
+        self._repository.get_organization(organization_id, for_update=True)
+        membership = self._repository.get_membership(
+            organization_id=organization_id,
+            membership_id=membership_id,
+            for_update=True,
+        )
+        if membership is None:
+            raise MembershipNotFoundError("membership not found")
+
+        new_role = role or membership.role
+        new_status = status or membership.status
+        stops_being_active_owner = (
+            membership.role == MembershipRole.OWNER
+            and membership.status == MembershipStatus.ACTIVE
+            and (
+                new_role != MembershipRole.OWNER
+                or new_status != MembershipStatus.ACTIVE
+            )
+        )
+        if stops_being_active_owner and self._repository.count_other_active_owners(
+            organization_id=organization_id,
+            excluding_membership_id=membership.id,
+        ) == 0:
+            raise LastOwnerError("organization must retain an active Owner")
+
+        now = now or datetime.now(UTC)
+        updated = replace(
+            membership,
+            role=new_role,
+            status=new_status,
+            activated_at=(
+                now
+                if new_status == MembershipStatus.ACTIVE
+                and membership.status != MembershipStatus.ACTIVE
+                else membership.activated_at
+            ),
+            suspended_at=(
+                now
+                if new_status == MembershipStatus.SUSPENDED
+                else None
+                if new_status == MembershipStatus.ACTIVE
+                else membership.suspended_at
+            ),
+            revoked_at=(
+                now
+                if new_status == MembershipStatus.REVOKED
+                else None
+                if new_status == MembershipStatus.ACTIVE
+                else membership.revoked_at
+            ),
+        )
+        self._repository.update_membership(updated)
+        self._audit(
+            actor=actor,
+            organization_id=organization_id,
+            action="organization.membership.update",
+            resource_type="organization_membership",
+            resource_id=membership_id,
+            metadata={"role": new_role.value, "status": new_status.value},
+            now=now,
+        )
+        return updated
+
+    def transfer_ownership(
+        self,
+        *,
+        actor: Actor,
+        organization_id: UUID,
+        target_membership_id: UUID,
+        now: datetime | None = None,
+    ) -> tuple[OrganizationMembership, OrganizationMembership]:
+        if actor.actor_type != "human" or actor.actor_id is None:
+            raise OwnerRequiredError("human Owner required")
+        self._repository.get_organization(organization_id, for_update=True)
+        current = self._repository.get_membership_for_user(
+            organization_id=organization_id,
+            user_id=actor.actor_id,
+            for_update=True,
+        )
+        if (
+            current is None
+            or current.status != MembershipStatus.ACTIVE
+            or current.role != MembershipRole.OWNER
+        ):
+            raise OwnerRequiredError("active Owner required")
+        target = self._repository.get_membership(
+            organization_id=organization_id,
+            membership_id=target_membership_id,
+            for_update=True,
+        )
+        if target is None or target.status != MembershipStatus.ACTIVE:
+            raise MembershipNotFoundError("active target membership required")
+
+        now = now or datetime.now(UTC)
+        promoted = replace(target, role=MembershipRole.OWNER)
+        self._repository.update_membership(promoted)
+        if current.id == promoted.id:
+            demoted = current
+        else:
+            demoted = replace(current, role=MembershipRole.ADMIN)
+            self._repository.update_membership(demoted)
+
+        self._audit(
+            actor=actor,
+            organization_id=organization_id,
+            action="organization.owner.transfer",
+            resource_type="organization_membership",
+            resource_id=promoted.id,
+            metadata={"previous_owner_membership_id": str(current.id)},
+            now=now,
+        )
+        return demoted, promoted
+
+
+class InvitationService:
+    def __init__(
+        self,
+        tenancy_repository: TenancyRepository,
+        identity_repository: IdentityRepository,
+        grant_repository: ResourceGrantRepository,
+        audit_repository: AuditRepository,
+    ) -> None:
+        self._tenancy_repository = tenancy_repository
+        self._identity_repository = identity_repository
+        self._grant_repository = grant_repository
+        self._audit_repository = audit_repository
+
+    def issue(
+        self,
+        *,
+        actor: Actor,
+        organization_id: UUID,
+        target_kind: InvitationTargetKind,
+        organization_role: MembershipRole,
+        expires_at: datetime,
+        target_email: str | None = None,
+        target_user_id: UUID | None = None,
+        target_issuer: str | None = None,
+        target_subject: str | None = None,
+        resource_scope_kind: ResourceScopeKind | None = None,
+        resource_workspace_id: UUID | None = None,
+        resource_project_id: UUID | None = None,
+        resource_role: ResourceRole | None = None,
+        now: datetime | None = None,
+    ) -> IssuedInvitation:
+        now = now or datetime.now(UTC)
+        if expires_at <= now:
+            raise InvalidInvitationError("invitation expiry must be in the future")
+
+        normalized_email = target_email.strip().lower() if target_email else None
+        if target_kind == InvitationTargetKind.EMAIL:
+            if not normalized_email or target_user_id or target_issuer or target_subject:
+                raise InvalidInvitationError("email target requires only target_email")
+        elif target_kind == InvitationTargetKind.USER:
+            if target_user_id is None or normalized_email or target_issuer or target_subject:
+                raise InvalidInvitationError("user target requires only target_user_id")
+        elif target_kind == InvitationTargetKind.EXTERNAL_IDENTITY:
+            if not target_issuer or not target_subject or normalized_email or target_user_id:
+                raise InvalidInvitationError(
+                    "external identity target requires issuer and subject"
+                )
+
+        if resource_scope_kind is None:
+            if any(
+                value is not None
+                for value in (
+                    resource_workspace_id,
+                    resource_project_id,
+                    resource_role,
+                )
+            ):
+                raise InvalidInvitationError("resource grant scope is incomplete")
+        elif resource_role is None:
+            raise InvalidInvitationError("resource grant requires a resource role")
+        elif resource_scope_kind == ResourceScopeKind.WORKSPACE:
+            if resource_workspace_id is None or resource_project_id is not None:
+                raise InvalidInvitationError("workspace grant requires workspace_id")
+            if self._tenancy_repository.get_workspace(
+                organization_id=organization_id,
+                workspace_id=resource_workspace_id,
+            ) is None:
+                raise InvalidInvitationError("workspace does not belong to organization")
+        elif resource_scope_kind == ResourceScopeKind.PROJECT:
+            if resource_project_id is None or resource_workspace_id is not None:
+                raise InvalidInvitationError("project grant requires project_id")
+            if self._tenancy_repository.get_project(
+                organization_id=organization_id,
+                project_id=resource_project_id,
+            ) is None:
+                raise InvalidInvitationError("project does not belong to organization")
+        elif resource_scope_kind == ResourceScopeKind.ORGANIZATION:
+            if resource_workspace_id is not None or resource_project_id is not None:
+                raise InvalidInvitationError("organization grant cannot include resource id")
+
+        secret = generate_secret("inv", bytes_of_entropy=32)
+        invitation = Invitation(
+            id=uuid4(),
+            organization_id=organization_id,
+            status=InvitationStatus.PENDING,
+            target_kind=target_kind,
+            target_email_normalized=normalized_email,
+            target_user_id=target_user_id,
+            target_issuer=target_issuer.rstrip("/") if target_issuer else None,
+            target_subject=target_subject,
+            organization_role=organization_role,
+            resource_scope_kind=resource_scope_kind,
+            resource_workspace_id=resource_workspace_id,
+            resource_project_id=resource_project_id,
+            resource_role=resource_role,
+            token_hash=digest_secret(secret),
+            token_prefix=safe_prefix(secret),
+            expires_at=expires_at,
+            created_at=now,
+            created_by_actor_type=_actor_type(actor),
+            created_by_actor_id=actor.actor_id,
+            accepted_at=None,
+            accepted_by_user_id=None,
+            revoked_at=None,
+        )
+        self._tenancy_repository.create_invitation(invitation)
+        self._audit_repository.append(
+            AuditEvent(
+                id=uuid4(),
+                organization_id=organization_id,
+                actor_type=_actor_type(actor),
+                actor_id=actor.actor_id,
+                actor_display_snapshot=actor.display_name,
+                action="invitation.create",
+                resource_type="invitation",
+                resource_id=invitation.id,
+                outcome=AuditOutcome.SUCCESS,
+                metadata={
+                    "target_kind": target_kind.value,
+                    "organization_role": organization_role.value,
+                },
+                created_at=now,
+            )
+        )
+        return IssuedInvitation(invitation=invitation, secret=secret)
+
+    def _target_matches(self, invitation: Invitation, *, user_id: UUID) -> bool:
+        if invitation.target_kind == InvitationTargetKind.USER:
+            return invitation.target_user_id == user_id
+
+        links = self._identity_repository.list_identity_links(user_id)
+        if invitation.target_kind == InvitationTargetKind.EMAIL:
+            expected = invitation.target_email_normalized
+            return any(
+                link.email_verified
+                and link.email_snapshot is not None
+                and link.email_snapshot.strip().lower() == expected
+                for link in links
+            )
+
+        return any(
+            link.issuer.rstrip("/") == (invitation.target_issuer or "").rstrip("/")
+            and link.subject == invitation.target_subject
+            for link in links
+        )
+
+    def accept(
+        self,
+        *,
+        actor: Actor,
+        user_id: UUID,
+        organization_id: UUID,
+        invitation_id: UUID,
+        secret: str,
+        now: datetime | None = None,
+    ) -> tuple[OrganizationMembership, ResourceGrant | None]:
+        invitation = self._tenancy_repository.get_invitation(
+            organization_id=organization_id,
+            invitation_id=invitation_id,
+            for_update=True,
+        )
+        if invitation is None:
+            raise InvitationNotFoundError("invitation not found")
+        now = now or datetime.now(UTC)
+        if invitation.status != InvitationStatus.PENDING:
+            raise InvalidInvitationError("invitation is no longer pending")
+        if invitation.expires_at <= now:
+            expired = replace(invitation, status=InvitationStatus.EXPIRED)
+            self._tenancy_repository.update_invitation(expired)
+            raise InvalidInvitationError("invitation has expired")
+        if not verify_secret(secret, invitation.token_hash):
+            raise InvalidInvitationError("invalid invitation secret")
+        if not self._target_matches(invitation, user_id=user_id):
+            raise InvitationTargetMismatchError("invitation target does not match identity")
+
+        membership = self._tenancy_repository.get_membership_for_user(
+            organization_id=organization_id,
+            user_id=user_id,
+            for_update=True,
+        )
+        if membership is None:
+            membership = OrganizationMembership(
+                id=uuid4(),
+                organization_id=organization_id,
+                user_id=user_id,
+                role=invitation.organization_role,
+                status=MembershipStatus.ACTIVE,
+                created_at=now,
+                activated_at=now,
+                suspended_at=None,
+                revoked_at=None,
+            )
+            self._tenancy_repository.create_membership(membership)
+        else:
+            membership = replace(
+                membership,
+                role=invitation.organization_role,
+                status=MembershipStatus.ACTIVE,
+                activated_at=now,
+                suspended_at=None,
+                revoked_at=None,
+            )
+            self._tenancy_repository.update_membership(membership)
+
+        grant: ResourceGrant | None = None
+        if invitation.resource_scope_kind is not None:
+            assert invitation.resource_role is not None
+            grant = ResourceGrant(
+                id=uuid4(),
+                organization_id=organization_id,
+                subject_kind="membership",
+                membership_id=membership.id,
+                service_principal_id=None,
+                scope_kind=invitation.resource_scope_kind,
+                workspace_id=invitation.resource_workspace_id,
+                project_id=invitation.resource_project_id,
+                role=invitation.resource_role,
+                created_at=now,
+                created_by_actor_type=_actor_type(actor),
+                created_by_actor_id=actor.actor_id,
+                revoked_at=None,
+            )
+            self._grant_repository.create(grant)
+
+        accepted = replace(
+            invitation,
+            status=InvitationStatus.ACCEPTED,
+            accepted_at=now,
+            accepted_by_user_id=user_id,
+        )
+        self._tenancy_repository.update_invitation(accepted)
+        self._audit_repository.append(
+            AuditEvent(
+                id=uuid4(),
+                organization_id=organization_id,
+                actor_type=_actor_type(actor),
+                actor_id=actor.actor_id,
+                actor_display_snapshot=actor.display_name,
+                action="invitation.accept",
+                resource_type="invitation",
+                resource_id=invitation.id,
+                outcome=AuditOutcome.SUCCESS,
+                metadata={"membership_id": str(membership.id)},
+                created_at=now,
+            )
+        )
+        return membership, grant
+
+    def revoke(
+        self,
+        *,
+        actor: Actor,
+        organization_id: UUID,
+        invitation_id: UUID,
+        now: datetime | None = None,
+    ) -> Invitation:
+        invitation = self._tenancy_repository.get_invitation(
+            organization_id=organization_id,
+            invitation_id=invitation_id,
+            for_update=True,
+        )
+        if invitation is None:
+            raise InvitationNotFoundError("invitation not found")
+        if invitation.status != InvitationStatus.PENDING:
+            raise InvalidInvitationError("only pending invitation can be revoked")
+        now = now or datetime.now(UTC)
+        revoked = replace(
+            invitation,
+            status=InvitationStatus.REVOKED,
+            revoked_at=now,
+        )
+        self._tenancy_repository.update_invitation(revoked)
+        self._audit_repository.append(
+            AuditEvent(
+                id=uuid4(),
+                organization_id=organization_id,
+                actor_type=_actor_type(actor),
+                actor_id=actor.actor_id,
+                actor_display_snapshot=actor.display_name,
+                action="invitation.revoke",
+                resource_type="invitation",
+                resource_id=invitation.id,
+                outcome=AuditOutcome.SUCCESS,
+                metadata={},
+                created_at=now,
+            )
+        )
+        return revoked

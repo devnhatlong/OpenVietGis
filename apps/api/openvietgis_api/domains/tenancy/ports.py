@@ -4,6 +4,7 @@ from typing import Protocol
 from uuid import UUID
 
 from openvietgis_api.domains.tenancy.domain import (
+    Invitation,
     Organization,
     OrganizationMembership,
     Project,
@@ -29,6 +30,56 @@ class TenancyRepository(Protocol):
         organization: Organization,
         membership: OrganizationMembership,
     ) -> None: ...
+
+    def get_organization(
+        self,
+        organization_id: UUID,
+        *,
+        for_update: bool = False,
+    ) -> Organization | None: ...
+
+    def update_organization(self, organization: Organization) -> None: ...
+
+    def list_memberships(self, organization_id: UUID) -> list[OrganizationMembership]: ...
+
+    def get_membership(
+        self,
+        *,
+        organization_id: UUID,
+        membership_id: UUID,
+        for_update: bool = False,
+    ) -> OrganizationMembership | None: ...
+
+    def get_membership_for_user(
+        self,
+        *,
+        organization_id: UUID,
+        user_id: UUID,
+        for_update: bool = False,
+    ) -> OrganizationMembership | None: ...
+
+    def count_other_active_owners(
+        self,
+        *,
+        organization_id: UUID,
+        excluding_membership_id: UUID,
+    ) -> int: ...
+
+    def create_membership(self, membership: OrganizationMembership) -> None: ...
+
+    def update_membership(self, membership: OrganizationMembership) -> None: ...
+
+    def create_invitation(self, invitation: Invitation) -> None: ...
+
+    def get_invitation(
+        self,
+        *,
+        organization_id: UUID,
+        invitation_id: UUID,
+        for_update: bool = False,
+    ) -> Invitation | None: ...
+
+    def update_invitation(self, invitation: Invitation) -> None: ...
 
     def list_workspaces(self, organization_id: UUID) -> list[Workspace]: ...
 

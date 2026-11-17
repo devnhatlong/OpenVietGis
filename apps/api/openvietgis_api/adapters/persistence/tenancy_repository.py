@@ -9,6 +9,9 @@ from sqlalchemy.orm import Session
 from openvietgis_api.adapters.persistence.rls import set_request_context
 from openvietgis_api.domains.tenancy.domain import (
     ActorType,
+    Invitation,
+    InvitationStatus,
+    InvitationTargetKind,
     MembershipRole,
     MembershipStatus,
     Organization,
@@ -16,6 +19,8 @@ from openvietgis_api.domains.tenancy.domain import (
     OrganizationStatus,
     Project,
     ProjectStatus,
+    ResourceRole,
+    ResourceScopeKind,
     Workspace,
     WorkspaceStatus,
 )
@@ -65,6 +70,41 @@ def _project_from_row(mapping: RowMapping) -> Project:
         updated_at=mapping["project_updated_at"],
         archived_at=mapping["project_archived_at"],
         deleted_at=mapping["project_deleted_at"],
+    )
+
+
+def _invitation_from_row(mapping: RowMapping) -> Invitation:
+    return Invitation(
+        id=mapping["invitation_id"],
+        organization_id=mapping["organization_id"],
+        status=InvitationStatus(mapping["invitation_status"]),
+        target_kind=InvitationTargetKind(mapping["target_kind"]),
+        target_email_normalized=mapping["target_email_normalized"],
+        target_user_id=mapping["target_user_id"],
+        target_issuer=mapping["target_issuer"],
+        target_subject=mapping["target_subject"],
+        organization_role=MembershipRole(mapping["organization_role"]),
+        resource_scope_kind=(
+            ResourceScopeKind(mapping["resource_scope_kind"])
+            if mapping["resource_scope_kind"] is not None
+            else None
+        ),
+        resource_workspace_id=mapping["resource_workspace_id"],
+        resource_project_id=mapping["resource_project_id"],
+        resource_role=(
+            ResourceRole(mapping["resource_role"])
+            if mapping["resource_role"] is not None
+            else None
+        ),
+        token_hash=mapping["token_hash"],
+        token_prefix=mapping["token_prefix"],
+        expires_at=mapping["expires_at"],
+        created_at=mapping["invitation_created_at"],
+        created_by_actor_type=ActorType(mapping["invitation_created_by_actor_type"]),
+        created_by_actor_id=mapping["invitation_created_by_actor_id"],
+        accepted_at=mapping["accepted_at"],
+        accepted_by_user_id=mapping["accepted_by_user_id"],
+        revoked_at=mapping["revoked_at"],
     )
 
 
@@ -490,5 +530,369 @@ class SqlTenancyRepository:
                 "updated_at": project.updated_at,
                 "archived_at": project.archived_at,
                 "deleted_at": project.deleted_at,
+            },
+        )
+
+    def get_organization(
+        self,
+        organization_id: UUID,
+        *,
+        for_update: bool = False,
+    ) -> Organization | None:
+        suffix = " FOR UPDATE" if for_update else ""
+        row = (
+            self._session.execute(
+                text(
+                    """
+                    SELECT
+                        id AS organization_id,
+                        name AS organization_name,
+                        slug AS organization_slug,
+                        status AS organization_status,
+                        created_by_actor_type AS organization_created_by_actor_type,
+                        created_by_actor_id AS organization_created_by_actor_id,
+                        created_at AS organization_created_at,
+                        updated_at AS organization_updated_at,
+                        deleted_at AS organization_deleted_at
+                    FROM org.organizations
+                    WHERE id = :organization_id
+                    """
+                    + suffix
+                ),
+                {"organization_id": organization_id},
+            )
+            .mappings()
+            .one_or_none()
+        )
+        return _organization_from_row(row) if row is not None else None
+
+    def update_organization(self, organization: Organization) -> None:
+        self._session.execute(
+            text(
+                """
+                UPDATE org.organizations
+                SET name = :name,
+                    status = :status,
+                    updated_at = :updated_at,
+                    deleted_at = :deleted_at
+                WHERE id = :organization_id
+                """
+            ),
+            {
+                "organization_id": organization.id,
+                "name": organization.name,
+                "status": organization.status.value,
+                "updated_at": organization.updated_at,
+                "deleted_at": organization.deleted_at,
+            },
+        )
+
+    def list_memberships(
+        self,
+        organization_id: UUID,
+    ) -> list[OrganizationMembership]:
+        rows = (
+            self._session.execute(
+                text(
+                    """
+                    SELECT
+                        id AS membership_id,
+                        organization_id,
+                        user_id,
+                        role AS membership_role,
+                        status AS membership_status,
+                        created_at AS membership_created_at,
+                        activated_at AS membership_activated_at,
+                        suspended_at AS membership_suspended_at,
+                        revoked_at AS membership_revoked_at
+                    FROM org.organization_memberships
+                    WHERE organization_id = :organization_id
+                    ORDER BY created_at, id
+                    """
+                ),
+                {"organization_id": organization_id},
+            )
+            .mappings()
+            .all()
+        )
+        return [_membership_from_row(row) for row in rows]
+
+    def get_membership(
+        self,
+        *,
+        organization_id: UUID,
+        membership_id: UUID,
+        for_update: bool = False,
+    ) -> OrganizationMembership | None:
+        suffix = " FOR UPDATE" if for_update else ""
+        row = (
+            self._session.execute(
+                text(
+                    """
+                    SELECT
+                        id AS membership_id,
+                        organization_id,
+                        user_id,
+                        role AS membership_role,
+                        status AS membership_status,
+                        created_at AS membership_created_at,
+                        activated_at AS membership_activated_at,
+                        suspended_at AS membership_suspended_at,
+                        revoked_at AS membership_revoked_at
+                    FROM org.organization_memberships
+                    WHERE organization_id = :organization_id
+                      AND id = :membership_id
+                    """
+                    + suffix
+                ),
+                {
+                    "organization_id": organization_id,
+                    "membership_id": membership_id,
+                },
+            )
+            .mappings()
+            .one_or_none()
+        )
+        return _membership_from_row(row) if row is not None else None
+
+    def get_membership_for_user(
+        self,
+        *,
+        organization_id: UUID,
+        user_id: UUID,
+        for_update: bool = False,
+    ) -> OrganizationMembership | None:
+        suffix = " FOR UPDATE" if for_update else ""
+        row = (
+            self._session.execute(
+                text(
+                    """
+                    SELECT
+                        id AS membership_id,
+                        organization_id,
+                        user_id,
+                        role AS membership_role,
+                        status AS membership_status,
+                        created_at AS membership_created_at,
+                        activated_at AS membership_activated_at,
+                        suspended_at AS membership_suspended_at,
+                        revoked_at AS membership_revoked_at
+                    FROM org.organization_memberships
+                    WHERE organization_id = :organization_id
+                      AND user_id = :user_id
+                    """
+                    + suffix
+                ),
+                {"organization_id": organization_id, "user_id": user_id},
+            )
+            .mappings()
+            .one_or_none()
+        )
+        return _membership_from_row(row) if row is not None else None
+
+    def count_other_active_owners(
+        self,
+        *,
+        organization_id: UUID,
+        excluding_membership_id: UUID,
+    ) -> int:
+        return int(
+            self._session.execute(
+                text(
+                    """
+                    SELECT count(*)
+                    FROM org.organization_memberships
+                    WHERE organization_id = :organization_id
+                      AND id <> :membership_id
+                      AND role = 'owner'
+                      AND status = 'active'
+                    """
+                ),
+                {
+                    "organization_id": organization_id,
+                    "membership_id": excluding_membership_id,
+                },
+            ).scalar_one()
+        )
+
+    def create_membership(self, membership: OrganizationMembership) -> None:
+        self._session.execute(
+            text(
+                """
+                INSERT INTO org.organization_memberships (
+                    id, organization_id, user_id, role, status,
+                    created_at, activated_at, suspended_at, revoked_at
+                )
+                VALUES (
+                    :id, :organization_id, :user_id, :role, :status,
+                    :created_at, :activated_at, :suspended_at, :revoked_at
+                )
+                """
+            ),
+            {
+                "id": membership.id,
+                "organization_id": membership.organization_id,
+                "user_id": membership.user_id,
+                "role": membership.role.value,
+                "status": membership.status.value,
+                "created_at": membership.created_at,
+                "activated_at": membership.activated_at,
+                "suspended_at": membership.suspended_at,
+                "revoked_at": membership.revoked_at,
+            },
+        )
+
+    def update_membership(self, membership: OrganizationMembership) -> None:
+        self._session.execute(
+            text(
+                """
+                UPDATE org.organization_memberships
+                SET role = :role,
+                    status = :status,
+                    activated_at = :activated_at,
+                    suspended_at = :suspended_at,
+                    revoked_at = :revoked_at
+                WHERE organization_id = :organization_id
+                  AND id = :membership_id
+                """
+            ),
+            {
+                "organization_id": membership.organization_id,
+                "membership_id": membership.id,
+                "role": membership.role.value,
+                "status": membership.status.value,
+                "activated_at": membership.activated_at,
+                "suspended_at": membership.suspended_at,
+                "revoked_at": membership.revoked_at,
+            },
+        )
+
+    def create_invitation(self, invitation: Invitation) -> None:
+        self._session.execute(
+            text(
+                """
+                INSERT INTO org.invitations (
+                    id, organization_id, status, target_kind,
+                    target_email_normalized, target_user_id, target_issuer, target_subject,
+                    organization_role, resource_scope_kind, resource_workspace_id,
+                    resource_project_id, resource_role, token_hash, token_prefix,
+                    expires_at, created_at, created_by_actor_type, created_by_actor_id,
+                    accepted_at, accepted_by_user_id, revoked_at
+                )
+                VALUES (
+                    :id, :organization_id, :status, :target_kind,
+                    :target_email_normalized, :target_user_id, :target_issuer, :target_subject,
+                    :organization_role, :resource_scope_kind, :resource_workspace_id,
+                    :resource_project_id, :resource_role, :token_hash, :token_prefix,
+                    :expires_at, :created_at, :created_by_actor_type, :created_by_actor_id,
+                    :accepted_at, :accepted_by_user_id, :revoked_at
+                )
+                """
+            ),
+            {
+                "id": invitation.id,
+                "organization_id": invitation.organization_id,
+                "status": invitation.status.value,
+                "target_kind": invitation.target_kind.value,
+                "target_email_normalized": invitation.target_email_normalized,
+                "target_user_id": invitation.target_user_id,
+                "target_issuer": invitation.target_issuer,
+                "target_subject": invitation.target_subject,
+                "organization_role": invitation.organization_role.value,
+                "resource_scope_kind": (
+                    invitation.resource_scope_kind.value
+                    if invitation.resource_scope_kind is not None
+                    else None
+                ),
+                "resource_workspace_id": invitation.resource_workspace_id,
+                "resource_project_id": invitation.resource_project_id,
+                "resource_role": (
+                    invitation.resource_role.value
+                    if invitation.resource_role is not None
+                    else None
+                ),
+                "token_hash": invitation.token_hash,
+                "token_prefix": invitation.token_prefix,
+                "expires_at": invitation.expires_at,
+                "created_at": invitation.created_at,
+                "created_by_actor_type": invitation.created_by_actor_type.value,
+                "created_by_actor_id": invitation.created_by_actor_id,
+                "accepted_at": invitation.accepted_at,
+                "accepted_by_user_id": invitation.accepted_by_user_id,
+                "revoked_at": invitation.revoked_at,
+            },
+        )
+
+    def get_invitation(
+        self,
+        *,
+        organization_id: UUID,
+        invitation_id: UUID,
+        for_update: bool = False,
+    ) -> Invitation | None:
+        suffix = " FOR UPDATE" if for_update else ""
+        row = (
+            self._session.execute(
+                text(
+                    """
+                    SELECT
+                        id AS invitation_id,
+                        organization_id,
+                        status AS invitation_status,
+                        target_kind,
+                        target_email_normalized,
+                        target_user_id,
+                        target_issuer,
+                        target_subject,
+                        organization_role,
+                        resource_scope_kind,
+                        resource_workspace_id,
+                        resource_project_id,
+                        resource_role,
+                        token_hash,
+                        token_prefix,
+                        expires_at,
+                        created_at AS invitation_created_at,
+                        created_by_actor_type AS invitation_created_by_actor_type,
+                        created_by_actor_id AS invitation_created_by_actor_id,
+                        accepted_at,
+                        accepted_by_user_id,
+                        revoked_at
+                    FROM org.invitations
+                    WHERE organization_id = :organization_id
+                      AND id = :invitation_id
+                    """
+                    + suffix
+                ),
+                {
+                    "organization_id": organization_id,
+                    "invitation_id": invitation_id,
+                },
+            )
+            .mappings()
+            .one_or_none()
+        )
+        return _invitation_from_row(row) if row is not None else None
+
+    def update_invitation(self, invitation: Invitation) -> None:
+        self._session.execute(
+            text(
+                """
+                UPDATE org.invitations
+                SET status = :status,
+                    accepted_at = :accepted_at,
+                    accepted_by_user_id = :accepted_by_user_id,
+                    revoked_at = :revoked_at
+                WHERE organization_id = :organization_id
+                  AND id = :invitation_id
+                """
+            ),
+            {
+                "organization_id": invitation.organization_id,
+                "invitation_id": invitation.id,
+                "status": invitation.status.value,
+                "accepted_at": invitation.accepted_at,
+                "accepted_by_user_id": invitation.accepted_by_user_id,
+                "revoked_at": invitation.revoked_at,
             },
         )
