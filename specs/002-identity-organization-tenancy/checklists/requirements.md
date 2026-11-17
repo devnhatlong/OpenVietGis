@@ -36,5 +36,7 @@
 - Review amendments explicitly define additive permission semantics, Workspace grant inheritance,
   invitation recipient binding, authenticated identity resolution, bootstrap authority, deferred
   cross-Organization transfer, and logical-only enterprise parity for Spec 002.
+- The reviewed specification now contains 54 functional requirements with explicit additive
+  permission, inheritance, recipient-binding, credential-ceiling, and deferred-transfer semantics.
 - Identity-provider protocol, database isolation mechanism, persistence technology, and concrete
   authorization implementation remain planning/ADR concerns rather than specification requirements.

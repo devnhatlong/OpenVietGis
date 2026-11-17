@@ -1,0 +1,222 @@
+openapi: 3.1.0
+info:
+  title: OpenVietGIS Machine Identity, Audit & Bootstrap API
+  version: 0.2.0
+servers:
+  - url: /api/v1
+paths:
+  /organizations/{organization_id}/service-principals:
+    get:
+      operationId: listServicePrincipals
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - $ref: "#/components/parameters/OrganizationId"
+      responses:
+        "200":
+          description: Service principals visible to authorized administrator
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/ServicePrincipal" }
+    post:
+      operationId: createServicePrincipal
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - $ref: "#/components/parameters/OrganizationId"
+        - $ref: "#/components/parameters/CsrfHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string, minLength: 1, maxLength: 200 }
+                description: { type: [string, "null"] }
+      responses:
+        "201":
+          description: Service principal created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ServicePrincipal" }
+        "403": { description: Insufficient permission }
+  /organizations/{organization_id}/service-principals/{service_principal_id}/revoke:
+    post:
+      operationId: revokeServicePrincipal
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - $ref: "#/components/parameters/OrganizationId"
+        - $ref: "#/components/parameters/ServicePrincipalId"
+        - $ref: "#/components/parameters/CsrfHeader"
+      responses:
+        "204": { description: Principal revoked; credentials no longer authorize }
+  /organizations/{organization_id}/service-principals/{service_principal_id}/credentials:
+    post:
+      operationId: issueServiceCredential
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - $ref: "#/components/parameters/OrganizationId"
+        - $ref: "#/components/parameters/ServicePrincipalId"
+        - $ref: "#/components/parameters/CsrfHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string }
+                permission_ceiling:
+                  type: [array, "null"]
+                  uniqueItems: true
+                  items: { type: string }
+                expires_at: { type: [string, "null"], format: date-time }
+      responses:
+        "201":
+          description: Credential issued; usable secret returned exactly once
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ServiceCredentialIssued" }
+        "400": { description: Permission ceiling contains permission principal cannot receive }
+  /organizations/{organization_id}/service-principals/{service_principal_id}/credentials/{credential_id}/revoke:
+    post:
+      operationId: revokeServiceCredential
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - $ref: "#/components/parameters/OrganizationId"
+        - $ref: "#/components/parameters/ServicePrincipalId"
+        - in: path
+          name: credential_id
+          required: true
+          schema: { type: string, format: uuid }
+        - $ref: "#/components/parameters/CsrfHeader"
+      responses:
+        "204": { description: Credential revoked }
+  /organizations/{organization_id}/audit-events:
+    get:
+      operationId: listAuditEvents
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - $ref: "#/components/parameters/OrganizationId"
+        - in: query
+          name: limit
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+      responses:
+        "200":
+          description: Recent audit events
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/AuditEvent" }
+  /bootstrap/status:
+    get:
+      operationId: getBootstrapStatus
+      responses:
+        "200":
+          description: Non-secret installation initialization state
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [initialized]
+                properties:
+                  initialized: { type: boolean }
+  /bootstrap/initialize:
+    post:
+      operationId: initializeInstallation
+      security: [{ sessionCookie: [], bootstrapSecret: [] }]
+      parameters:
+        - $ref: "#/components/parameters/CsrfHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [organization_name, organization_slug]
+              properties:
+                organization_name: { type: string, minLength: 1, maxLength: 200 }
+                organization_slug: { type: string, minLength: 1, maxLength: 120 }
+      responses:
+        "201":
+          description: First Organization and Owner created atomically
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [organization_id, owner_membership_id]
+                properties:
+                  organization_id: { type: string, format: uuid }
+                  owner_membership_id: { type: string, format: uuid }
+        "403": { description: Missing/invalid one-time bootstrap authority or CSRF }
+        "409": { description: Installation already initialized }
+components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: ovg_session
+    bootstrapSecret:
+      type: http
+      scheme: bearer
+      bearerFormat: OpenVietGIS-Bootstrap
+  parameters:
+    OrganizationId:
+      in: path
+      name: organization_id
+      required: true
+      schema: { type: string, format: uuid }
+    ServicePrincipalId:
+      in: path
+      name: service_principal_id
+      required: true
+      schema: { type: string, format: uuid }
+    CsrfHeader:
+      in: header
+      name: X-OpenVietGIS-CSRF
+      required: true
+      schema: { type: string }
+  schemas:
+    ServicePrincipal:
+      type: object
+      required: [id, organization_id, name, status]
+      properties:
+        id: { type: string, format: uuid }
+        organization_id: { type: string, format: uuid }
+        name: { type: string }
+        description: { type: [string, "null"] }
+        status: { type: string, enum: [active, revoked] }
+    ServiceCredentialIssued:
+      type: object
+      required: [id, prefix, secret]
+      properties:
+        id: { type: string, format: uuid }
+        prefix: { type: string }
+        secret:
+          type: string
+          description: Returned once; only a cryptographic hash is stored.
+        permission_ceiling:
+          type: [array, "null"]
+          items: { type: string }
+        expires_at: { type: [string, "null"], format: date-time }
+    AuditEvent:
+      type: object
+      required:
+        [id, actor_type, actor_display_snapshot, action, outcome, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        organization_id: { type: [string, "null"], format: uuid }
+        actor_type: { type: string, enum: [human, service_principal, system] }
+        actor_id: { type: [string, "null"], format: uuid }
+        actor_display_snapshot: { type: string }
+        action: { type: string }
+        resource_type: { type: [string, "null"] }
+        resource_id: { type: [string, "null"], format: uuid }
+        outcome: { type: string, enum: [success, denied, failure] }
+        metadata: { type: object }
+        created_at: { type: string, format: date-time }

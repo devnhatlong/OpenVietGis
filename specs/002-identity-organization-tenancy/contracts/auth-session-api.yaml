@@ -1,0 +1,187 @@
+openapi: 3.1.0
+info:
+  title: OpenVietGIS Identity Session API
+  version: 0.2.0
+  description: Human OIDC login, first-party session, current user, organization discovery, and identity linking.
+servers:
+  - url: /api/v1
+paths:
+  /auth/providers:
+    get:
+      operationId: listIdentityProviders
+      responses:
+        "200":
+          description: Configured OIDC providers safe for user selection
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/IdentityProviderSummary"
+  /auth/login/{provider}:
+    get:
+      operationId: beginOidcLogin
+      parameters:
+        - in: path
+          name: provider
+          required: true
+          schema: { type: string }
+        - in: query
+          name: mode
+          required: false
+          schema: { type: string, enum: [login, link], default: login }
+        - in: query
+          name: return_to
+          required: false
+          schema: { type: string }
+      responses:
+        "302": { description: Redirect to configured OIDC provider }
+        "400": { description: Unknown provider or invalid return target }
+        "401": { description: Link mode requires an existing human session }
+  /auth/callback/{provider}:
+    get:
+      operationId: completeOidcLogin
+      parameters:
+        - in: path
+          name: provider
+          required: true
+          schema: { type: string }
+      responses:
+        "302": { description: Login/link completed; first-party session established or retained }
+        "400": { description: "Invalid OIDC state, nonce, claims, or identity-link conflict" }
+  /auth/csrf:
+    get:
+      operationId: getCsrfToken
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: CSRF token for unsafe cookie-authenticated requests
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [token]
+                properties:
+                  token: { type: string }
+        "401": { description: No valid application session }
+  /auth/logout:
+    post:
+      operationId: logout
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/CsrfHeader"
+      responses:
+        "204": { description: Application session revoked and cookie cleared }
+        "401": { description: No valid session }
+        "403": { description: CSRF validation failed }
+  /me:
+    get:
+      operationId: getCurrentUser
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Current internal User
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CurrentUser"
+        "401": { description: No valid session }
+  /me/organizations:
+    get:
+      operationId: listMyOrganizations
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Organizations in which current User has an active membership
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MyOrganization"
+        "401": { description: No valid session }
+  /me/identity-links:
+    get:
+      operationId: listMyIdentityLinks
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: External identities linked to current User
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/IdentityLink"
+    delete:
+      operationId: unlinkIdentity
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/CsrfHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [identity_link_id]
+              properties:
+                identity_link_id: { type: string, format: uuid }
+      responses:
+        "204": { description: Identity unlinked when another usable identity remains }
+        "400": { description: Cannot unlink required/last usable identity }
+        "403": { description: CSRF validation failed }
+components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: ovg_session
+  parameters:
+    CsrfHeader:
+      in: header
+      name: X-OpenVietGIS-CSRF
+      required: true
+      schema: { type: string }
+  schemas:
+    IdentityProviderSummary:
+      type: object
+      additionalProperties: false
+      required: [id, display_name]
+      properties:
+        id: { type: string }
+        display_name: { type: string }
+    CurrentUser:
+      type: object
+      additionalProperties: false
+      required: [id, display_name, status]
+      properties:
+        id: { type: string, format: uuid }
+        display_name: { type: string }
+        email_snapshot: { type: [string, "null"], format: email }
+        status: { type: string, enum: [active, disabled] }
+    MyOrganization:
+      type: object
+      additionalProperties: false
+      required: [id, name, slug, role]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        slug: { type: string }
+        role: { type: string, enum: [owner, admin, member, guest] }
+    IdentityLink:
+      type: object
+      additionalProperties: false
+      required: [id, issuer, subject, email_verified]
+      properties:
+        id: { type: string, format: uuid }
+        issuer: { type: string, format: uri }
+        subject: { type: string }
+        email_snapshot: { type: [string, "null"], format: email }
+        email_verified: { type: boolean }

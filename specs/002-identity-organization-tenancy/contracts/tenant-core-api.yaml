@@ -1,0 +1,489 @@
+openapi: 3.1.0
+info:
+  title: OpenVietGIS Tenant Core API
+  version: 0.2.0
+  description: Organization membership, Workspace/Project hierarchy, scoped grants, invitations, and effective permissions.
+servers:
+  - url: /api/v1
+paths:
+  /organizations/{organization_id}:
+    get:
+      operationId: getOrganization
+      security: [{ sessionCookie: [] }, { serviceBearer: [] }]
+      parameters:
+        - $ref: "#/components/parameters/OrganizationId"
+      responses:
+        "200":
+          description: Organization visible to actor
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Organization" }
+        "404": { description: Organization not visible or does not exist }
+  /organizations/{organization_id}/members:
+    get:
+      operationId: listOrganizationMembers
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - $ref: "#/components/parameters/OrganizationId"
+      responses:
+        "200":
+          description: Member list for authorized actor
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Membership" }
+        "403": { description: Same-tenant actor lacks member-management/read permission }
+        "404": { description: Organization not visible }
+  /organizations/{organization_id}/members/{membership_id}:
+    patch:
+      operationId: updateOrganizationMembership
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - $ref: "#/components/parameters/OrganizationId"
+        - in: path
+          name: membership_id
+          required: true
+          schema: { type: string, format: uuid }
+        - $ref: "#/components/parameters/CsrfHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                role: { type: string, enum: [owner, admin, member, guest] }
+                status: { type: string, enum: [active, suspended, revoked] }
+              minProperties: 1
+      responses:
+        "200": { description: Membership updated }
+        "400": { description: Invalid transition or last-Owner invariant }
+        "403": { description: Insufficient permission or CSRF failure }
+        "404": { description: Organization/membership not visible }
+  /organizations/{organization_id}/ownership-transfer:
+    post:
+      operationId: transferOrganizationOwnership
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - $ref: "#/components/parameters/OrganizationId"
+        - $ref: "#/components/parameters/CsrfHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [target_membership_id]
+              properties:
+                target_membership_id: { type: string, format: uuid }
+      responses:
+        "200": { description: Ownership transferred atomically }
+        "400": { description: Target membership invalid }
+        "403": { description: Owner-only action or CSRF failure }
+  /organizations/{organization_id}/workspaces:
+    get:
+      operationId: listWorkspaces
+      security: [{ sessionCookie: [] }, { serviceBearer: [] }]
+      parameters:
+        - $ref: "#/components/parameters/OrganizationId"
+      responses:
+        "200":
+          description: Workspaces visible to actor
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Workspace" }
+    post:
+      operationId: createWorkspace
+      security: [{ sessionCookie: [] }, { serviceBearer: [] }]
+      parameters:
+        - $ref: "#/components/parameters/OrganizationId"
+        - $ref: "#/components/parameters/CsrfHeaderOptionalForBearer"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, slug]
+              properties:
+                name: { type: string, minLength: 1, maxLength: 200 }
+                slug: { type: string, minLength: 1, maxLength: 120 }
+      responses:
+        "201": { description: Workspace created }
+        "403": { description: Insufficient permission }
+  /organizations/{organization_id}/workspaces/{workspace_id}:
+    patch:
+      operationId: updateWorkspace
+      security: [{ sessionCookie: [] }, { serviceBearer: [] }]
+      parameters:
+        - $ref: "#/components/parameters/OrganizationId"
+        - in: path
+          name: workspace_id
+          required: true
+          schema: { type: string, format: uuid }
+        - $ref: "#/components/parameters/CsrfHeaderOptionalForBearer"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                status: { type: string, enum: [active, archived, deleted] }
+              minProperties: 1
+      responses:
+        "200": { description: Workspace updated }
+        "400": { description: Invalid lifecycle transition or active Projects block deletion }
+        "403": { description: Insufficient permission }
+        "404": { description: Workspace not visible }
+  /organizations/{organization_id}/projects:
+    get:
+      operationId: listProjects
+      security: [{ sessionCookie: [] }, { serviceBearer: [] }]
+      parameters:
+        - $ref: "#/components/parameters/OrganizationId"
+        - in: query
+          name: workspace_id
+          required: false
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Projects visible to actor
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Project" }
+    post:
+      operationId: createProject
+      security: [{ sessionCookie: [] }, { serviceBearer: [] }]
+      parameters:
+        - $ref: "#/components/parameters/OrganizationId"
+        - $ref: "#/components/parameters/CsrfHeaderOptionalForBearer"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, slug]
+              properties:
+                name: { type: string, minLength: 1, maxLength: 200 }
+                slug: { type: string, minLength: 1, maxLength: 120 }
+                workspace_id: { type: [string, "null"], format: uuid }
+      responses:
+        "201": { description: Project created }
+        "400": { description: Workspace belongs to another Organization or invalid input }
+        "403": { description: Insufficient permission }
+  /organizations/{organization_id}/projects/{project_id}:
+    get:
+      operationId: getProject
+      security: [{ sessionCookie: [] }, { serviceBearer: [] }]
+      parameters:
+        - $ref: "#/components/parameters/OrganizationId"
+        - $ref: "#/components/parameters/ProjectId"
+      responses:
+        "200":
+          description: Project visible to actor
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Project" }
+        "403": { description: Same-tenant actor lacks requested permission }
+        "404": { description: Project is outside tenant visibility or absent }
+    patch:
+      operationId: updateProject
+      security: [{ sessionCookie: [] }, { serviceBearer: [] }]
+      parameters:
+        - $ref: "#/components/parameters/OrganizationId"
+        - $ref: "#/components/parameters/ProjectId"
+        - $ref: "#/components/parameters/CsrfHeaderOptionalForBearer"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                workspace_id: { type: [string, "null"], format: uuid }
+                status: { type: string, enum: [active, archived, deleted] }
+              minProperties: 1
+      responses:
+        "200": { description: Project updated or moved inside same Organization }
+        "400": { description: Cross-Organization ownership/move attempt or invalid transition }
+        "403": { description: Insufficient permission }
+        "404": { description: Project not visible }
+  /organizations/{organization_id}/grants:
+    get:
+      operationId: listResourceGrants
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - $ref: "#/components/parameters/OrganizationId"
+      responses:
+        "200":
+          description: Active/revoked grants visible to authorized administrator
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/ResourceGrant" }
+    post:
+      operationId: createResourceGrant
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - $ref: "#/components/parameters/OrganizationId"
+        - $ref: "#/components/parameters/CsrfHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ResourceGrantCreate" }
+      responses:
+        "201": { description: Grant created }
+        "400": { description: Cross-tenant subject/scope or invalid role/scope }
+        "403": { description: Insufficient permission }
+  /organizations/{organization_id}/grants/{grant_id}/revoke:
+    post:
+      operationId: revokeResourceGrant
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - $ref: "#/components/parameters/OrganizationId"
+        - in: path
+          name: grant_id
+          required: true
+          schema: { type: string, format: uuid }
+        - $ref: "#/components/parameters/CsrfHeader"
+      responses:
+        "204": { description: Grant revoked }
+        "403": { description: Insufficient permission }
+        "404": { description: Grant not visible }
+  /organizations/{organization_id}/invitations:
+    post:
+      operationId: createInvitation
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - $ref: "#/components/parameters/OrganizationId"
+        - $ref: "#/components/parameters/CsrfHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/InvitationCreate" }
+      responses:
+        "201":
+          description: Invitation created; secret returned once
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/InvitationIssued" }
+        "403": { description: Insufficient invitation permission }
+  /organizations/{organization_id}/invitations/{invitation_id}/revoke:
+    post:
+      operationId: revokeInvitation
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - $ref: "#/components/parameters/OrganizationId"
+        - in: path
+          name: invitation_id
+          required: true
+          schema: { type: string, format: uuid }
+        - $ref: "#/components/parameters/CsrfHeader"
+      responses:
+        "204": { description: Pending invitation revoked }
+  /invitations/accept:
+    post:
+      operationId: acceptInvitation
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - $ref: "#/components/parameters/CsrfHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [organization_id, invitation_id, secret]
+              properties:
+                organization_id: { type: string, format: uuid }
+                invitation_id: { type: string, format: uuid }
+                secret: { type: string, minLength: 32 }
+      responses:
+        "200":
+          description: Invitation accepted atomically
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [membership]
+                properties:
+                  membership: { $ref: "#/components/schemas/Membership" }
+                  grant:
+                    oneOf:
+                      - { $ref: "#/components/schemas/ResourceGrant" }
+                      - { type: "null" }
+        "400": { description: Expired/revoked/used invitation or target identity mismatch }
+        "403": { description: CSRF failure }
+  /organizations/{organization_id}/effective-permissions:
+    get:
+      operationId: getEffectivePermissions
+      security: [{ sessionCookie: [] }, { serviceBearer: [] }]
+      parameters:
+        - $ref: "#/components/parameters/OrganizationId"
+        - in: query
+          name: workspace_id
+          required: false
+          schema: { type: string, format: uuid }
+        - in: query
+          name: project_id
+          required: false
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Effective stable permission codes for actor/resource context
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [permissions]
+                properties:
+                  permissions:
+                    type: array
+                    uniqueItems: true
+                    items: { type: string }
+components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: ovg_session
+    serviceBearer:
+      type: http
+      scheme: bearer
+  parameters:
+    OrganizationId:
+      in: path
+      name: organization_id
+      required: true
+      schema: { type: string, format: uuid }
+    ProjectId:
+      in: path
+      name: project_id
+      required: true
+      schema: { type: string, format: uuid }
+    CsrfHeader:
+      in: header
+      name: X-OpenVietGIS-CSRF
+      required: true
+      schema: { type: string }
+    CsrfHeaderOptionalForBearer:
+      in: header
+      name: X-OpenVietGIS-CSRF
+      required: false
+      description: Required when authenticated by session cookie; not required for service Bearer credential.
+      schema: { type: string }
+  schemas:
+    Organization:
+      type: object
+      required: [id, name, slug, status]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        slug: { type: string }
+        status: { type: string, enum: [active, suspended, deleted] }
+    Membership:
+      type: object
+      required: [id, organization_id, user_id, role, status]
+      properties:
+        id: { type: string, format: uuid }
+        organization_id: { type: string, format: uuid }
+        user_id: { type: string, format: uuid }
+        role: { type: string, enum: [owner, admin, member, guest] }
+        status: { type: string, enum: [active, suspended, revoked] }
+    Workspace:
+      type: object
+      required: [id, organization_id, name, slug, status]
+      properties:
+        id: { type: string, format: uuid }
+        organization_id: { type: string, format: uuid }
+        name: { type: string }
+        slug: { type: string }
+        status: { type: string, enum: [active, archived, deleted] }
+    Project:
+      type: object
+      required: [id, organization_id, name, slug, status]
+      properties:
+        id: { type: string, format: uuid }
+        organization_id: { type: string, format: uuid }
+        workspace_id: { type: [string, "null"], format: uuid }
+        name: { type: string }
+        slug: { type: string }
+        status: { type: string, enum: [active, archived, deleted] }
+    ResourceGrantCreate:
+      type: object
+      required: [subject_kind, subject_id, scope_kind, role]
+      properties:
+        subject_kind: { type: string, enum: [membership, service_principal] }
+        subject_id: { type: string, format: uuid }
+        scope_kind: { type: string, enum: [organization, workspace, project] }
+        workspace_id: { type: [string, "null"], format: uuid }
+        project_id: { type: [string, "null"], format: uuid }
+        role: { type: string, enum: [manager, editor, contributor, viewer] }
+    ResourceGrant:
+      allOf:
+        - $ref: "#/components/schemas/ResourceGrantCreate"
+        - type: object
+          required: [id, organization_id, created_at]
+          properties:
+            id: { type: string, format: uuid }
+            organization_id: { type: string, format: uuid }
+            created_at: { type: string, format: date-time }
+            revoked_at: { type: [string, "null"], format: date-time }
+    InvitationCreate:
+      type: object
+      required: [target, organization_role, expires_at]
+      properties:
+        target:
+          oneOf:
+            - type: object
+              required: [kind, email]
+              properties:
+                kind: { const: email }
+                email: { type: string, format: email }
+            - type: object
+              required: [kind, user_id]
+              properties:
+                kind: { const: user }
+                user_id: { type: string, format: uuid }
+            - type: object
+              required: [kind, issuer, subject]
+              properties:
+                kind: { const: external_identity }
+                issuer: { type: string, format: uri }
+                subject: { type: string }
+        organization_role: { type: string, enum: [owner, admin, member, guest] }
+        resource_grant:
+          oneOf:
+            - { $ref: "#/components/schemas/InvitationResourceGrant" }
+            - { type: "null" }
+        expires_at: { type: string, format: date-time }
+    InvitationResourceGrant:
+      type: object
+      required: [scope_kind, role]
+      properties:
+        scope_kind: { type: string, enum: [organization, workspace, project] }
+        workspace_id: { type: [string, "null"], format: uuid }
+        project_id: { type: [string, "null"], format: uuid }
+        role: { type: string, enum: [manager, editor, contributor, viewer] }
+    InvitationIssued:
+      type: object
+      required: [id, organization_id, status, secret]
+      properties:
+        id: { type: string, format: uuid }
+        organization_id: { type: string, format: uuid }
+        status: { const: pending }
+        secret:
+          type: string
+          description: Returned once; only its hash is retained.

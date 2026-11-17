@@ -75,7 +75,7 @@ ownership stays unchanged throughout.
 ### User Story 3 - Invite People and Grant Scoped Access (Priority: P1)
 
 An organization owner or administrator can invite another person, assign an intended organization
-role and optional narrower resource access, and later revoke or suspend that access without relying
+role and optional scoped resource access, and later revoke or suspend that access without relying
 on the person's email address as the permanent identity key.
 
 **Why this priority**: Team collaboration depends on safe invitations, resource grants, and
@@ -113,7 +113,8 @@ that access stops.
 
 An organization can rely on OpenVietGIS to prevent reads, edits, sharing, invitations, service
 accounts, or background operations from crossing the organization boundary unless an explicit,
-valid membership or transfer workflow authorizes it.
+valid membership/grant authorizes access inside that Organization. Cross-Organization Project
+transfer remains outside Spec 002.
 
 **Why this priority**: Tenant isolation is a platform security boundary and a failure would be more
 severe than a normal feature defect.
@@ -364,10 +365,13 @@ Owner and organization exist, then attempt to reuse the bootstrap mechanism and 
 - **FR-046**: The feature MUST preserve a clear future boundary for later Layer, Spatial Catalog,
   Map, Editing, Processing, Field, and Module features without adding those capabilities to this
   feature.
-- **FR-047**: Workspace-scoped grants MUST apply dynamically to Projects currently grouped in that
-  Workspace. Direct Project grants are additive. When a Project moves out of a Workspace, permissions
-  inherited solely from that Workspace MUST stop applying immediately; the system MUST NOT copy
-  inherited grants into permanent Project grants.
+- **FR-047**: Resource-role grants MAY be scoped to an Organization, Workspace, or Project.
+  An Organization-scoped resource grant applies to resource operations across that Organization but
+  does not grant Organization membership administration or Owner-only authority. A Workspace-scoped
+  grant applies dynamically to Projects currently grouped in that Workspace. Direct Project grants
+  are additive. When a Project moves out of a Workspace, permissions inherited solely from that
+  Workspace MUST stop applying immediately; the system MUST NOT copy inherited grants into permanent
+  Project grants.
 - **FR-048**: For protected human actions, the system MUST resolve the authenticated external identity
   to exactly one internal User, then resolve an active Organization Membership, active Organization
   context, and effective permissions before authorizing tenant-owned access.
@@ -388,6 +392,9 @@ Owner and organization exist, then attempt to reuse the bootstrap mechanism and 
 - **FR-053**: A Workspace MUST NOT enter a deleted state while active Projects are still grouped
   inside it. Projects MUST first be explicitly moved to another Workspace or made ungrouped; this
   operation MUST NOT change their Organization ownership.
+- **FR-054**: A Service Credential MAY define a permission-scope ceiling that is a subset of its
+  Service Principal's currently effective grants. Credential scope MUST only restrict the principal;
+  it MUST never grant an action or resource scope the Service Principal does not already possess.
 
 ### Initial Authorization Semantics
 
@@ -397,6 +404,7 @@ Owner and organization exist, then attempt to reuse the bootstrap mechanism and 
 | Organization Admin | Organization/member administration and organization-wide resource management except Owner-only invariants |
 | Organization Member | Organization membership visibility/basic organization access; no implicit Workspace/Project access without an applicable resource grant |
 | Organization Guest | No implicit organization directory or resource visibility; access only through explicit scoped grants |
+| Organization-scoped resource grant | Its resource-role permissions apply across Workspaces/Projects in that Organization but do not grant membership administration or Owner-only authority |
 | Workspace-scoped grant | Its permissions apply to that Workspace and dynamically to Projects currently grouped there |
 | Direct Project grant | Its permissions apply only to that Project and are additive with other applicable permissions |
 | Project Manager | Project read/edit/manage/share/archive/delete permissions within its valid scope |

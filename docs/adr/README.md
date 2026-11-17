@@ -28,3 +28,5 @@ rewrite historical rationale as though the original decision was never made.
 - [ADR-010 — Object storage](ADR-010-object-storage.md)
 - [ADR-011 — Processing jobs](ADR-011-processing-jobs.md)
 - [ADR-012 — Deployment](ADR-012-deployment.md)
+- [ADR-013 — OIDC-backed application session](ADR-013-oidc-application-session.md)
+- [ADR-014 — Explicit tenant context + RLS](ADR-014-explicit-tenant-context-rls.md)
