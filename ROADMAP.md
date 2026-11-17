@@ -1,0 +1,183 @@
+# OpenVietGIS — Roadmap tổng thể
+
+**Baseline**: 2026-11-18
+
+**Định hướng**: [Product](docs/product.md)
+
+**Nguyên tắc**: [Constitution](.specify/memory/constitution.md) · [ADR index](docs/adr/README.md)
+
+**Cách lập**: [Spec Kit — spec of specs](https://github.com/github/spec-kit/blob/main/docs/how-to/spec-of-specs.md)
+
+## Cách đọc
+
+Đây là baseline phân rã sản phẩm thành các phần có đầu ra kiểm chứng được.
+**Chỉ 001 và 002 đã có spec trong repo tại thời điểm ghi nhận.** Các nhãn 003–015
+là thứ tự dự kiến cho nhóm năng lực, không khẳng định đã tạo 13 spec hay phải giữ
+mỗi nhóm trong đúng một vòng triển khai.
+
+- ID **R001–R015** là khóa truy vết ổn định, không đổi tên khi nhánh/spec được chia hoặc đổi số.
+- 003 là ứng viên tiếp theo sau 002, không tự động được tạo bởi việc ghi roadmap.
+- Số hàng không tạo phụ thuộc ngầm. Chỉ cột **Phụ thuộc** quyết định thứ tự bắt buộc.
+- Nhóm quá lớn phải chia thành spec nhỏ hơn; giữ ID cha và bổ sung ID con cùng liên kết.
+- Roadmap điều phối WHAT, ranh giới và phụ thuộc. Thiết kế kỹ thuật nằm trong plan/ADR.
+- Tài liệu này không biến chức năng planned thành chức năng đang có.
+
+**Trạng thái**: planned = chưa có spec chi tiết; in-progress = đang đặc tả/lập kế hoạch/
+triển khai/kiểm chứng (ghi rõ giai đoạn); done = đã có bằng chứng nghiệm thu và convergence.
+Mốc phát hành được đánh giá bằng kịch bản, không bằng số ô task hoặc tỷ lệ số spec.
+
+## Các phần và phụ thuộc
+
+| ID / nhãn dự kiến | Năng lực và đầu ra | Ranh giới phạm vi | Phụ thuộc | Trạng thái | Spec / bằng chứng |
+| --- | --- | --- | --- | --- | --- |
+| **R001 / 001** | Platform Foundation: khung chạy được, luồng persistence và quality gates | Dữ liệu mẫu dùng một lần; không GIS/tenant/business semantics | — | done | [Spec](specs/001-platform-foundation/spec.md) · [Kết quả](specs/001-platform-foundation/tasks.md#implementation-validation-results) · [Roadmap link](specs/001-platform-foundation/roadmap-reference.md) |
+| **R002 / 002** | Identity, Organization & Tenancy: user/org, Workspace/Project, quyền, invite, service actor và bootstrap | GIS, public share, billing và triển khai enterprise thực tế nằm ngoài 002 | R001 | in-progress — spec/plan; chưa nghiệm thu implementation | [Spec](specs/002-identity-organization-tenancy/spec.md) · [Roadmap link](specs/002-identity-organization-tenancy/roadmap-reference.md) |
+| **R003 / 003** | Spatial Catalog & CRS: đăng ký nguồn/layer tenant-scoped, schema/extent/CRS/capability rõ, đọc được bộ dữ liệu tham chiếu | Layer khác SourceAsset/DB table; chưa làm bộ import đa định dạng hay editor hoàn chỉnh | R002 | planned | Chưa tạo |
+| **R004 / 004** | Map Workspace: mở Project, bản đồ nền, layer order/visibility, extent, chọn/xem feature và thuộc tính, lưu/mở lại cấu hình | Có đọc/query cơ bản và command/capability tối thiểu; query nâng cao ở R007, editor ở R006 | R003 | planned | Chưa tạo |
+| **R005 / 005** | Import & Export: đưa dữ liệu hỗ trợ vào Project và xuất kết quả để đối chiếu ở công cụ khác | Chốt ma trận định dạng/CRS; có provenance, change unit/revision, validation và recovery tối thiểu; CAD ở R012 | R003, R004 | planned | Chưa tạo |
+| **R006 / 006** | Editing & Change History: vẽ/sửa hình học và thuộc tính, kiểm tra, commit/cancel, history và phát hiện stale revision | Mở rộng nền change của R003/R005; không giữ DB transaction theo phiên vẽ dài; CAD chính xác nâng cao ở R012 | R005 | planned | Chưa tạo |
+| **R007 / 007** | Attribute & Spatial Query: lọc/tìm/selection nâng cao, kết hợp bảng và bản đồ, truy vấn không gian có semantics rõ | Chỉ các truy vấn và phép kết hợp được spec chọn; không trì hoãn read/select cơ bản của R004 | R004, R005 | planned | Chưa tạo |
+| **R008 / 008** | Processing & Jobs: thuật toán đăng ký, input/output, chạy và theo dõi tác vụ với kết quả kiểm chứng | Chọn ít thuật toán phục vụ workflow; job tối thiểu cần cho import có thể xuất hiện từ R005 | R005, R007 | planned | Chưa tạo; dự kiến chia framework và algorithm slices |
+| **R009 / 009** | Cartography & Output: ký hiệu/nhãn, legend, bố cục và xuất bản đồ có tỷ lệ/CRS phù hợp | Style cơ bản thuộc phạm vi R004; không ép làm bộ layout ngang desktop ngay lần đầu | R004, R005 | planned | Chưa tạo |
+| **R010 / 010** | External Sources: raster, tile, dịch vụ GIS/OGC với capability và quyền rõ | Spec chọn từng adapter/protocol; không mặc định nguồn ngoài editable/offline; tile tối thiểu cần sớm không phải đợi nhóm này | R003, R004, R005 | planned | Chưa tạo; tách theo nguồn/adapter |
+| **R011 / 011** | Team Collaboration: nhiều người làm cùng Project với change/conflict và luồng phối hợp/duyệt được chọn | Tái dùng auth/grants R002; không đồng nghĩa phải có live cursors, CRDT hay public sharing | R002, R006, R007 | planned | Chưa tạo |
+| **R012 / 012** | CAD Interoperability & Precision: trao đổi bản vẽ và thao tác chính xác phục vụ workflow GIS/CAD cụ thể | Chốt DXF/DWG read/write, entity mapping, đơn vị và mức bảo toàn; không hứa full AutoCAD hoặc DWG chỉ vì tên CAD | R005, R006, R007 | planned | Chưa tạo; dự kiến chia interoperability và precision |
+| **R013 / 013** | Field & Offline: gói dữ liệu được phép, thao tác hiện trường, đồng bộ và xử lý xung đột/revocation | Scope offline phải giới hạn theo quyền/capability; đồng bộ ghi cần cơ chế conflict của Core | R005, R006, R011 | planned | Chưa tạo |
+| **R014 / 014** | Module Framework & References: extension points/lifecycle, module nghiệp vụ mẫu tách Core | Ít nhất hai module khác nghiệp vụ kiểm chứng trước khi ổn định public SDK; không biến Số nhà thành Core | R006, R007 | planned | Chưa tạo; tách framework, reference workflows và SDK gate |
+| **R015 / 015** | Production & Commercial Readiness: vận hành cấu hình phát hành, cloud/self-host parity; thương mại khi cần | Tách operations khỏi billing/entitlement; không bắt chờ CAD/field/modules để phát hành team GIS; không trì hoãn safety baseline | R002, R005, R006, R011 cho bản team có biên tập | planned | Chưa tạo; operations và commercial là các spec riêng khi phân rã |
+
+Các phụ thuộc trên là baseline ở mức nhóm. Khi tạo spec nhỏ, phải ghi chính xác
+contract/capability cần dùng, không chỉ viện dẫn cả một nhóm lớn. Nếu module tham
+chiếu cần processing, thêm R008 vào phụ thuộc của slice đó trước khi mở spec.
+
+## Mốc nghiệm thu
+
+| Mốc | Phạm vi tối thiểu | Kịch bản phải chứng minh | Trạng thái |
+| --- | --- | --- | --- |
+| **M0 — Nền** | R001 | Bootstrap, web/API/persistence, guard kiến trúc và kiểm thử có bằng chứng; xem kết quả 001 | done theo evidence 001 |
+| **M1 — Dùng thử GIS local** | R002–R005 | Đăng nhập/chọn đúng tổ chức; tạo Project; nhập dữ liệu thuộc ma trận hỗ trợ; xem layer, chọn feature và thuộc tính; lưu/mở lại; xuất và đối chiếu count/schema/CRS/geometry theo tolerance đã chốt; kiểm tra từ chối truy cập chéo tenant | planned |
+| **M2 — Làm việc thực tế** | M1 + R006, R007, R009 | Hoàn thành một workflow tham chiếu bằng Core: sửa dữ liệu, xử lý stale revision, truy vấn, truy vết thay đổi và xuất đầu ra bản đồ; benchmark theo dataset/môi trường được ghi trước khi thực hiện | planned |
+| **M3 — Phát hành cho team** | M1 + R006, R007, R011 + operations slice R015 | Hai thành viên có quyền khác nhau cùng làm Project; revocation và concurrent change xử lý đúng; triển khai/upgrade, backup/restore và recovery được diễn tập trên profile phát hành; capability M2 nào được phát hành cũng phải đạt gate M2 tương ứng | planned |
+| **Nhánh nâng cao** | R008, R010, R012–R014 theo workflow; commercial slice R015 khi bán dịch vụ | Mỗi nhánh có spec và gate riêng; không dùng tên sản phẩm desktop để thay tiêu chí nghiệm thu | planned |
+
+Mốc M3 không tự bao gồm mọi nhánh nâng cao và không bắt buộc billing. Bản phân tích
+chuyên môn cần thêm R008; bản có CAD cần R012. Phải ghi rõ cấu hình capability thực
+sự phát hành thay vì coi một mốc là tất cả khả năng dự kiến.
+
+## Các yêu cầu phải xuất hiện sớm
+
+1. **Tenant/actor/permission** theo R002 phải đi xuyên catalog, feature, import/export,
+   render, job, artifact, cache, module và đồng bộ ngay khi các đường đó xuất hiện.
+2. **CRS và correctness** bắt đầu ở R003, được kiểm chứng lại cho mỗi adapter/transform.
+   Không tự chọn storage CRS hoặc tham số VN-2000 bằng roadmap này.
+3. **Change/revision/provenance** phải có ngay tại material mutation đầu tiên;
+   import không được chờ tới R006 mới có lịch sử/actor và recovery.
+4. **Read/select/query và style cơ bản** nằm ở R003/R004; R007/R009 mở rộng khả năng này.
+5. **Command/capability contracts** xuất hiện cùng công cụ đầu tiên ở R004;
+   R014 mở rộng framework đăng ký module thay vì giới thiệu command contract quá muộn.
+6. **Object storage/jobs/tile delivery** được đưa vào khi workflow đầu tiên thực sự cần,
+   theo ADR và contract, không tạo service rỗng cũng không trì hoãn vì số roadmap.
+7. **Migration, backup/recovery, log, secrets, resource limits và performance budgets**
+   là nghĩa vụ của từng tính năng. R015 hoàn thiện vận hành/release, không bắt đầu
+   toàn bộ công việc an toàn.
+
+## Chia việc cho agent
+
+- Tiếp tục R002 theo spec/plan hiện có; roadmap không thay đổi ngầm phạm vi 002.
+- Trong lúc R002 chưa nghiệm thu, chỉ research/đặc tả phần phụ thuộc trên contract
+  được ghi rõ là đã Accepted hay còn draft. Không tuyên bố downstream implementation
+  đã ổn định trên một nền đang thay đổi.
+- Khi prerequisite đã chốt và có commit nền phù hợp, tách worktree/nhánh riêng cho
+  mỗi agent hoặc feature. Giữ active-feature state riêng; checkout nhánh không đủ
+  để bảo đảm Spec Kit đang trỏ đúng feature.
+- Chốt contract, error semantics và data ownership trước khi FE/BE triển khai độc lập.
+- Có thể song song FE–BE–test của cùng slice sau contract; R006/R007/R009/R010 có
+  thể chia các luồng sau R005 vì không có phụ thuộc bắt buộc giữa các nhóm đó.
+- Thay đổi contract chung, schema hoặc manifest do một đầu mối điều phối.
+  Một agent tích hợp đối chiếu diff, migrations, tests và traceability trước khi gộp.
+- Chỉ gọi capability done sau Spec Kit convergence và review; planned/spec-ready
+  không có nghĩa implementation đã hoàn tất.
+
+## Truy vết và cập nhật
+
+1. Trước khi mở spec, đọc [Product](docs/product.md), roadmap entry và ADR liên quan.
+   Chốt ranh giới, prerequisites, benchmark và kịch bản nghiệm thu của slice.
+2. Spec mới ghi trong Input/summary: **Parent roadmap: ROADMAP.md, entry Rxxx** và
+   liên kết Markdown tới anchor tương ứng. Roadmap phải liên kết trở lại spec thật.
+3. 001–002 có companion `roadmap-reference.md` để thêm truy vết mà không sửa nội dung
+   spec/plan đang được thực hiện. Không viết lại yêu cầu lịch sử chỉ để khớp roadmap.
+4. Cập nhật roadmap trước khi thay cách phân rã; đối chiếu spec/ADR/contract bị ảnh
+   hưởng. Constitution và Accepted ADR chỉ được đổi theo quy trình governance.
+5. Nếu tách một nhóm, giữ ID cha, thêm ID con, dependencies, scope, trạng thái và link.
+   Nhãn số 003–015 có thể đổi; không tái sử dụng ID để gán sang năng lực khác.
+6. Ghi trạng thái kèm giai đoạn và bằng chứng. Chỉ chuyển done khi các slice bắt buộc
+   đã nghiệm thu; không tính số task thành phần trăm hoàn thành toàn sản phẩm.
+7. Trước khi mở spec tiếp theo, resolve các quyết định đến hạn trong
+   [Product decision register](docs/product.md#các-quyết-định-phải-được-chốt-ở-spec-liên-quan).
+   Không coi những đề xuất định dạng/engine/CRS chưa chốt là quyết định đã Accepted.
+
+## Mốc truy vết ổn định
+
+### R001
+
+[Platform Foundation](specs/001-platform-foundation/spec.md).
+Bằng chứng và convergence: [tasks](specs/001-platform-foundation/tasks.md#implementation-validation-results).
+Dữ liệu mẫu của 001 không trở thành Project, Layer hay mô hình nghiệp vụ thật.
+
+### R002
+
+[Identity, Organization & Tenancy](specs/002-identity-organization-tenancy/spec.md).
+Đang ở giai đoạn đặc tả/lập plan tại baseline; bản plan đang được thực hiện không
+được coi là accepted implementation. Phạm vi và tiến độ chi tiết do artifacts 002 quyết định.
+
+### R003
+
+Spatial Catalog & CRS. Ứng viên spec tiếp theo; chi tiết phải được làm rõ trước khi tạo plan.
+
+### R004
+
+Map Workspace.
+
+### R005
+
+Import & Export.
+
+### R006
+
+Editing & Change History.
+
+### R007
+
+Attribute & Spatial Query.
+
+### R008
+
+Processing & Jobs.
+
+### R009
+
+Cartography & Output.
+
+### R010
+
+External Sources.
+
+### R011
+
+Team Collaboration.
+
+### R012
+
+CAD Interoperability & Precision.
+
+### R013
+
+Field & Offline.
+
+### R014
+
+Module Framework & References.
+
+### R015
+
+Production & Commercial Readiness.
