@@ -37,6 +37,10 @@ allowed actions change correctly without exposing data from the other organizati
 4. **Given** a protected human request, **When** the authenticated external identity cannot resolve
    unambiguously to an internal User with an active membership in the selected Organization,
    **Then** tenant-owned access is denied rather than inferred from email or another Organization.
+5. **Given** an authenticated User wants a separate tenant they own, **When** the User creates a new
+   Organization through the normal product flow, **Then** the Organization and an active Owner
+   membership for that same User are created atomically and audited without using the one-time
+   self-host bootstrap mechanism.
 
 ---
 
@@ -106,6 +110,9 @@ that access stops.
 7. **Given** an invitation is targeted to a specific verified email, User, or stable external
    identity, **When** a different authenticated person presents the invitation secret, **Then** the
    invitation is rejected and no membership is created.
+8. **Given** an active Organization, **When** an authorized Owner suspends or soft-deletes it,
+   **Then** normal tenant mutations stop, references/audit remain recoverable, and an Admin without
+   Owner authority cannot perform the Owner-only destructive transition.
 
 ---
 
@@ -133,9 +140,10 @@ and verify that every unauthorized cross-organization attempt is denied.
 3. **Given** a protected resource lookup is performed through a lower-level data access path rather
    than a UI flow, **When** tenant context is not authorized, **Then** protected cross-tenant data is
    still inaccessible.
-4. **Given** a background or automated action was requested in Organization A, **When** it executes,
-   **Then** it retains the organization and actor context of the request and cannot operate on B
-   resources by default.
+4. **Given** a protected action may later be handed to background processing, **When** its request
+   context is serialized and restored, **Then** the context envelope preserves the requesting
+   Organization and actor identity needed to apply the same authorization boundary; Spec 002 does
+   not implement a background worker or job runtime.
 5. **Given** a resource belongs to Organization A, **When** another tenant-owned resource in
    Organization B attempts to reference it directly, **Then** the cross-tenant ownership reference
    is rejected.
@@ -258,8 +266,9 @@ Owner and organization exist, then attempt to reuse the bootstrap mechanism and 
 - **FR-002**: The system MUST support linking one internal person to one or more verified external
   identities using a stable provider identity rather than email address as the permanent identity
   key.
-- **FR-003**: Linking, unlinking, or merging identities MUST be explicit and auditable and MUST NOT
-  silently merge people based only on matching email addresses.
+- **FR-003**: Linking and unlinking external identities MUST be explicit and auditable and MUST NOT
+  silently move or merge people based only on matching email addresses. Account/User merge is
+  explicitly deferred beyond Spec 002.
 - **FR-004**: Organization MUST be the highest ownership boundary for tenant-owned resources in this
   feature.
 - **FR-005**: Each protected work request MUST have an explicit active organization context before
@@ -267,7 +276,12 @@ Owner and organization exist, then attempt to reuse the bootstrap mechanism and 
 - **FR-006**: The system MUST allow a user to switch between organizations in which the user has an
   active membership.
 - **FR-007**: The system MUST create Organization, Workspace, and Project resources with stable
-  identifiers and human-readable names/codes suitable for later references.
+  identifiers and human-readable names/codes suitable for later references. After installation
+  initialization, an authenticated User MUST be able to create an additional Organization through
+  the normal product flow; creation MUST atomically create that Organization and the User's active
+  Owner membership without reusing the one-time self-host bootstrap mechanism. On an uninitialized
+  self-host installation, normal Organization creation MUST be rejected so FR-039 remains the only
+  path to the first Organization/Owner.
 - **FR-008**: Every Workspace and Project MUST belong directly to exactly one Organization.
 - **FR-009**: Workspace membership in the hierarchy MUST be optional for a Project; removing or
   changing Workspace grouping MUST NOT change Project organization ownership.
@@ -283,8 +297,9 @@ Owner and organization exist, then attempt to reuse the bootstrap mechanism and 
   valid invitation is what creates or activates membership.
 - **FR-014**: The system MUST preserve at least one active Owner for every active Organization and
   MUST reject operations that would leave an Organization without an active Owner.
-- **FR-015**: Owner-only destructive or ownership-transfer operations MUST remain distinct from normal
-  administrator permissions.
+- **FR-015**: Owner-only destructive, Organization lifecycle, and ownership-transfer operations MUST
+  remain distinct from normal administrator permissions. Admin MUST NOT be able to suspend or
+  soft-delete an Organization unless an Owner-authorized rule explicitly permits it in a later spec.
 - **FR-016**: The feature MUST provide fixed initial organization roles of Owner, Admin, Member, and
   Guest, with authorization based on the permissions granted by those roles rather than scattered
   role-name checks.
@@ -321,12 +336,16 @@ Owner and organization exist, then attempt to reuse the bootstrap mechanism and 
   that can be reused by interactive users, automated actions, background work, and future modules.
 - **FR-029**: The system MUST prevent unauthorized cross-organization reads and mutations even when
   access is attempted through lower-level data access paths rather than normal UI flows.
-- **FR-030**: Automated/background work MUST retain the requesting organization and actor context
-  needed to apply the same authorization boundary.
-- **FR-031**: Organization and Workspace MUST support recoverable inactive/archived or soft-deleted
-  lifecycle states sufficient to prevent normal new use while preserving references. Project MUST
-  support recoverable lifecycle states as defined in FR-032. Permanent purge behavior for
-  Organization/Workspace/Project is deferred to a later operations/data-lifecycle specification.
+- **FR-030**: Spec 002 MUST define a serializable requested-actor context envelope that preserves
+  actor type/reference, Organization context, and requested resource scope so a future background
+  worker can restore the same authorization boundary. Implementing a background job/worker runtime
+  is outside Spec 002.
+- **FR-031**: Organization lifecycle MUST distinguish at least active, suspended, and deleted states;
+  Workspace lifecycle MUST distinguish at least active, archived, and deleted states. Suspended or
+  deleted Organizations MUST reject normal tenant mutations while preserving references and audit.
+  Workspace/Organization deletion remains recoverable/soft in Spec 002. Project lifecycle remains as
+  defined in FR-032. Permanent purge behavior is deferred to a later operations/data-lifecycle
+  specification.
 - **FR-032**: Project lifecycle MUST distinguish at least active, archived, and deleted states, and
   archived projects MUST remain inspectable by authorized users while normal mutations are
   restricted.
@@ -499,8 +518,8 @@ Workspace inheritance, and direct Project grants are additive; no row creates an
 - External identity providers are responsible for authenticating the external identity; OpenVietGIS
   owns the internal User, organization memberships, roles, grants, service principals, and
   authorization semantics.
-- A person may link multiple verified external identities, but identity merging/linking is explicit
-  and auditable.
+- A person may link/unlink multiple verified external identities explicitly and audibly. Account/User
+  merge is deferred beyond Spec 002; matching email alone never merges or moves identity ownership.
 - The self-host bootstrap path is a one-time initialization mechanism, not a permanent alternative
   to normal identity and authorization.
 - Enterprise/dedicated deployment may isolate an Organization physically, but it does not create a
@@ -509,5 +528,6 @@ Workspace inheritance, and direct Project grants are additive; no row creates an
 - Full visual administration dashboards, billing, public sharing, GIS data, layer catalogs, map
   rendering, editing, processing, field/offline behavior, and vertical modules are outside Spec 002.
 - Delivery sequencing should prove the P1 Human Tenant Core independently before P2 machine-identity,
-  audit-completion, and bootstrap flows are required; this sequencing must not change the final
-  feature semantics.
+  audit-read/completion, and bootstrap flows are required. Append-only AuditEvent persistence and
+  tenant RLS needed by P1 security-sensitive mutations are foundational/P1 and MUST exist before the
+  P1 gate; this sequencing must not change the final feature semantics.

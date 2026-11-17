@@ -16,15 +16,15 @@ The implementation is deliberately split into two independently verifiable miles
 ```text
 P1 Human Tenant Core
 OIDC -> User/IdentityLink -> first-party session
-     -> Organization membership / active org context
+     -> Organization create/membership / active org context
      -> Workspace / Project
      -> ResourceGrant / Invitation
      -> AuthorizationService
-     -> PostgreSQL RLS defense-in-depth
+     -> append-only AuditEvent + PostgreSQL RLS defense-in-depth
 
 P2 Machine Identity & Bootstrap
 ServicePrincipal -> ServiceCredential -> same AuthorizationService
-AuditEvent -> actor snapshot
+Audit read/actor-after-revoke completion
 OIDC-authenticated operator + one-time installation authority -> first Org/Owner
 ```
 
@@ -182,6 +182,7 @@ apps/
 │   │   │   │   ├── service.py
 │   │   │   │   └── ports.py
 │   │   │   └── bootstrap/
+│   │   │       ├── domain.py
 │   │   │       └── service.py
 │   │   ├── adapters/
 │   │   │   ├── http/
@@ -203,7 +204,8 @@ apps/
 │   │   │       ├── identity_repository.py
 │   │   │       ├── tenancy_repository.py
 │   │   │       ├── authorization_repository.py
-│   │   │       └── audit_repository.py
+│   │   │       ├── audit_repository.py
+│   │   │       └── platform_repository.py
 │   │   ├── security/
 │   │   │   ├── sessions.py
 │   │   │   ├── csrf.py
@@ -214,7 +216,7 @@ apps/
 │   │   └── versions/
 │   │       ├── 0002_identity_tenant_core.py
 │   │       ├── 0003_tenant_rls.py
-│   │       ├── 0004_machine_identity_audit_bootstrap.py
+│   │       ├── 0004_machine_identity.py
 │   │       └── 0005_retire_foundation_sample.py
 │   └── tests/
 │       ├── contract/
@@ -296,7 +298,8 @@ Research is recorded in [research.md](research.md). All planning unknowns are re
 
 - explicit `organization_id` in tenant API paths.
 - active Organization exists in route/request context, not User persistence.
-- one AuthorizationService/PermissionRegistry for human/service/background contexts.
+- one AuthorizationService/PermissionRegistry for human/service contexts plus a serializable
+  RequestedActorContext envelope for future background execution; Spec 002 adds no worker runtime.
 - additive permission union; no deny policy.
 - Organization-scoped grants apply resource-role permissions tenant-wide without granting member admin.
 - Workspace grants dynamically inherit to currently grouped Projects.
@@ -320,8 +323,9 @@ Research is recorded in [research.md](research.md). All planning unknowns are re
 
 ### Scope sequencing
 
-- P1 Human Tenant Core first.
-- P2 Machine Identity/Audit/Bootstrap second.
+- P1 Human Tenant Core first, including minimal append-only AuditEvent persistence and Audit RLS
+  required by P1 security-sensitive mutations.
+- P2 Machine Identity/Audit-read/Bootstrap second.
 - actual dedicated-enterprise infrastructure remains outside Spec 002.
 - foundation sample retired after P1 real product E2E succeeds.
 
@@ -379,16 +383,37 @@ the narrowly-defined self-membership/invitation/bootstrap paths in research.md.
 [data-model.md](data-model.md) defines schemas/entities/constraints.
 
 Migration sequence:
-1. `0002_identity_tenant_core`: identity/users/sessions, Organization/Membership, Workspace/Project,
-   ResourceGrant, Invitation, constraints/indexes.
-2. `0003_tenant_rls`: runtime role grants, RLS policies, FORCE RLS, transaction-context helpers.
-3. `0004_machine_identity_audit_bootstrap`: ServicePrincipal/Credential, AuditEvent,
-   InstallationState and policies.
+1. `0002_identity_tenant_core`: identity/users/sessions, Organization/Membership,
+   Workspace/Project, ResourceGrant, Invitation, append-only AuditEvent, foundational
+   InstallationState storage, constraints/indexes.
+2. `0003_tenant_rls`: runtime role grants, RLS/FORCE RLS for all P1 tenant tables including
+   `audit.audit_events`, and transaction-context helpers.
+3. `0004_machine_identity`: ServicePrincipal/Credential and their tenant/security policies;
+   AuditEvent and InstallationState storage already exist from P1.
 4. `0005_retire_foundation_sample`: remove disposable Spec 001 sample only after new E2E gates pass.
 
 Application runtime and migration database URLs are separate configuration values.
 
-### 4. Permission evaluation
+### 4. Organization creation and lifecycle
+
+Normal authenticated Organization creation is distinct from one-time self-host bootstrap and is
+available only after installation state is initialized:
+
+```text
+initialized installation + authenticated User
+  -> POST /organizations
+  -> create Organization(active)
+  -> create active Owner membership for same User
+  -> append AuditEvent
+  -> commit atomically
+```
+
+Owner-controlled Organization lifecycle supports `active -> suspended -> active` and recoverable
+`active/suspended -> deleted` transitions. Admin cannot perform Owner-only Organization
+suspend/delete transitions. Suspended/deleted Organizations reject normal tenant mutations while
+remaining inspectable only through explicitly permitted recovery/administration paths.
+
+### 5. Permission evaluation
 
 [contracts/permission-registry.md](contracts/permission-registry.md) is the stable action contract.
 
@@ -418,7 +443,14 @@ INTERSECT optional credential permission ceiling
 
 Owner invariants are domain rules and cannot be bypassed merely because a permission code is present.
 
-### 5. Invitation flow
+### 6. Requested actor context envelope
+
+`RequestedActorContext` is a serializable value object containing actor type/reference,
+organization_id, and optional workspace/project scope. It round-trips to/from a plain payload and
+can be restored into AuthorizationContext by a future job/worker implementation. Spec 002 does not
+add a queue, worker, retry system, or background executor.
+
+### 7. Invitation flow
 
 Invitation delivery itself is not implemented as an email-service integration in Spec 002; the
 system creates an invitation and returns a one-time link/secret that a later notification service may
@@ -430,7 +462,7 @@ submits organization_id + invitation_id + secret in a protected request body aft
 Acceptance locks invitation row, verifies target identity, activates membership/optional grant,
 marks accepted, writes audit, and commits atomically.
 
-### 6. Minimal web experience
+### 8. Minimal web experience
 
 Use React Router because Organization and invitation context are URL/navigation concerns. Use
 TanStack Query for server state.
@@ -447,7 +479,7 @@ Minimum screens:
 
 ServicePrincipal and audit acceptance may be API-driven; FR-042 does not require full UI for them.
 
-### 7. Contract/client strategy
+### 9. Contract/client strategy
 
 OpenAPI surfaces:
 - [auth-session-api.yaml](contracts/auth-session-api.yaml)
@@ -459,31 +491,35 @@ in `packages/client-sdk` so React UI does not scatter raw endpoint/response assu
 
 Contract freshness becomes part of root validation.
 
-### 8. P1 verification
+### 10. P1 verification
 
 P1 cannot be considered complete until:
 - real Keycloak OIDC browser login works;
+- an authenticated User can create additional Organizations and atomically become Owner;
 - one User can belong to multiple Organizations;
 - active org switch is explicit;
 - Workspace/Project hierarchy and dynamic grant inheritance work;
 - invite recipient binding/one-time acceptance works;
 - membership revoke blocks next protected request;
 - cross-tenant API and direct repository/RLS attempts fail;
-- Last Owner concurrency invariant passes;
+- Last Owner and Owner-only Organization lifecycle invariants pass;
+- append-only AuditEvent storage exists before P1 sensitive mutations are accepted;
+- AuditEvent is protected by tenant RLS and tested with the runtime DB role;
+- RequestedActorContext serialization/restoration preserves actor + Organization/resource scope;
 - minimal P1 Playwright flow passes.
 
-### 9. P2 verification
+### 11. P2 verification
 
 P2 adds:
 - ServicePrincipal and ServiceCredential;
 - permission ceiling;
 - immediate credential revocation;
-- audit actor snapshot/read API;
+- audit read/query API and actor-after-revocation completion on top of P1 AuditEvent storage;
 - OIDC + one-time-authority bootstrap;
 - bootstrap reuse denial;
 - logical isolated-deployment fixture parity.
 
-### 10. Foundation retirement
+### 12. Foundation retirement
 
 After P1 real product E2E is green:
 - remove FoundationSampleRecord route/domain/repository/client/UI/test surface;
@@ -510,9 +546,10 @@ Implementation is accepted only when all are true:
 13. **Audit**: actor snapshots remain readable after revoke; no secret material is logged/audited.
 14. **Bootstrap**: requires both authenticated human and one-time installation authority; reuse rejected.
 15. **Browser**: Playwright P1 and bootstrap/invite flows pass with Keycloak reference provider.
-16. **Performance**: authorization p95 target in quickstart benchmark is met without stale permission cache.
-17. **Scope**: zero public sharing/custom role/GIS/Map/Processing/Field/vertical-domain implementation.
-18. **Legacy cleanup**: disposable FoundationSampleRecord is removed without breaking Spec 001 platform gates.
+16. **Unfamiliar-user timing**: SC-013 is measured with a reviewer who has no prior product orientation.
+17. **Performance**: authorization p95 target in quickstart benchmark is met without stale permission cache.
+18. **Scope**: zero public sharing/custom role/GIS/Map/Processing/Field/vertical-domain implementation.
+19. **Legacy cleanup**: disposable FoundationSampleRecord is removed without breaking Spec 001 platform gates.
 
 ## Complexity Tracking
 

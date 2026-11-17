@@ -86,7 +86,9 @@ boundary. The token is not an authorization permission; it only proves same-orig
 - The server builds an `AuthorizationContext` per request from the authenticated actor plus explicit
   organization/resource identifiers.
 - No `active_organization_id` is stored permanently on User.
-- Background work must serialize organization and actor context when it is introduced by later specs.
+- Spec 002 defines a serializable RequestedActorContext envelope containing actor identity,
+  Organization context, and requested resource scope. A future worker/job subsystem must carry and
+  restore that envelope; Spec 002 does not implement the worker runtime.
 
 **Rationale**: A user can belong to many organizations. Hidden sticky tenant state makes cross-tenant
 bugs much easier.
@@ -214,10 +216,12 @@ User, or issuer+subject target.
 Because secrets are generated with high entropy rather than chosen by humans, a fast cryptographic
 hash is appropriate; password hashing is not used as a substitute for entropy.
 
-## Decision 13 — Audit events are append-only security records
+## Decision 13 — Audit events are foundational append-only security records
 
-**Decision**: Security-sensitive mutations append an AuditEvent in the same transaction when
-possible. Runtime application code has no update/delete path for audit records. Events record:
+**Decision**: Minimal AuditEvent persistence and tenant RLS are part of P1, before the P1 security
+gate. Security-sensitive mutations append an AuditEvent in the same transaction when possible.
+Runtime application code has no update/delete path for audit records. P2 adds the richer audit-read
+surface and actor-after-revocation acceptance, not the first existence of audit storage. Events record:
 - organization context;
 - actor type/id and display snapshot;
 - action;
@@ -272,9 +276,12 @@ framework scaffolding.
 ## Decision 17 — P1 Tenant Core precedes P2 Machine Identity & Bootstrap
 
 **Decision**:
-- P1: OIDC/User/IdentityLink/session, Organization membership, active org context, Workspace/Project,
-  resource grants, invitations, authorization, RLS, tenant-isolation E2E.
-- P2: Service Principal, Service Credential, audit completion, self-host bootstrap.
+- P1: OIDC/User/IdentityLink/session, foundational InstallationState storage for the
+  pre-initialized-deployment guard, normal Organization creation/membership, active org context,
+  Workspace/Project, resource grants, invitations, authorization, minimal append-only AuditEvent,
+  Audit RLS, tenant-isolation E2E, and RequestedActorContext round-trip.
+- P2: Service Principal, Service Credential, audit-read/actor-after-revocation completion, self-host
+  bootstrap.
 
 P1 must be independently runnable/testable before P2 is layered on.
 
@@ -290,7 +297,29 @@ operations feature.
 **Rationale**: This preserves ADR-012 without pulling Spec 013-style deployment work into tenancy
 semantics.
 
-## Decision 19 — Spec 001 disposable sample is retired after the real tenant slice replaces it
+## Decision 19 — Normal Organization creation is distinct from self-host bootstrap
+
+**Decision**: After installation initialization, any authenticated human User may create an
+additional Organization through the normal product flow. The transaction creates the Organization
+and that User's active Owner membership and appends an AuditEvent. It never consumes or re-enables
+the one-time self-host bootstrap mechanism. Before initialization, normal Organization creation is
+rejected so the first self-host Organization/Owner can only be established through authorized
+bootstrap.
+
+Organization suspension/soft-delete is Owner-controlled in Spec 002; Admin cannot perform those
+Owner-only lifecycle transitions.
+
+**Rationale**: Multi-Organization product behavior cannot depend on a one-time installation path.
+
+## Decision 20 — Account merge is deferred
+
+**Decision**: Spec 002 supports explicit identity link/unlink and rejects issuer+subject conflicts.
+It does not implement internal User/account merge.
+
+**Rationale**: Account merge requires its own recovery, conflict, audit, and data-ownership semantics;
+matching email is never sufficient evidence.
+
+## Decision 21 — Spec 001 disposable sample is retired after the real tenant slice replaces it
 
 **Decision**: Once the P1 identity/tenant E2E path is green, remove the FoundationSampleRecord UI/API/
 table and its client methods/tests that exist only to prove Spec 001 architecture. Preserve health,

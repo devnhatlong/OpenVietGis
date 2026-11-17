@@ -99,6 +99,20 @@ Expected result:
 - an anonymous/un-authenticated caller cannot bootstrap even with only network access;
 - audit history records the initialization without recording the bootstrap secret.
 
+### 5A. Create an additional Organization through the normal product flow
+
+While still authenticated:
+
+1. Create Organization B from the normal Organization create flow.
+2. Confirm the same User becomes B's active Owner atomically.
+3. Confirm bootstrap state is unchanged and the one-time bootstrap mechanism is not reused.
+4. Confirm an AuditEvent records the Organization creation.
+
+Expected result:
+- the User now belongs to both A and B;
+- both Organizations have independent Owner memberships;
+- normal Organization creation works after bootstrap is already consumed.
+
 ## 6. Create Workspace and Project
 
 As Organization A Owner:
@@ -113,6 +127,18 @@ Expected result:
 - P1 keeps the same Project ID and Organization A ownership throughout;
 - no ordinary operation can change P1 to another Organization;
 - Workspace deletion is rejected while active Projects remain grouped inside it.
+
+### 6A. Prove Owner-controlled Organization lifecycle
+
+1. As an Admin in Organization B, attempt to suspend/delete B and confirm denial.
+2. As an Owner, suspend B and confirm normal tenant mutations are rejected.
+3. Restore B to active.
+4. Soft-delete B and confirm references/audit remain recoverable while normal tenant mutation stays blocked.
+
+Expected result:
+- lifecycle transitions are Owner-controlled;
+- no permanent purge occurs in Spec 002;
+- Last Owner and historical audit invariants remain intact.
 
 ## 7. Prove Workspace grant inheritance
 
@@ -235,6 +261,8 @@ Spec 002 expands the existing root validation to include:
 - existing Spec 001 static/unit/architecture checks;
 - OpenAPI contract validation and generated client-type freshness;
 - OIDC/session/CSRF tests;
+- foundational append-only AuditEvent storage and tenant-RLS tests before the P1 gate;
+- RequestedActorContext serialization/restoration tests without introducing a worker runtime;
 - domain/authorization unit tests;
 - real PostgreSQL RLS integration tests using the runtime role;
 - invitation concurrency/recipient tests;
@@ -258,6 +286,23 @@ Target:
 - revocation remains effective on the next request.
 
 User-facing SC-001/SC-004/SC-011/SC-013 time limits remain authoritative.
+
+### SC-013 unfamiliar-user evidence
+
+SC-013 is not satisfied by a Playwright stopwatch alone. Use a reviewer who has no prior OpenVietGIS
+product orientation and give them only the minimal product entry point plus ordinary in-product
+navigation. Time the reviewer completing:
+
+1. switch Organization;
+2. create a Workspace;
+3. create a Project;
+4. view their own membership.
+
+Pass condition:
+- all four actions complete in under 5 minutes;
+- no coaching from someone already familiar with the product;
+- record reviewer role, elapsed time, blockers, and result in
+  `checklists/unfamiliar-user-timing.md`.
 
 ## 16. Logical isolated-deployment parity
 

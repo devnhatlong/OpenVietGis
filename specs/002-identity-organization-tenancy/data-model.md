@@ -120,6 +120,8 @@ Top-level tenant ownership boundary.
 
 ### Invariants
 
+- Normal authenticated Organization creation atomically creates the Organization and the creator's
+  active Owner membership.
 - Every active Organization has at least one active Owner membership.
 - Last-Owner mutations serialize on the Organization before changing ownership/membership state.
 - Deleted/suspended Organizations reject normal tenant mutations.
@@ -376,7 +378,9 @@ Credential ceiling can only restrict, never add permission.
 
 ## AuditEvent
 
-Append-only security/audit record.
+Foundational P1 append-only security/audit record. The table and its tenant RLS exist before the P1
+security gate; P2 adds richer audit read/actor-after-revocation acceptance rather than introducing
+the table for the first time.
 
 | Field | Type | Required | Rules |
 | --- | --- | --- | --- |
@@ -402,7 +406,9 @@ Append-only security/audit record.
 
 ## InstallationState
 
-Singleton global installation/bootstrap state.
+Foundational global installation state stored from P1 so normal Organization creation can reject an
+uninitialized self-host deployment. P2 bootstrap owns the one-time transition from uninitialized to
+initialized; the table itself is not a P2 dependency.
 
 | Field | Type | Required | Rules |
 | --- | --- | --- | --- |
@@ -467,3 +473,25 @@ tenant RLS because they exist before an active Organization is selected.
   policy should remain simple and tenant-owned whenever possible.
 
 The API runtime database role must not be superuser and must not hold BYPASSRLS.
+
+---
+
+## RequestedActorContext
+
+Serializable non-persistent value object for future background handoff. Spec 002 does not add a job
+table, queue, worker, retry state, or scheduler.
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `actor_type` | text | yes | `human`, `service_principal`, or `system` |
+| `actor_id` | UUID | conditional | null only for system |
+| `organization_id` | UUID | yes | explicit tenant boundary |
+| `workspace_id` | UUID | no | optional requested resource scope |
+| `project_id` | UUID | no | optional requested resource scope |
+
+### Invariants
+
+- The value round-trips to/from a plain serialization payload without permission snapshots.
+- Restoring the envelope never restores cached permissions; current membership/grants/credential
+  state must be re-evaluated when authorization actually occurs.
+- Workspace/Project scope, when present, must belong to `organization_id`.

@@ -31,6 +31,13 @@
 
 ## Notes
 
+- Validation iteration 3 passed all checklist items after /speckit-analyze remediation.
+- Analyze remediation moved minimal append-only AuditEvent + Audit RLS into P1/Foundation,
+  deferred account merge, added normal multi-Organization creation, added Owner-controlled
+  Organization lifecycle, defined a serializable RequestedActorContext without a worker runtime,
+  and added an unfamiliar-user timing exercise for SC-013. It also keeps foundational
+  InstallationState storage in P1 so normal Organization creation cannot bypass the P2 bootstrap
+  authority on an uninitialized self-host deployment.
 - Validation iteration 2 passed all checklist items after architecture review amendments.
 - The specification incorporates all decisions accepted during the three-round Spec 002 mini-grill.
 - Review amendments explicitly define additive permission semantics, Workspace grant inheritance,

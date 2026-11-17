@@ -12,9 +12,10 @@ modules must request/check permission codes rather than hard-coding role names.
 | --- | --- |
 | `organization.read` | Read current Organization metadata and own membership context |
 | `organization.manage_members` | Invite, suspend, revoke, or change non-Owner membership within allowed invariants |
-| `organization.manage_settings` | Manage non-Owner Organization settings/lifecycle |
+| `organization.manage_settings` | Manage non-lifecycle Organization settings such as display metadata |
+| `organization.lifecycle` | Owner-only suspend/restore Organization lifecycle transition |
 | `organization.owner.transfer` | Transfer Owner authority / perform Owner-only ownership transition |
-| `organization.delete` | Enter recoverable deleted lifecycle state |
+| `organization.delete` | Owner-only entry into recoverable deleted lifecycle state |
 | `authorization.manage_grants` | Create/revoke scoped ResourceGrants |
 | `invitation.manage` | Create/revoke invitations |
 | `service_principal.manage` | Create/revoke ServicePrincipals and credentials |
@@ -43,8 +44,8 @@ modules must request/check permission codes rather than hard-coding role names.
 
 | Role | Bundle |
 | --- | --- |
-| Owner | all Spec 002 permissions, including `organization.owner.transfer` and `organization.delete` |
-| Admin | all Spec 002 permissions except Owner-only ownership/destructive invariants |
+| Owner | all Spec 002 permissions, including `organization.lifecycle`, `organization.owner.transfer`, and `organization.delete` |
+| Admin | all non-Owner Spec 002 permissions; excludes `organization.lifecycle`, `organization.owner.transfer`, and `organization.delete` |
 | Member | `organization.read` only by membership role; resource access comes from ResourceGrants |
 | Guest | no implicit Organization/resource permissions; explicit ResourceGrants only |
 
