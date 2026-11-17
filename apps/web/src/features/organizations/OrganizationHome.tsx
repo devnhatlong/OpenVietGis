@@ -142,6 +142,14 @@ export function OrganizationHome() {
       {activeOrganization ? (
         <section aria-labelledby="active-organization-title">
           <h2 id="active-organization-title">Active organization context</h2>
+          <p>
+            <Link to={"/organizations/" + activeOrganization.id + "/workspaces"}>
+              Workspaces
+            </Link>{" "}
+            <Link to={"/organizations/" + activeOrganization.id + "/projects"}>
+              Projects
+            </Link>
+          </p>
           <dl data-testid="active-organization">
             <dt>ID</dt>
             <dd>{activeOrganization.id}</dd>

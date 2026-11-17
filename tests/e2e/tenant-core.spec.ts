@@ -40,6 +40,45 @@ test("logs in, creates organizations, and switches explicit organization context
   await page.getByRole("link", { name: names[1] ?? "" }).click();
   await expect(page.getByRole("heading", { name: names[1] ?? "" })).toBeVisible();
 
+  const workspaceA1 = "Workspace A1 " + suffix;
+  const workspaceA2 = "Workspace A2 " + suffix;
+  await page.getByRole("link", { name: "Workspaces" }).click();
+  for (const [index, workspaceName] of [workspaceA1, workspaceA2].entries()) {
+    await page.getByLabel("Workspace name").fill(workspaceName);
+    await page
+      .getByLabel("Workspace slug")
+      .fill("workspace-" + suffix + "-" + index.toString());
+    await page.getByRole("button", { name: "Create workspace" }).click();
+    await expect(page.getByText(workspaceName, { exact: true })).toBeVisible();
+  }
+
+  await page.getByRole("link", { name: "Projects" }).click();
+  const projectName = "Project P1 " + suffix;
+  await page.getByLabel("Project name").fill(projectName);
+  await page.getByLabel("Project slug").fill("project-" + suffix);
+  await page.getByLabel("Project workspace").selectOption({ label: workspaceA1 });
+  await page.getByRole("button", { name: "Create project" }).click();
+  await expect(page.getByText(projectName, { exact: true })).toBeVisible();
+
+  const projectWorkspace = page.getByLabel("Workspace for " + projectName);
+  const a2Value = await projectWorkspace
+    .getByRole("option", { name: workspaceA2 })
+    .getAttribute("value");
+  expect(a2Value).toBeTruthy();
+  const projectRow = page
+    .locator('li[data-testid^="project-"]')
+    .filter({ hasText: projectName });
+
+  await projectWorkspace.selectOption({ label: workspaceA2 });
+  await page.getByRole("button", { name: "Move " + projectName }).click();
+  await expect(projectRow).toContainText("workspace " + a2Value);
+
+  await page.getByRole("button", { name: "Ungroup " + projectName }).click();
+  await expect(projectRow).toContainText("workspace none");
+
+  await page.getByRole("button", { name: "Archive " + projectName }).click();
+  await expect(projectRow).toContainText("archived");
+
   const storage = await page.evaluate(() => ({
     local: Object.keys(localStorage),
     session: Object.keys(sessionStorage)

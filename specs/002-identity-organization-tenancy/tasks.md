@@ -112,20 +112,20 @@
 
 ### Tests first
 
-- [ ] T044 [P] [US2] Add Workspace/Project contract and lifecycle tests including same-Organization composite FK rejection in `apps/api/tests/integration/tenancy/test_workspace_project.py`
-- [ ] T045 [P] [US2] Add cross-Organization Project move/ownership mutation rejection tests in `apps/api/tests/integration/tenancy/test_project_ownership_boundary.py`
-- [ ] T046 [P] [US2] Add Workspace deletion-with-active-Project invariant tests in `apps/api/tests/unit/tenancy/test_workspace_lifecycle.py` and integration coverage in `apps/api/tests/integration/tenancy/test_workspace_project.py`
-- [ ] T047 [P] [US2] Add Workspace/Project typed-client tests in `packages/client-sdk/tests/workspace-project.test.ts`
+- [X] T044 [P] [US2] Add Workspace/Project contract and lifecycle tests including same-Organization composite FK rejection in `apps/api/tests/integration/tenancy/test_workspace_project.py`
+- [X] T045 [P] [US2] Add cross-Organization Project move/ownership mutation rejection tests in `apps/api/tests/integration/tenancy/test_project_ownership_boundary.py`
+- [X] T046 [P] [US2] Add Workspace deletion-with-active-Project invariant tests in `apps/api/tests/unit/tenancy/test_workspace_lifecycle.py` and integration coverage in `apps/api/tests/integration/tenancy/test_workspace_project.py`
+- [X] T047 [P] [US2] Add Workspace/Project typed-client tests in `packages/client-sdk/tests/workspace-project.test.ts`
 
 ### Implementation
 
-- [ ] T048 [US2] Implement Workspace create/update/archive/delete lifecycle and Project create/move/un-group/archive/delete domain services in `apps/api/openvietgis_api/domains/tenancy/service.py`
-- [ ] T049 [US2] Implement Organization-safe Workspace/Project repositories and cross-tenant non-disclosure lookups in `apps/api/openvietgis_api/adapters/persistence/tenancy_repository.py`
-- [ ] T050 [US2] Implement Workspace/Project HTTP endpoints from `contracts/tenant-core-api.yaml` in `apps/api/openvietgis_api/adapters/http/workspaces.py` and `projects.py`
-- [ ] T051 [P] [US2] Implement Workspace/Project client methods in `packages/client-sdk/src/workspaces.ts` and `packages/client-sdk/src/projects.ts`
-- [ ] T052 [P] [US2] Implement minimal Workspace list/create/lifecycle UI in `apps/web/src/features/workspaces/`
-- [ ] T053 [P] [US2] Implement minimal Project list/create/move/un-group/archive UI in `apps/web/src/features/projects/`
-- [ ] T054 [US2] Add browser acceptance for create A1/A2/P1, move/un-group/archive, and ownership preservation to `tests/e2e/tenant-core.spec.ts`
+- [X] T048 [US2] Implement Workspace create/update/archive/delete lifecycle and Project create/move/un-group/archive/delete domain services in `apps/api/openvietgis_api/domains/tenancy/service.py`
+- [X] T049 [US2] Implement Organization-safe Workspace/Project repositories and cross-tenant non-disclosure lookups in `apps/api/openvietgis_api/adapters/persistence/tenancy_repository.py`
+- [X] T050 [US2] Implement Workspace/Project HTTP endpoints from `contracts/tenant-core-api.yaml` in `apps/api/openvietgis_api/adapters/http/workspaces.py` and `projects.py`
+- [X] T051 [P] [US2] Implement Workspace/Project client methods in `packages/client-sdk/src/workspaces.ts` and `packages/client-sdk/src/projects.ts`
+- [X] T052 [P] [US2] Implement minimal Workspace list/create/lifecycle UI in `apps/web/src/features/workspaces/`
+- [X] T053 [P] [US2] Implement minimal Project list/create/move/un-group/archive UI in `apps/web/src/features/projects/`
+- [X] T054 [US2] Add browser acceptance for create A1/A2/P1, move/un-group/archive, and ownership preservation to `tests/e2e/tenant-core.spec.ts`
 
 **Checkpoint**: US2 can be validated with a fixture actor independently of OIDC UI and never changes Project.organization_id.
 
