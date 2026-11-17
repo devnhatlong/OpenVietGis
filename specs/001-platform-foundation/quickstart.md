@@ -11,7 +11,7 @@ described here.
 - Git
 - Docker with Compose support
 - Node.js 26 LTS
-- pnpm via Corepack
+- pnpm 12.21 installed explicitly
 - Python 3.13
 - uv
 
@@ -22,7 +22,7 @@ No production credential, production database, or production data is required.
 From the repository root:
 
 ```powershell
-corepack enable
+npm install --global pnpm@12.21.0
 pnpm install
 uv sync --project apps/api
 docker compose -f infra/dev/compose.yaml up -d postgres
@@ -35,7 +35,7 @@ Expected result:
 ## 2. Apply development migrations
 
 ```powershell
-uv run --project apps/api alembic upgrade head
+uv run --project apps/api alembic -c apps/api/alembic.ini upgrade head
 ```
 
 Expected result:
@@ -170,3 +170,53 @@ The implementation documentation MUST provide clear guidance for:
 - missing environment configuration;
 - schema not migrated;
 - unsupported runtime version.
+
+## Validation evidence
+
+### 2026-11-17 — clean bootstrap measurement (SC-001)
+
+A source-only checkout was copied to an isolated directory with no `node_modules`, Python virtual
+environment, build output, test output, Git metadata, local `.env`, or existing development
+database volume.
+
+Measured environment:
+- Node.js: 26.13.1
+- pnpm: 12.21.0
+- Python: 3.13.18 through uv
+- PostgreSQL/PostGIS: fresh `postgis/postgis:18-3.7` development volume
+- browser check: Chromium via Playwright
+
+The package store and Python/download caches were warm; zero JavaScript packages were downloaded.
+This is allowed by SC-001, which excludes dependency download time.
+
+The measured path installed project dependencies, created a fresh Python environment, initialized a
+fresh PostGIS database, applied migration `0001_foundation_sample`, started the API and web shell,
+and used Chromium to observe:
+
+```text
+Foundation ready — database connected
+```
+
+**Measured elapsed time**: 31.5 seconds
+**Limit**: 20 minutes excluding dependency download time
+**Result**: PASS
+
+The host already had another unrelated application on port 5173, so the acceptance shell used port
+5188 as permitted by the documented port-conflict procedure. No OpenVietGIS source edit was required.
+
+### 2026-11-17 — unfamiliar reviewer navigation measurement (SC-006)
+
+A fresh ephemeral Codex CLI session, with no prior repository orientation and a read-only sandbox,
+was asked to use repository documentation only. It correctly located and explained:
+
+1. `.specify/memory/constitution.md`
+2. `docs/adr/README.md`
+3. `docs/architecture.md`
+4. all active `specs/001-platform-foundation/` artifacts
+
+**Measured elapsed time**: 33.96 seconds
+**Limit**: 10 minutes
+**Result**: PASS
+
+Detailed evidence is recorded in
+[checklists/reviewer-navigation.md](checklists/reviewer-navigation.md).

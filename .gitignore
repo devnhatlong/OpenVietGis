@@ -9,3 +9,12 @@ __pycache__/
 .DS_Store
 .claude/settings.local.json
 graphify-out/
+coverage/
+playwright-report/
+test-results/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+**/.venv/
+*.egg-info/
+*.tsbuildinfo

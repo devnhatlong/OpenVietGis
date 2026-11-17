@@ -1,0 +1,50 @@
+# OpenVietGIS Architecture
+
+OpenVietGIS is a platform-first monorepo. Governance lives in the Constitution, replaceable
+technical decisions live in ADRs, feature intent lives in Spec Kit artifacts, and runtime behavior
+lives in source code.
+
+## Ownership boundaries
+
+- `apps/web`: desktop-class web product shell.
+- `apps/api`: application backend and HTTP adapter.
+- `packages/*`: reusable public or cross-application contracts with explicit ownership.
+- `modules/*`: vertical domain modules downstream of platform contracts.
+- `tools/*`: repository validation/development tools.
+- `infra/*`: deployment/development infrastructure definitions.
+
+## Allowed dependency direction
+
+```text
+UI -> client/application contracts -> application/domain ports -> infrastructure adapters
+
+vertical module -> public Core/platform contract
+Core/platform   -X-> vertical module
+```
+
+Core must build and run when `modules/` is empty or absent.
+
+## Artifact roles
+
+- `.specify/memory/constitution.md`: non-negotiable project laws.
+- `docs/adr/`: consequential but replaceable technical decisions.
+- `specs/`: feature WHAT/WHY, plan, contracts, tasks, and validation guidance.
+- runtime source: implementation only.
+
+## Extending architecture rules
+
+Add an automated boundary rule only when a real ownership boundary exists and a violation would be
+costly or difficult to detect in normal review. Each new rule must:
+
+1. name the owning and downstream areas;
+2. include one controlled failing fixture and one valid fixture;
+3. ignore generated/vendor content such as `node_modules`, virtual environments, and build output;
+4. produce an actionable source path in its diagnostic.
+
+Do not create rules for empty future packages.
+
+## Spec 001 boundary
+
+Spec 001 proves the architecture runway only. It does not implement map rendering, GIS editing,
+production identity, tenant billing, field/offline behavior, processing, or House Numbering.
+Future folders/services are created only when their first real feature needs them.

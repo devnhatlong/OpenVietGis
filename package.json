@@ -1,0 +1,32 @@
+{
+  "name": "openvietgis",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@12.21.0",
+  "engines": {
+    "node": ">=26 <27"
+  },
+  "scripts": {
+    "bootstrap": "pnpm install && uv sync --project apps/api && docker compose -f infra/dev/compose.yaml up -d postgres && pnpm exec playwright install chromium",
+    "dev:db": "docker compose -f infra/dev/compose.yaml up -d postgres",
+    "dev:api": "uv run --project apps/api uvicorn openvietgis_api.main:app --reload --app-dir apps/api",
+    "dev:web": "pnpm --filter @openvietgis/web dev",
+    "db:migrate": "uv run --project apps/api alembic -c apps/api/alembic.ini upgrade head",
+    "dev:reset": "uv run --project apps/api python tools/reset_dev.py",
+    "validate:runtime": "node tools/check_node_runtime.mjs",
+    "validate:ts": "pnpm -r lint && pnpm -r typecheck && pnpm -r test && pnpm --filter @openvietgis/web build",
+    "validate:py": "uv run --project apps/api ruff check apps/api tools tests && uv run --project apps/api mypy apps/api/openvietgis_api && uv run --project apps/api pytest apps/api/tests/unit apps/api/tests/contract tools/tests tests/architecture",
+    "validate:arch": "uv run --project apps/api python tools/check_architecture.py",
+    "validate:docs": "uv run --project apps/api python tools/check_docs.py",
+    "validate:integration": "pnpm db:migrate && uv run --project apps/api pytest apps/api/tests/integration",
+    "validate:e2e": "pnpm exec playwright test",
+    "validate": "pnpm validate:runtime && pnpm validate:ts && pnpm validate:py && pnpm validate:arch && pnpm validate:docs && pnpm validate:integration && pnpm validate:e2e"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.65.1",
+    "eslint": "^10.15.0",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.73.0"
+  }
+}
