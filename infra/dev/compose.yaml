@@ -15,5 +15,22 @@ services:
     volumes:
       - openvietgis_pgdata:/var/lib/postgresql
 
+  postgres-test:
+    image: postgis/postgis:18-3.7
+    environment:
+      POSTGRES_DB: openvietgis_test
+      POSTGRES_USER: openvietgis
+      POSTGRES_PASSWORD: openvietgis
+    ports:
+      - "54330:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U openvietgis -d openvietgis_test"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+    volumes:
+      - openvietgis_test_pgdata:/var/lib/postgresql
+
 volumes:
+  openvietgis_test_pgdata:
   openvietgis_pgdata:

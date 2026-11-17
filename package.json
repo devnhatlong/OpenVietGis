@@ -7,8 +7,8 @@
     "node": ">=26 <27"
   },
   "scripts": {
-    "bootstrap": "pnpm install && uv sync --project apps/api && docker compose -f infra/dev/compose.yaml up -d postgres && pnpm exec playwright install chromium",
-    "dev:db": "docker compose -f infra/dev/compose.yaml up -d postgres",
+    "bootstrap": "pnpm install && uv sync --project apps/api && docker compose -f infra/dev/compose.yaml up -d postgres postgres-test && pnpm exec playwright install chromium",
+    "dev:db": "docker compose -f infra/dev/compose.yaml up -d postgres postgres-test",
     "dev:api": "uv run --project apps/api uvicorn openvietgis_api.main:app --reload --app-dir apps/api",
     "dev:web": "pnpm --filter @openvietgis/web dev",
     "db:migrate": "uv run --project apps/api alembic -c apps/api/alembic.ini upgrade head",
@@ -18,8 +18,8 @@
     "validate:py": "uv run --project apps/api ruff check apps/api tools tests && uv run --project apps/api mypy apps/api/openvietgis_api && uv run --project apps/api pytest apps/api/tests/unit apps/api/tests/contract tools/tests tests/architecture",
     "validate:arch": "uv run --project apps/api python tools/check_architecture.py",
     "validate:docs": "uv run --project apps/api python tools/check_docs.py",
-    "validate:integration": "pnpm db:migrate && uv run --project apps/api pytest apps/api/tests/integration",
-    "validate:e2e": "pnpm exec playwright test",
+    "validate:integration": "uv run --project apps/api python -m tools.run_with_test_database pytest apps/api/tests/integration",
+    "validate:e2e": "uv run --project apps/api python -m tools.run_with_test_database node node_modules/@playwright/test/cli.js test",
     "validate": "pnpm validate:runtime && pnpm validate:ts && pnpm validate:py && pnpm validate:arch && pnpm validate:docs && pnpm validate:integration && pnpm validate:e2e"
   },
   "devDependencies": {

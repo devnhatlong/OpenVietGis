@@ -25,7 +25,7 @@ From the repository root:
 npm install --global pnpm@12.21.0
 pnpm install
 uv sync --project apps/api
-docker compose -f infra/dev/compose.yaml up -d postgres
+docker compose -f infra/dev/compose.yaml up -d postgres postgres-test
 ```
 
 Expected result:

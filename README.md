@@ -34,7 +34,7 @@ npm install --global pnpm@12.21.0
 pnpm install
 uv python install 3.13
 uv sync --project apps/api
-docker compose -f infra/dev/compose.yaml up -d postgres
+docker compose -f infra/dev/compose.yaml up -d postgres postgres-test
 uv run --project apps/api alembic -c apps/api/alembic.ini upgrade head
 pnpm exec playwright install chromium
 ```
@@ -66,7 +66,7 @@ processing, field/offline workflows, or House Numbering.
 
 ## Baseline validation
 
-With the development PostGIS service running:
+With the development and dedicated test PostGIS services running:
 
 ```powershell
 pnpm validate
@@ -82,6 +82,13 @@ The command covers:
 
 CI runs the same logical validation path on Node 26 with real PostGIS.
 
+Integration and browser tests use the dedicated local `openvietgis_test` database on port
+`54330`. They ignore the application `OPENVIETGIS_DATABASE_URL`; an optional exported
+`OPENVIETGIS_TEST_DATABASE_URL` must still name `openvietgis_test` on localhost/127.0.0.1.
+URL query parameters and other drivers are rejected before migrations or child processes run.
+Migration tests may downgrade/recreate the dedicated test schema; never store working data there.
+Development application data remains on port `54329`.
+
 ## Safe development reset
 
 ```powershell
@@ -91,7 +98,7 @@ pnpm dev:reset
 The reset command refuses:
 - environments other than `development` or `test`;
 - non-local database hosts;
-- database names outside the OpenVietGIS development/test namespace.
+- database names other than exactly `openvietgis`, `openvietgis_dev`, or `openvietgis_test`.
 
 It downgrades and reapplies migrations. Never point development configuration at a production
 database.
@@ -117,7 +124,8 @@ versions even if local exploratory commands happen to work.
 Development defaults:
 - web: `5173`
 - API: `8000`
-- PostGIS host port: `54329`
+- PostGIS development host port: `54329`
+- PostGIS dedicated test host port: `54330`
 
 Stop the conflicting local process or intentionally change the development-only configuration.
 
@@ -132,7 +140,7 @@ docker compose -f infra/dev/compose.yaml ps
 Start it with:
 
 ```powershell
-docker compose -f infra/dev/compose.yaml up -d postgres
+docker compose -f infra/dev/compose.yaml up -d postgres postgres-test
 ```
 
 ### Schema not migrated

@@ -14,11 +14,13 @@ def assert_safe_target(environment: str, database_url: str) -> None:
         raise RuntimeError("Refusing reset outside development/test environment")
 
     url = make_url(database_url)
+    if url.drivername != "postgresql+psycopg" or url.query:
+        raise RuntimeError("Refusing reset for unsupported driver or database URL query parameters")
     if url.host not in {"localhost", "127.0.0.1"}:
         raise RuntimeError("Refusing reset for non-local database host")
 
-    database = (url.database or "").lower()
-    if not database.startswith("openvietgis"):
+    database = url.database or ""
+    if database not in {"openvietgis", "openvietgis_dev", "openvietgis_test"}:
         raise RuntimeError("Refusing reset for unexpected database name")
 
 
