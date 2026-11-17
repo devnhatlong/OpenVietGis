@@ -27,6 +27,9 @@
   Product and roadmap documents do not silently amend the Constitution or accepted feature intent.
 - Mark done only with implementation, required validation, and convergence evidence. Specify/plan
   completion and task counts alone do not mean the feature or the whole product is complete.
+- Start new feature branches/worktrees from the current verified `main`. Promote completed prerequisites
+  to `main` after review and validation. Existing feature branches synchronize `main` at a clean
+  checkpoint; never stash or overwrite another agent's active edits to force synchronization.
 - After contracts are agreed, use separate branches/worktrees with isolated Spec Kit active-feature
   state for parallel implementation. Do not change another agent's active feature, dirty spec/plan,
   or shared branch state to advance an unrelated slice.
