@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 test("creates and loads the persisted foundation sample record", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("/foundation");
   await expect(page.getByRole("heading", { name: "Platform foundation" })).toBeVisible();
   await expect(page.getByTestId("readiness")).toContainText("Foundation ready");
 

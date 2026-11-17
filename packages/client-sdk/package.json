@@ -9,9 +9,11 @@
   "scripts": {
     "lint": "eslint src tests --max-warnings=0",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "generate:contracts": "openapi-typescript ../../specs/002-identity-organization-tenancy/contracts/auth-session-api.yaml -o src/generated/auth-session.ts && openapi-typescript ../../specs/002-identity-organization-tenancy/contracts/tenant-core-api.yaml -o src/generated/tenant-core.ts && openapi-typescript ../../specs/002-identity-organization-tenancy/contracts/service-admin-api.yaml -o src/generated/service-admin.ts"
   },
   "devDependencies": {
+    "openapi-typescript": "7.13.0",
     "vitest": "^5.1.0"
   }
 }

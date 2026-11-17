@@ -1,0 +1,112 @@
+from __future__ import annotations
+
+from collections.abc import Mapping
+from dataclasses import dataclass
+from typing import Any, Protocol, cast
+
+from authlib.integrations.starlette_client import OAuth  # type: ignore[import-untyped]
+from starlette.requests import Request
+from starlette.responses import Response
+
+from openvietgis_api.config import OidcProviderSettings, Settings
+from openvietgis_api.domains.identity.service import ExternalIdentityClaims
+
+
+@dataclass(frozen=True, slots=True)
+class OidcProviderSummary:
+    id: str
+    display_name: str
+
+
+class OidcProviderNotFoundError(LookupError):
+    pass
+
+
+class _OidcClient(Protocol):
+    async def authorize_redirect(
+        self,
+        request: Request,
+        redirect_uri: str,
+    ) -> Response: ...
+
+    async def authorize_access_token(self, request: Request) -> Mapping[str, Any]: ...
+
+    async def userinfo(self, *, token: Mapping[str, Any]) -> Mapping[str, Any]: ...
+
+
+class OidcProviderRegistry:
+    def __init__(self, settings: Settings) -> None:
+        self._providers = settings.oidc_providers
+        self._oauth = OAuth()
+        for name, provider in self._providers.items():
+            self._register(name, provider)
+
+    def _register(self, name: str, provider: OidcProviderSettings) -> None:
+        kwargs: dict[str, object] = {
+            "client_id": provider.client_id,
+            "server_metadata_url": (
+                f"{provider.issuer.rstrip('/')}/.well-known/openid-configuration"
+            ),
+            "client_kwargs": {
+                "scope": "openid email profile",
+                "code_challenge_method": "S256",
+            },
+        }
+        if provider.client_secret is not None:
+            kwargs["client_secret"] = provider.client_secret.get_secret_value()
+        self._oauth.register(name, **kwargs)
+
+    def summaries(self) -> list[OidcProviderSummary]:
+        return [
+            OidcProviderSummary(id=name, display_name=provider.display_name)
+            for name, provider in sorted(self._providers.items())
+        ]
+
+    def _get_client(self, name: str) -> _OidcClient:
+        if name not in self._providers:
+            raise OidcProviderNotFoundError(name)
+        client = self._oauth.create_client(name)
+        if client is None:
+            raise OidcProviderNotFoundError(name)
+        return cast(_OidcClient, client)
+
+    async def begin_login(
+        self,
+        request: Request,
+        *,
+        provider_name: str,
+        redirect_uri: str,
+    ) -> Response:
+        client = self._get_client(provider_name)
+        return await client.authorize_redirect(request, redirect_uri)
+
+    async def complete_login(
+        self,
+        request: Request,
+        *,
+        provider_name: str,
+    ) -> ExternalIdentityClaims:
+        provider = self._providers.get(provider_name)
+        if provider is None:
+            raise OidcProviderNotFoundError(provider_name)
+        client = self._get_client(provider_name)
+        token = await client.authorize_access_token(request)
+        userinfo = token.get("userinfo")
+        if userinfo is None:
+            userinfo = await client.userinfo(token=token)
+
+        subject = str(userinfo["sub"])
+        email = userinfo.get("email")
+        display_name = (
+            userinfo.get("name")
+            or userinfo.get("preferred_username")
+            or email
+            or subject
+        )
+        return ExternalIdentityClaims(
+            issuer=provider.issuer.rstrip("/"),
+            subject=subject,
+            display_name=str(display_name),
+            email=str(email) if email is not None else None,
+            email_verified=bool(userinfo.get("email_verified", False)),
+        )

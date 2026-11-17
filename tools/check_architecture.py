@@ -5,6 +5,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 TEXT_EXTENSIONS = {".py", ".ts", ".tsx", ".js", ".jsx", ".json"}
 MODULE_MARKERS = ("modules.", "modules/", "@openvietgis/module-")
+ADAPTER_MARKERS = ("openvietgis_api.adapters", "openvietgis_api/adapters")
 SKIP_DIRS = {
     "node_modules",
     ".venv",
@@ -31,6 +32,14 @@ def find_violations(root: Path = ROOT) -> list[str]:
             if any(marker in content for marker in MODULE_MARKERS):
                 violations.append(
                     f"{path.relative_to(root).as_posix()} references vertical module code"
+                )
+            relative_to_root = path.relative_to(root).as_posix()
+            if (
+                relative_to_root.startswith("apps/api/openvietgis_api/domains/")
+                and any(marker in content for marker in ADAPTER_MARKERS)
+            ):
+                violations.append(
+                    f"{relative_to_root} imports infrastructure adapter code from a domain"
                 )
     return violations
 

@@ -14,6 +14,7 @@ services:
       retries: 20
     volumes:
       - openvietgis_pgdata:/var/lib/postgresql
+      - ./postgres/001-runtime-role.sql:/docker-entrypoint-initdb.d/001-runtime-role.sql:ro
 
 volumes:
   openvietgis_pgdata:

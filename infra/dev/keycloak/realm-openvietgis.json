@@ -1,0 +1,74 @@
+{
+  "realm": "openvietgis",
+  "enabled": true,
+  "displayName": "OpenVietGIS Development",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "clients": [
+    {
+      "clientId": "openvietgis-web",
+      "name": "OpenVietGIS Development Web",
+      "enabled": true,
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "redirectUris": [
+        "http://127.0.0.1:8000/api/v1/auth/callback/keycloak"
+      ],
+      "webOrigins": [
+        "http://127.0.0.1:5173"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256"
+      }
+    }
+  ],
+  "users": [
+    {
+      "username": "owner-a",
+      "enabled": true,
+      "email": "owner-a@example.test",
+      "emailVerified": true,
+      "firstName": "Owner",
+      "lastName": "Alpha",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "openvietgis-test-owner-a",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "username": "member-a",
+      "enabled": true,
+      "email": "member-a@example.test",
+      "emailVerified": true,
+      "firstName": "Member",
+      "lastName": "Alpha",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "openvietgis-test-member-a",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "username": "member-b",
+      "enabled": true,
+      "email": "member-b@example.test",
+      "emailVerified": true,
+      "firstName": "Member",
+      "lastName": "Beta",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "openvietgis-test-member-b",
+          "temporary": false
+        }
+      ]
+    }
+  ]
+}

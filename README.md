@@ -75,6 +75,44 @@ The shell exposes only:
 It does **not** contain map rendering, GIS editing, production authentication, tenancy, billing,
 processing, field/offline workflows, or House Numbering.
 
+## Identity and tenancy development profile
+
+Spec 002 adds a real OIDC reference profile for development and E2E validation. Keycloak is a
+reference provider only; OpenVietGIS product identity remains provider-neutral.
+
+Start PostgreSQL plus the synthetic Keycloak realm:
+
+```powershell
+pnpm dev:identity
+```
+
+Reference endpoints and identities:
+
+- Keycloak: `http://127.0.0.1:18080`
+- Realm: `openvietgis`
+- Synthetic users: `owner-a`, `member-a`, `member-b`
+- All fixture credentials are development/test-only and live in
+  `infra/dev/keycloak/realm-openvietgis.json`.
+- Copy the current `.env.example` to ignored `.env` before running the API.
+
+The application uses OIDC only for human authentication. Organization membership, scoped
+authorization, tenant isolation, service principals, and audit semantics are owned by OpenVietGIS.
+Provider tokens must not be stored in browser local/session storage.
+
+The complete security/tenancy acceptance flow is maintained in
+`specs/002-identity-organization-tenancy/quickstart.md`.
+
+## Contract generation
+
+Spec 002 OpenAPI contracts generate TypeScript types into the client SDK:
+
+```powershell
+pnpm contracts:generate
+pnpm validate:contracts
+```
+
+Generated files are committed so contract drift is visible in code review.
+
 ## Baseline validation
 
 With the development PostGIS service running:

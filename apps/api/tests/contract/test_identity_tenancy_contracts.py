@@ -1,0 +1,34 @@
+from pathlib import Path
+
+from tools.check_contracts import validate_contracts
+
+ROOT = Path(__file__).resolve().parents[4]
+
+
+def test_spec_002_openapi_and_generated_contracts_are_valid() -> None:
+    assert validate_contracts() == []
+
+
+def test_permission_registry_contract_exists_and_is_product_permission_based() -> None:
+    registry = (
+        ROOT
+        / "specs"
+        / "002-identity-organization-tenancy"
+        / "contracts"
+        / "permission-registry.md"
+    ).read_text(encoding="utf-8")
+
+    for permission in (
+        "organization.read",
+        "organization.manage_members",
+        "organization.lifecycle",
+        "workspace.read",
+        "workspace.manage",
+        "project.read",
+        "project.edit",
+        "authorization.manage_grants",
+        "invitation.manage",
+        "service_principal.manage",
+        "audit.read",
+    ):
+        assert f"`{permission}`" in registry

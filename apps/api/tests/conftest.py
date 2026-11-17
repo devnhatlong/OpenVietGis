@@ -7,14 +7,35 @@ import pytest
 from alembic import command
 from alembic.config import Config
 
+pytest_plugins = ("tests.fixtures.identity_tenancy",)
+
 os.environ.setdefault("OPENVIETGIS_ENVIRONMENT", "test")
 os.environ.setdefault(
-    "OPENVIETGIS_DATABASE_URL",
-    os.environ.get(
-        "OPENVIETGIS_TEST_DATABASE_URL",
-        "postgresql+psycopg://openvietgis:openvietgis@localhost:54329/openvietgis",
+    "OPENVIETGIS_BOOTSTRAP_SECRET",
+    "openvietgis-test-bootstrap-secret",
+)
+os.environ.setdefault(
+    "OPENVIETGIS_CSRF_SECRET",
+    "openvietgis-test-csrf-secret",
+)
+os.environ.setdefault(
+    "OPENVIETGIS_APPLICATION_SESSION_SECRET",
+    "openvietgis-test-session-secret",
+)
+os.environ.setdefault(
+    "OPENVIETGIS_OIDC_PROVIDERS",
+    (
+        '{"keycloak":{"issuer":"http://127.0.0.1:18080/realms/openvietgis",'
+        '"client_id":"openvietgis-web","display_name":"OpenVietGIS Development"}}'
     ),
 )
+TEST_DATABASE_URL = os.environ.get(
+    "OPENVIETGIS_TEST_DATABASE_URL",
+    "postgresql+psycopg://openvietgis:openvietgis@localhost:54329/openvietgis",
+)
+os.environ.setdefault("OPENVIETGIS_DATABASE_URL", TEST_DATABASE_URL)
+os.environ["OPENVIETGIS_MIGRATION_DATABASE_URL"] = TEST_DATABASE_URL
+os.environ["OPENVIETGIS_RUNTIME_DATABASE_URL"] = TEST_DATABASE_URL
 
 from openvietgis_api.adapters.persistence.db import (  # noqa: E402
     get_engine,

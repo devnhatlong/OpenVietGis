@@ -20,7 +20,11 @@
     "validate:docs": "uv run --project apps/api python tools/check_docs.py",
     "validate:integration": "pnpm db:migrate && uv run --project apps/api pytest apps/api/tests/integration",
     "validate:e2e": "pnpm exec playwright test",
-    "validate": "pnpm validate:runtime && pnpm validate:ts && pnpm validate:py && pnpm validate:arch && pnpm validate:docs && pnpm validate:integration && pnpm validate:e2e"
+    "validate": "pnpm validate:runtime && pnpm validate:ts && pnpm validate:py && pnpm validate:contracts && pnpm validate:scope && pnpm validate:arch && pnpm validate:docs && pnpm validate:integration && pnpm validate:e2e",
+    "contracts:generate": "pnpm --filter @openvietgis/client-sdk generate:contracts",
+    "validate:contracts": "uv run --project apps/api python tools/check_contracts.py && pnpm contracts:generate && git diff --exit-code -- packages/client-sdk/src/generated",
+    "validate:scope": "uv run --project apps/api python tools/check_scope.py",
+    "dev:identity": "docker compose -f infra/dev/compose.yaml -f infra/dev/compose.identity.yaml up -d postgres keycloak"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

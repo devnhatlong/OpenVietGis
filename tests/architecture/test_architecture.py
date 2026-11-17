@@ -22,3 +22,9 @@ def test_core_validation_succeeds_when_modules_directory_is_absent(tmp_path: Pat
     (core / "index.py").write_text("VALUE = 1\n", encoding="utf-8")
 
     assert find_violations(tmp_path) == []
+
+def test_rejects_domain_to_adapter_dependency() -> None:
+    violations = find_violations(FIXTURES / "invalid_domain_to_adapter")
+
+    assert violations
+    assert any("imports infrastructure adapter code from a domain" in item for item in violations)
