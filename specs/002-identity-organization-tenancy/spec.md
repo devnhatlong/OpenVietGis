@@ -34,6 +34,9 @@ allowed actions change correctly without exposing data from the other organizati
    resource data is returned.
 3. **Given** a user's role differs between organizations, **When** the user switches organizations,
    **Then** the available actions reflect the role and scoped grants of the active organization.
+4. **Given** a protected human request, **When** the authenticated external identity cannot resolve
+   unambiguously to an internal User with an active membership in the selected Organization,
+   **Then** tenant-owned access is denied rather than inferred from email or another Organization.
 
 ---
 
@@ -60,9 +63,12 @@ ownership stays unchanged throughout.
    **Then** the project remains valid and directly owned by the organization.
 4. **Given** an active project, **When** an authorized member archives it, **Then** normal mutations
    are restricted while permitted users can still inspect it.
-5. **Given** a project in Organization A, **When** a normal move operation attempts to place it under
-   Organization B, **Then** the operation is rejected and requires a separate organization-transfer
-   workflow outside ordinary workspace movement.
+5. **Given** a project in Organization A, **When** a normal move operation attempts to change its
+   owning Organization to B, **Then** the operation is rejected; cross-Organization transfer is not
+   implemented by Spec 002.
+6. **Given** a user receives access through a Workspace-scoped grant, **When** a Project is grouped
+   into that Workspace, **Then** the grant applies to the Project; when the Project later moves out,
+   that inherited access stops unless another applicable grant still provides it.
 
 ---
 
@@ -93,9 +99,13 @@ that access stops.
    expire.
 5. **Given** the last active Owner of an organization, **When** an action would remove, revoke, or
    downgrade that Owner without first transferring ownership, **Then** the action is rejected.
-6. **Given** an organization member has a general role plus a narrower resource grant, **When** an
-   action is evaluated, **Then** permission is decided from the effective permissions for the
-   organization/resource rather than from UI visibility or a hard-coded role name.
+6. **Given** an organization member has an organization role plus one or more valid scoped grants,
+   **When** an action is evaluated, **Then** effective permission is the union of permissions granted
+   by the applicable organization role, inherited Workspace grants, and direct Project grants;
+   scoped grants do not subtract permissions because this feature has no deny-policy model.
+7. **Given** an invitation is targeted to a specific verified email, User, or stable external
+   identity, **When** a different authenticated person presents the invitation secret, **Then** the
+   invitation is rejected and no membership is created.
 
 ---
 
@@ -202,9 +212,13 @@ Owner and organization exist, then attempt to reuse the bootstrap mechanism and 
    rejected.
 3. **Given** the first Owner exists, **When** subsequent membership and organization actions occur,
    **Then** they use the same normal authorization model as other deployments.
-4. **Given** an organization uses an isolated enterprise deployment, **When** the same identity,
-   membership, workspace, project, grant, and audit flows are exercised, **Then** their product
-   semantics match those of the shared deployment model.
+4. **Given** an isolated enterprise deployment uses the same domain/contracts, **When** identity,
+   membership, workspace, project, grant, and audit acceptance fixtures are exercised, **Then** their
+   product semantics match the shared deployment model without requiring Spec 002 to provision the
+   dedicated infrastructure.
+5. **Given** a fresh installation has not completed bootstrap, **When** an anonymous remote caller
+   lacks the one-time installation authority, **Then** the caller cannot claim the first Owner role
+   merely by reaching the bootstrap flow first.
 
 ### Edge Cases
 
@@ -258,8 +272,9 @@ Owner and organization exist, then attempt to reuse the bootstrap mechanism and 
   changing Workspace grouping MUST NOT change Project organization ownership.
 - **FR-010**: Moving a Project between Workspaces MUST be limited to Workspaces owned by the same
   Organization.
-- **FR-011**: Moving a Project to a different Organization MUST NOT be treated as an ordinary
-  Workspace move and MUST require a separate controlled transfer workflow.
+- **FR-011**: Ordinary Workspace/Project operations MUST reject any attempt to change a Project's
+  owning Organization. A future controlled cross-Organization transfer workflow is explicitly
+  outside Spec 002.
 - **FR-012**: Tenant-owned resources from different Organizations MUST NOT form direct ownership
   references that bypass the Organization boundary.
 - **FR-013**: Organization access lifecycle MUST distinguish invited access through the
@@ -272,22 +287,27 @@ Owner and organization exist, then attempt to reuse the bootstrap mechanism and 
 - **FR-016**: The feature MUST provide fixed initial organization roles of Owner, Admin, Member, and
   Guest, with authorization based on the permissions granted by those roles rather than scattered
   role-name checks.
-- **FR-017**: The feature MUST provide fixed initial project roles of Manager, Editor, Contributor,
-  and Viewer.
+- **FR-017**: The feature MUST provide fixed initial resource roles of Manager, Editor, Contributor,
+  and Viewer. These role bundles MAY be granted directly at Project scope or at Workspace scope for
+  dynamic inheritance to Projects currently grouped in that Workspace.
 - **FR-018**: Roles MUST act as bundles of permission actions; authorization decisions MUST evaluate
   permissions and resource scope rather than UI visibility alone.
 - **FR-019**: The initial permission vocabulary MUST cover at least organization reading/member
-  management, workspace reading/management, project reading/editing/management/archive/delete/
-  transfer/share, invitation management, and service-principal management.
+  management, workspace reading/management, same-Organization project movement, project
+  reading/editing/management/archive/delete/share, invitation management, and service-principal
+  management. Cross-Organization transfer permission is deferred with the transfer workflow.
 - **FR-020**: Permission grants MUST be able to scope a membership or service principal to a specific
   organization, workspace, or project without requiring a separate membership-table design for
   every resource type.
-- **FR-021**: The initial authorization model MUST be grant-based and MUST NOT require a general
-  configurable deny-policy language.
+- **FR-021**: The initial authorization model MUST be grant-based and additive. Effective permission
+  MUST be the union of applicable role/grant permissions; this feature MUST NOT introduce a general
+  deny-policy language or treat a narrower grant as a way to subtract broader permission.
 - **FR-022**: Guest membership MUST provide no implicit organization-wide resource visibility beyond
   the resources and actions explicitly granted.
 - **FR-023**: Invitation MUST be a distinct entity from active membership and MUST record its target
-  organization, intended role, optional resource scope, lifecycle state, and expiry.
+  Organization, intended Organization role, lifecycle state, and expiry. It MAY additionally carry
+  one optional scoped resource grant that identifies both the resource scope and intended resource
+  role; Organization role and resource role MUST NOT be conflated.
 - **FR-024**: Invitation acceptance MUST be one-time, revocable before acceptance, and rejected after
   expiry, revocation, or successful use.
 - **FR-025**: Accepting an invitation MUST create or activate membership for the verified internal
@@ -302,8 +322,10 @@ Owner and organization exist, then attempt to reuse the bootstrap mechanism and 
   access is attempted through lower-level data access paths rather than normal UI flows.
 - **FR-030**: Automated/background work MUST retain the requesting organization and actor context
   needed to apply the same authorization boundary.
-- **FR-031**: Organization, Workspace, and Project deletion MUST use recoverable lifecycle states;
-  permanent purge MUST remain a separate controlled operation.
+- **FR-031**: Organization and Workspace MUST support recoverable inactive/archived or soft-deleted
+  lifecycle states sufficient to prevent normal new use while preserving references. Project MUST
+  support recoverable lifecycle states as defined in FR-032. Permanent purge behavior for
+  Organization/Workspace/Project is deferred to a later operations/data-lifecycle specification.
 - **FR-032**: Project lifecycle MUST distinguish at least active, archived, and deleted states, and
   archived projects MUST remain inspectable by authorized users while normal mutations are
   restricted.
@@ -322,12 +344,16 @@ Owner and organization exist, then attempt to reuse the bootstrap mechanism and 
 - **FR-038**: Audit records MUST distinguish human users, service principals, and system actions.
 - **FR-039**: A fresh self-hosted installation MUST provide a one-time bootstrap flow that can create
   the first Organization and its first active Owner without creating a separate permanent identity
-  model.
-- **FR-040**: The self-host bootstrap mechanism MUST become unusable after successful initial setup
-  and MUST reject reuse when the platform already contains initialized ownership.
-- **FR-041**: Shared and isolated enterprise deployment modes MUST preserve the same logical identity,
-  organization, membership, workspace, project, permission, invitation, service-principal, and
-  audit semantics.
+  model. Bootstrap authority MUST come from an explicit one-time out-of-band/local setup secret or
+  equivalent installation authority; an arbitrary anonymous remote caller MUST NOT be able to claim
+  ownership merely by being first.
+- **FR-040**: The self-host bootstrap mechanism and its one-time setup authority MUST become unusable
+  after successful initial setup and MUST reject reuse when the platform already contains initialized
+  ownership.
+- **FR-041**: The domain model, contracts, and acceptance semantics MUST remain compatible with both
+  shared multi-tenant and isolated single-Organization deployment modes. Spec 002 does not require
+  provisioning or operating a full dedicated enterprise deployment; that deployment validation is
+  deferred to the later operations specification.
 - **FR-042**: The feature MUST provide only the minimum user interface needed to prove organization
   switching, membership visibility, workspace/project creation, invitation acceptance, and
   membership revocation; a full administration console is out of scope.
@@ -338,6 +364,48 @@ Owner and organization exist, then attempt to reuse the bootstrap mechanism and 
 - **FR-046**: The feature MUST preserve a clear future boundary for later Layer, Spatial Catalog,
   Map, Editing, Processing, Field, and Module features without adding those capabilities to this
   feature.
+- **FR-047**: Workspace-scoped grants MUST apply dynamically to Projects currently grouped in that
+  Workspace. Direct Project grants are additive. When a Project moves out of a Workspace, permissions
+  inherited solely from that Workspace MUST stop applying immediately; the system MUST NOT copy
+  inherited grants into permanent Project grants.
+- **FR-048**: For protected human actions, the system MUST resolve the authenticated external identity
+  to exactly one internal User, then resolve an active Organization Membership, active Organization
+  context, and effective permissions before authorizing tenant-owned access.
+- **FR-049**: An invitation targeted by email MUST only be accepted by an identity that proves a
+  verified matching email. An invitation targeted directly to an existing User or stable external
+  identity MUST only be accepted by that intended subject. Possession of an invitation secret alone
+  MUST NOT authorize a different person to claim the invitation.
+- **FR-050**: Workspace/Project authorization MUST be recalculated from current organization role,
+  current Workspace placement, current resource grants, membership state, and credential state on
+  each protected authorization decision or an equivalently fresh invalidatable authorization view.
+- **FR-051**: Human Tenant Core flows (identity resolution, Organization membership, Workspace/Project,
+  grants, invitations, authorization, and tenant isolation) MUST remain independently usable and
+  testable without requiring Service Principal, service credential, or bootstrap behavior to be
+  active in the same user journey.
+- **FR-052**: The same stable external identity reference MUST NOT be linked to more than one internal
+  User at the same time; ambiguous or conflicting identity-link attempts MUST be rejected and
+  audited rather than silently merged.
+- **FR-053**: A Workspace MUST NOT enter a deleted state while active Projects are still grouped
+  inside it. Projects MUST first be explicitly moved to another Workspace or made ungrouped; this
+  operation MUST NOT change their Organization ownership.
+
+### Initial Authorization Semantics
+
+| Scope / Role | Default effective access in Spec 002 |
+| --- | --- |
+| Organization Owner | Organization administration plus organization-wide resource management; only Owner may perform Owner-only ownership/destructive invariants |
+| Organization Admin | Organization/member administration and organization-wide resource management except Owner-only invariants |
+| Organization Member | Organization membership visibility/basic organization access; no implicit Workspace/Project access without an applicable resource grant |
+| Organization Guest | No implicit organization directory or resource visibility; access only through explicit scoped grants |
+| Workspace-scoped grant | Its permissions apply to that Workspace and dynamically to Projects currently grouped there |
+| Direct Project grant | Its permissions apply only to that Project and are additive with other applicable permissions |
+| Project Manager | Project read/edit/manage/share/archive/delete permissions within its valid scope |
+| Project Editor | Project read/edit/share permissions within its valid scope |
+| Project Contributor | Project read/edit permissions within its valid scope, without project-management authority |
+| Project Viewer | Project read permission only |
+
+The table defines product authorization semantics, not a UI presentation. Organization roles,
+Workspace inheritance, and direct Project grants are additive; no row creates an implicit deny rule.
 
 ### Key Entities
 
@@ -394,10 +462,10 @@ Owner and organization exist, then attempt to reuse the bootstrap mechanism and 
 - **SC-011**: A fresh self-hosted installation can complete first-Organization/first-Owner bootstrap
   in under 5 minutes using documented setup steps, and every subsequent bootstrap reuse attempt is
   rejected.
-- **SC-012**: The same feature acceptance suite for identity, membership, organization ownership,
-  workspace/project lifecycle, grants, invitations, service principals, and audit semantics can be
-  exercised without changing product behavior assumptions between shared and isolated deployment
-  modes.
+- **SC-012**: The feature's domain/contracts and acceptance fixtures can be exercised with both
+  shared-tenant and isolated-tenant configuration assumptions without changing identity,
+  membership, ownership, grant, invitation, service-principal, or audit semantics; provisioning a
+  production dedicated deployment is not required by Spec 002.
 - **SC-013**: A user with no prior product orientation can complete the minimum flow of switching
   Organization, creating a Workspace, creating a Project, and viewing their membership in under
   5 minutes using the feature's minimal interface.
@@ -411,8 +479,9 @@ Owner and organization exist, then attempt to reuse the bootstrap mechanism and 
 - Organization is the tenant boundary; Workspace is a grouping construct and may additionally be
   used as a permission scope without becoming mandatory ownership ancestry.
 - A Project always belongs directly to an Organization even when grouped in a Workspace.
-- Cross-Organization project transfer is intentionally not implemented as an ordinary move; this
-  feature only establishes the boundary and rejects accidental transfer through normal operations.
+- Cross-Organization project transfer is not implemented in Spec 002. This feature establishes the
+  boundary and rejects any ownership change through ordinary Workspace/Project operations; a future
+  dedicated transfer workflow will define migration of dependent data, grants, artifacts, and audit.
 - Fixed roles are sufficient for the initial release. Custom role creation is deferred until the
   permission vocabulary has been validated by real workflows.
 - Authorization is grant-based for this feature. A general configurable deny-policy language is
@@ -427,6 +496,10 @@ Owner and organization exist, then attempt to reuse the bootstrap mechanism and 
 - The self-host bootstrap path is a one-time initialization mechanism, not a permanent alternative
   to normal identity and authorization.
 - Enterprise/dedicated deployment may isolate an Organization physically, but it does not create a
-  different product-domain model.
+  different product-domain model. Spec 002 validates logical parity only; actual dedicated deployment
+  provisioning and operations remain deferred.
 - Full visual administration dashboards, billing, public sharing, GIS data, layer catalogs, map
   rendering, editing, processing, field/offline behavior, and vertical modules are outside Spec 002.
+- Delivery sequencing should prove the P1 Human Tenant Core independently before P2 machine-identity,
+  audit-completion, and bootstrap flows are required; this sequencing must not change the final
+  feature semantics.

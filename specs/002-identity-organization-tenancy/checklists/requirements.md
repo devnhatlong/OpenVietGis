@@ -31,7 +31,10 @@
 
 ## Notes
 
-- Validation iteration 1 passed all checklist items.
+- Validation iteration 2 passed all checklist items after architecture review amendments.
 - The specification incorporates all decisions accepted during the three-round Spec 002 mini-grill.
+- Review amendments explicitly define additive permission semantics, Workspace grant inheritance,
+  invitation recipient binding, authenticated identity resolution, bootstrap authority, deferred
+  cross-Organization transfer, and logical-only enterprise parity for Spec 002.
 - Identity-provider protocol, database isolation mechanism, persistence technology, and concrete
   authorization implementation remain planning/ADR concerns rather than specification requirements.
