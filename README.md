@@ -3,12 +3,23 @@
 OpenVietGIS is a platform-first spatial workspace for the web. Spec 001 intentionally builds only
 the architecture runway and a disposable non-GIS vertical slice.
 
+## Product direction and roadmap
+
+- [Product direction and release outcomes](docs/product.md)
+- [Product roadmap, dependencies, milestones, and feature status](ROADMAP.md)
+- Foundation: [Spec 001](specs/001-platform-foundation/spec.md), roadmap entry [R001](ROADMAP.md#r001)
+- Identity/organization/tenancy: [Spec 002](specs/002-identity-organization-tenancy/spec.md), roadmap entry [R002](ROADMAP.md#r002)
+
+Only 001 and 002 have feature specifications at the roadmap baseline. Future numbered labels are
+provisional capability slices, not implemented functionality. Before opening another feature, read
+the product direction and its roadmap entry; update both directions of the roadmap/spec links.
+
 ## Governance and architecture
 
 - Constitution: `.specify/memory/constitution.md`
 - ADR index: `docs/adr/README.md`
 - Architecture boundaries: `docs/architecture.md`
-- Active foundation specification: `specs/001-platform-foundation/`
+- Accepted foundation specification and evidence: `specs/001-platform-foundation/`
 
 Core/platform code must never depend on a vertical domain module. The foundation must build and run
 when `modules/` is empty or absent.

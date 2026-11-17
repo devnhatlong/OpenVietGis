@@ -26,10 +26,19 @@ Core must build and run when `modules/` is empty or absent.
 
 ## Artifact roles
 
+- `docs/product.md`: product intent, target workflows, release outcomes, and decisions still due.
+- `ROADMAP.md`: stable capability IDs, scope boundaries, dependencies, milestones, feature status,
+  and links to the feature specifications; provisional future labels are not implemented features.
 - `.specify/memory/constitution.md`: non-negotiable project laws.
 - `docs/adr/`: consequential but replaceable technical decisions.
 - `specs/`: feature WHAT/WHY, plan, contracts, tasks, and validation guidance.
 - runtime source: implementation only.
+
+Before creating a feature, read [Product](product.md) and its entry in the [Roadmap](../ROADMAP.md).
+New feature specs link their roadmap entry in Input/summary and the roadmap links back to the spec.
+Specs 001 and 002 have companion `roadmap-reference.md` files so traceability does not rewrite their
+accepted/in-progress requirements. Product/roadmap changes do not silently supersede the Constitution,
+Accepted ADRs, or feature acceptance criteria. See the roadmap for isolated parallel agent work.
 
 ## Extending architecture rules
 
