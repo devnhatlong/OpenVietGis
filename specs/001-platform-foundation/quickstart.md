@@ -135,6 +135,33 @@ Expected behavior:
 
 The persistence integration scenario MUST pass ten consecutive automated runs to satisfy SC-003.
 
+## 10. Measure clean bootstrap time
+
+Use a clean supported development environment with no prior OpenVietGIS checkout or installed project
+dependencies. Start timing immediately before following the documented bootstrap procedure and stop
+when the foundation shell is running and readiness is healthy.
+
+Dependency download time MAY be excluded only if it is recorded separately.
+
+Expected result:
+- bootstrap completion time, excluding recorded dependency download time, is at or below 20 minutes;
+- any undocumented setup step is treated as a failure and must be added to the repository documentation.
+
+## 11. Measure documentation discoverability
+
+Ask a reviewer who has had no prior repository orientation to use repository documentation only.
+
+Start timing before giving the reviewer these tasks:
+1. Locate the Constitution and explain what kind of decision belongs there.
+2. Locate the ADR index and identify how a technical decision is superseded.
+3. Locate the architecture guide and explain why Core cannot depend on vertical modules.
+4. Locate the active Spec 001 artifacts.
+
+Expected result:
+- all four tasks are completed in under 10 minutes;
+- assistance from someone already familiar with the repository invalidates the measurement;
+- record the reviewer role, elapsed time, and any navigation problem that required remediation.
+
 ## Troubleshooting expectations
 
 The implementation documentation MUST provide clear guidance for:
