@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   canReadFeatures, createTraversal, featureDetailKey, featurePageKey,
-  featureResponseMatchesScope, formatFeatureValue, isStaleFeaturePin,
+  featureResponseMatchesScope, formatFeatureValue, isStaleFeaturePin, featureDetailNeedsRevalidation,
   nextFeaturePage, previousFeaturePage, reconcileTraversal,
   restartFeatureTraversal, selectFeature, type FeatureReadScope
 } from "./feature-inspector";
@@ -164,6 +164,15 @@ describe("pinned feature inspector", () => {
       .toBe('"12345678901234567890.123456789012345678"');
     expect(formatFeatureValue("2025-01-01T00:00:00.012345Z"))
       .toBe('"2025-01-01T00:00:00.012345Z"');
+  });
+
+  it("latches detail 404 until explicit metadata retry, not merely a background detail refetch", () => {
+    expect(featureDetailNeedsRevalidation(false, null)).toBe(false);
+    expect(featureDetailNeedsRevalidation(false, new ApiError(404, new Response(null, { status: 404 })))).toBe(true);
+    expect(featureDetailNeedsRevalidation(true, null)).toBe(true);
+    expect(featureDetailNeedsRevalidation(true, new Error("background refetch failed"))).toBe(true);
+    expect(featureDetailNeedsRevalidation(false, new ApiError(403, new Response(null, { status: 403 })))).toBe(false);
+    expect(featureDetailNeedsRevalidation(false, new Error("transport error"))).toBe(false);
   });
 
   it("recognizes a stale read as a typed 409, not ordinary missing or unavailable", () => {
