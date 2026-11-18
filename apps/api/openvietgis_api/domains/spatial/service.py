@@ -31,10 +31,13 @@ from openvietgis_api.domains.spatial.domain import (
 )
 from openvietgis_api.domains.spatial.ports import (
     SpatialActiveLayerDependenciesError,
+    SpatialLayerRepository,
+    SpatialLayerRevisionConflictError,
     SpatialNoChangesError,
     SpatialRevisionConflictError,
     SpatialScopeError,
     SpatialSourceAlreadyRegisteredError,
+    SpatialSourceNotReadyError,
     SpatialSourceRepository,
 )
 from openvietgis_api.domains.tenancy.domain import ActorType
@@ -516,3 +519,211 @@ class SpatialCatalogService:
         self.repository.update_source(current, context=context, expected_revision=expected_revision)
         self.repository.append_change(evidence.change, evidence.audit, context=context)
         return SourceMutationResult(current, evidence.change)
+
+
+@dataclass(frozen=True, slots=True)
+class LayerCapability:
+    name: str
+    technical_supported: bool
+    available: bool
+    required_permission: str | None
+    actor_authorized: bool
+
+
+@dataclass(frozen=True, slots=True)
+class LayerDetail:
+    layer: Layer
+    source: SourceDetail
+    capabilities: tuple[LayerCapability, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class LayerCatalogPage:
+    items: tuple[LayerDetail, ...]
+    next_after_id: UUID | None
+
+
+@dataclass(frozen=True, slots=True)
+class LayerMutationResult:
+    layer: Layer
+    change: CatalogChange
+
+
+def layer_capabilities(
+    layer: Layer, source: DataSource, *, actor_authorized: bool
+) -> tuple[LayerCapability, ...]:
+    """Support, availability and caller authority are independent facts."""
+    layer.validate_source(source)
+    active = layer.lifecycle == Lifecycle.ACTIVE
+    ready = (
+        active
+        and source.lifecycle == Lifecycle.ACTIVE
+        and (source.validation_state == ValidationState.READY)
+    )
+    return (
+        LayerCapability(
+            "metadata_read", True, active, Permission.PROJECT_READ.value, actor_authorized
+        ),
+        LayerCapability(
+            "feature_read", True, ready, Permission.PROJECT_READ.value, actor_authorized
+        ),
+        *(
+            LayerCapability(name, False, False, None, False)
+            for name in ("render", "edit", "style", "export", "analysis", "offline", "query")
+        ),
+    )
+
+
+def _next_layer_revision(current: int, expected: int) -> int:
+    try:
+        return next_revision(current, expected)
+    except SpatialRevisionConflictError as exc:
+        raise SpatialLayerRevisionConflictError("stale layer revision") from exc
+
+
+@dataclass(slots=True)
+class SpatialLayerService:
+    """Layer identity remains separate from shared source storage and revisions."""
+
+    repository: SpatialLayerRepository
+
+    def _active(self, *, context: AuthorizationContext, layer_id: UUID) -> Layer:
+        layer = self.repository.get_layer(context=context, layer_id=layer_id, lock=True)
+        if layer is None or layer.lifecycle != Lifecycle.ACTIVE:
+            raise TenantResourceNotFoundError("resource not found")
+        return layer
+
+    def _detail(
+        self, *, context: AuthorizationContext, layer: Layer, cache: dict[UUID, SourceDetail]
+    ) -> LayerDetail:
+        detail = cache.get(layer.source_id)
+        if detail is None:
+            catalog = SpatialCatalogService(self.repository)
+            source = catalog._active(context=context, source_id=layer.source_id)
+            detail = catalog._detail(context=context, source=source)
+            cache[layer.source_id] = detail
+        # prepare_scope for a read succeeded; capabilities are not an authorization gate.
+        return LayerDetail(
+            layer, detail, layer_capabilities(layer, detail.source, actor_authorized=True)
+        )
+
+    def list_layers(
+        self, *, context: AuthorizationContext, after_id: UUID | None, limit: int
+    ) -> LayerCatalogPage:
+        self.repository.prepare_scope(
+            context=context, permission=Permission.PROJECT_READ, mutation=False
+        )
+        if type(limit) is not int or not 1 <= limit <= 100:
+            raise SpatialValidationError("catalog limit out of bounds")
+        layers = self.repository.list_layers(context=context, after_id=after_id, limit=limit + 1)
+        visible = layers[:limit]
+        cache: dict[UUID, SourceDetail] = {}
+        items = tuple(self._detail(context=context, layer=layer, cache=cache) for layer in visible)
+        return LayerCatalogPage(items, visible[-1].id if len(layers) > limit else None)
+
+    def get_layer(self, *, context: AuthorizationContext, layer_id: UUID) -> LayerDetail:
+        self.repository.prepare_scope(
+            context=context, permission=Permission.PROJECT_READ, mutation=False
+        )
+        return self._detail(
+            context=context, layer=self._active(context=context, layer_id=layer_id), cache={}
+        )
+
+    def create_layer(
+        self, *, context: AuthorizationContext, source_id: UUID, name: str
+    ) -> LayerMutationResult:
+        self.repository.prepare_scope(
+            context=context, permission=Permission.PROJECT_EDIT, mutation=True
+        )
+        source = SpatialCatalogService(self.repository)._active(
+            context=context, source_id=source_id
+        )
+        if source.validation_state != ValidationState.READY:
+            raise SpatialSourceNotReadyError("source not ready")
+        now = datetime.now(UTC)
+        layer = Layer(
+            id=uuid4(),
+            organization_id=source.organization_id,
+            project_id=source.project_id,
+            source_id=source.id,
+            name=_source_name(name),
+            lifecycle=Lifecycle.ACTIVE,
+            layer_revision=1,
+            created_at=now,
+            updated_at=now,
+            retired_at=None,
+        )
+        evidence = build_mutation_evidence(
+            context=context,
+            prior=None,
+            current=layer,
+            operation=CatalogOperation.CREATE_LAYER,
+            now=now,
+        )
+        self.repository.insert_layer(layer, context=context)
+        self.repository.append_change(evidence.change, evidence.audit, context=context)
+        return LayerMutationResult(layer, evidence.change)
+
+    def rename_layer(
+        self, *, context: AuthorizationContext, layer_id: UUID, expected_revision: int, name: str
+    ) -> LayerMutationResult:
+        self.repository.prepare_scope(
+            context=context, permission=Permission.PROJECT_EDIT, mutation=True
+        )
+        prior = self._active(context=context, layer_id=layer_id)
+        revision = _next_layer_revision(prior.layer_revision, expected_revision)
+        clean_name = _source_name(name)
+        if prior.name == clean_name:
+            raise SpatialNoChangesError("layer metadata did not change")
+        now = datetime.now(UTC)
+        current = replace(prior, name=clean_name, layer_revision=revision, updated_at=now)
+        return self._persist(
+            context=context,
+            prior=prior,
+            current=current,
+            operation=CatalogOperation.RENAME_LAYER,
+            expected_revision=expected_revision,
+            now=now,
+        )
+
+    def retire_layer(
+        self, *, context: AuthorizationContext, layer_id: UUID, expected_revision: int
+    ) -> LayerMutationResult:
+        self.repository.prepare_scope(
+            context=context, permission=Permission.PROJECT_EDIT, mutation=True
+        )
+        prior = self._active(context=context, layer_id=layer_id)
+        revision = _next_layer_revision(prior.layer_revision, expected_revision)
+        now = datetime.now(UTC)
+        current = replace(
+            prior,
+            lifecycle=Lifecycle.RETIRED,
+            layer_revision=revision,
+            updated_at=now,
+            retired_at=now,
+        )
+        return self._persist(
+            context=context,
+            prior=prior,
+            current=current,
+            operation=CatalogOperation.RETIRE_LAYER,
+            expected_revision=expected_revision,
+            now=now,
+        )
+
+    def _persist(
+        self,
+        *,
+        context: AuthorizationContext,
+        prior: Layer,
+        current: Layer,
+        operation: CatalogOperation,
+        expected_revision: int,
+        now: datetime,
+    ) -> LayerMutationResult:
+        evidence = build_mutation_evidence(
+            context=context, prior=prior, current=current, operation=operation, now=now
+        )
+        self.repository.update_layer(current, context=context, expected_revision=expected_revision)
+        self.repository.append_change(evidence.change, evidence.audit, context=context)
+        return LayerMutationResult(current, evidence.change)
