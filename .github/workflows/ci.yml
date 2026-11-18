@@ -7,6 +7,68 @@ on:
   workflow_dispatch:
 
 jobs:
+  backend:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      # Job-local, synthetic credentials; no production database or identity provider.
+      COMPOSE_PROJECT_NAME: openvietgis-ci
+      OPENVIETGIS_ENVIRONMENT: test
+      OPENVIETGIS_DATABASE_URL: postgresql+psycopg://openvietgis:openvietgis@127.0.0.1:54330/openvietgis_test
+      OPENVIETGIS_TEST_DATABASE_URL: postgresql+psycopg://openvietgis:openvietgis@127.0.0.1:54330/openvietgis_test
+      OPENVIETGIS_MIGRATION_DATABASE_URL: postgresql+psycopg://openvietgis:openvietgis@127.0.0.1:54330/openvietgis_test
+      OPENVIETGIS_RUNTIME_DATABASE_URL: postgresql+psycopg://openvietgis_runtime:openvietgis-runtime-dev@127.0.0.1:54330/openvietgis_test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.13"
+          enable-cache: true
+
+      - name: Install Python dependencies
+        run: uv sync --project apps/api --frozen
+
+      - name: Validate Python, contracts, scope, architecture and docs
+        run: |
+          uv run --project apps/api ruff check apps/api tools tests
+          uv run --project apps/api mypy apps/api/openvietgis_api
+          uv run --project apps/api pytest apps/api/tests/unit apps/api/tests/contract tools/tests tests/architecture --show-capture=no
+          uv run --project apps/api python tools/check_contracts.py
+          uv run --project apps/api python tools/check_scope.py
+          uv run --project apps/api python tools/check_architecture.py
+          uv run --project apps/api python tools/check_docs.py
+
+      - name: Start dedicated test database and reference identity provider
+        run: >-
+          docker compose -f infra/dev/compose.yaml -f infra/dev/compose.identity.yaml
+          up --detach --wait --wait-timeout 180 postgres-test keycloak
+
+      - name: Verify reference realm discovery before browser tests
+        run: >-
+          curl --fail --silent --show-error --output /dev/null --max-time 10
+          http://127.0.0.1:18080/realms/openvietgis/.well-known/openid-configuration
+
+      - name: Apply guarded migrations and verify restricted runtime role
+        run: >-
+          uv run --project apps/api python -m tools.run_with_test_database python -c
+          "from openvietgis_api.adapters.persistence.db import get_engine;
+          connection = get_engine().connect(); connection.close()"
+
+      - name: Validate restricted-runtime integration, migration and performance
+        run: >-
+          uv run --project apps/api python -m tools.run_with_test_database
+          pytest apps/api/tests/integration apps/api/tests/performance --show-capture=no
+
+      - name: Verify live synthetic Keycloak OIDC code and PKCE
+        env:
+          OPENVIETGIS_LIVE_OIDC: "1"
+        run: >-
+          uv run --project apps/api python -m tools.run_with_test_database
+          pytest apps/api/tests/integration/identity/test_live_keycloak_oidc.py --show-capture=no
+
   validate:
     runs-on: ubuntu-latest
     permissions:
@@ -63,8 +125,8 @@ jobs:
           "from openvietgis_api.adapters.persistence.db import get_engine;
           connection = get_engine().connect(); connection.close()"
 
-      - name: Validate foundation and tenant core (including contracts and browser E2E)
-        run: pnpm validate
+      - name: Validate Node runtime, frontend, generated contracts and browser E2E
+        run: pnpm validate:runtime && pnpm validate:ts && pnpm validate:contracts && pnpm validate:e2e
 
   secrets:
     runs-on: ubuntu-latest

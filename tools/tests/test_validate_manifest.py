@@ -64,6 +64,36 @@ def test_ci_uses_the_dedicated_database_and_reference_identity_fixture() -> None
     migration = next(command for command in commands if "tools.run_with_test_database" in command)
     assert "get_engine().connect()" in migration
     assert commands.index(start) < commands.index(realm) < commands.index(migration)
-    assert commands.index(migration) < commands.index("pnpm validate")
+    frontend_validation = next(command for command in commands if "pnpm validate:runtime" in command)
+    assert commands.index(migration) < commands.index(frontend_validation)
+    for category in ("runtime", "ts", "contracts", "e2e"):
+        assert f"pnpm validate:{category}" in frontend_validation
     assert "pnpm install --frozen-lockfile" in commands
     assert "uv sync --project apps/api --frozen" in commands
+
+
+def test_backend_ci_is_independent_of_javascript_dependency_install() -> None:
+    workflow = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8"))
+    backend = workflow["jobs"]["backend"]
+    frontend = workflow["jobs"]["validate"]
+    assert "needs" not in backend
+    assert backend["env"] == frontend["env"]
+    commands = [step["run"] for step in backend["steps"] if "run" in step]
+    all_commands = "\n".join(commands)
+    assert "pnpm" not in all_commands
+    for required in (
+        "uv sync --project apps/api --frozen",
+        "ruff check",
+        "mypy",
+        "pytest apps/api/tests/unit",
+        "tools/check_contracts.py",
+        "tools/check_scope.py",
+        "tools/check_architecture.py",
+        "tools/check_docs.py",
+        "up --detach --wait",
+        "get_engine().connect()",
+        "pytest apps/api/tests/integration apps/api/tests/performance",
+        "pytest apps/api/tests/integration/identity/test_live_keycloak_oidc.py",
+    ):
+        assert required in all_commands
+    assert any(step.get("env", {}).get("OPENVIETGIS_LIVE_OIDC") == "1" for step in backend["steps"])
