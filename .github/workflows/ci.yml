@@ -8,25 +8,16 @@ on:
 jobs:
   validate:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     env:
+      # Job-local, synthetic credentials; no production database or identity provider.
+      COMPOSE_PROJECT_NAME: openvietgis-ci
       OPENVIETGIS_ENVIRONMENT: test
-      OPENVIETGIS_DATABASE_URL: postgresql+psycopg://openvietgis:openvietgis@127.0.0.1:5432/openvietgis_test
-      OPENVIETGIS_TEST_DATABASE_URL: postgresql+psycopg://openvietgis:openvietgis@127.0.0.1:5432/openvietgis_test
-
-    services:
-      postgres:
-        image: postgis/postgis:18-3.7
-        env:
-          POSTGRES_DB: openvietgis_test
-          POSTGRES_USER: openvietgis
-          POSTGRES_PASSWORD: openvietgis
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -h 127.0.0.1 -U openvietgis -d openvietgis_test"
-          --health-interval 2s
-          --health-timeout 3s
-          --health-retries 30
+      OPENVIETGIS_DATABASE_URL: postgresql+psycopg://openvietgis:openvietgis@127.0.0.1:54330/openvietgis_test
+      OPENVIETGIS_TEST_DATABASE_URL: postgresql+psycopg://openvietgis:openvietgis@127.0.0.1:54330/openvietgis_test
+      OPENVIETGIS_MIGRATION_DATABASE_URL: postgresql+psycopg://openvietgis:openvietgis@127.0.0.1:54330/openvietgis_test
+      OPENVIETGIS_RUNTIME_DATABASE_URL: postgresql+psycopg://openvietgis_runtime:openvietgis-runtime-dev@127.0.0.1:54330/openvietgis_test
 
     steps:
       - uses: actions/checkout@v4
@@ -55,10 +46,23 @@ jobs:
       - name: Install Chromium
         run: pnpm exec playwright install --with-deps chromium
 
-      - name: Apply migrations
-        run: pnpm db:migrate
+      - name: Start dedicated test database and reference identity provider
+        run: >-
+          docker compose -f infra/dev/compose.yaml -f infra/dev/compose.identity.yaml
+          up --detach --wait --wait-timeout 180 postgres-test keycloak
 
-      - name: Validate foundation
+      - name: Verify reference realm discovery before browser tests
+        run: >-
+          curl --fail --silent --show-error --output /dev/null --max-time 10
+          http://127.0.0.1:18080/realms/openvietgis/.well-known/openid-configuration
+
+      - name: Apply guarded migrations and verify restricted runtime role
+        run: >-
+          uv run --project apps/api python -m tools.run_with_test_database python -c
+          "from openvietgis_api.adapters.persistence.db import get_engine;
+          connection = get_engine().connect(); connection.close()"
+
+      - name: Validate foundation and tenant core (including contracts and browser E2E)
         run: pnpm validate
 
   secrets:
