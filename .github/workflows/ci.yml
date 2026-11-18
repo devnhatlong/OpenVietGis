@@ -46,6 +46,14 @@ jobs:
           docker compose -f infra/dev/compose.yaml -f infra/dev/compose.identity.yaml
           up --detach --wait --wait-timeout 180 postgres-test keycloak
 
+      - name: Record observed spatial test image
+        run: |
+          spatial_test_container="$(docker compose -f infra/dev/compose.yaml -f infra/dev/compose.identity.yaml ps -q postgres-test)"
+          spatial_test_image="$(docker inspect --format '{{.Image}}' "$spatial_test_container")"
+          spatial_test_digest="$(docker image inspect --format '{{join .RepoDigests ","}}' "$spatial_test_image")"
+          echo "OPENVIETGIS_TEST_DATABASE_IMAGE_DIGEST=$spatial_test_digest" >> "$GITHUB_ENV"
+          echo "Observed spatial test image: $spatial_test_image $spatial_test_digest"
+
       - name: Verify reference realm discovery before browser tests
         run: >-
           curl --fail --silent --show-error --output /dev/null --max-time 10
@@ -113,6 +121,14 @@ jobs:
         run: >-
           docker compose -f infra/dev/compose.yaml -f infra/dev/compose.identity.yaml
           up --detach --wait --wait-timeout 180 postgres-test keycloak
+
+      - name: Record observed spatial test image
+        run: |
+          spatial_test_container="$(docker compose -f infra/dev/compose.yaml -f infra/dev/compose.identity.yaml ps -q postgres-test)"
+          spatial_test_image="$(docker inspect --format '{{.Image}}' "$spatial_test_container")"
+          spatial_test_digest="$(docker image inspect --format '{{join .RepoDigests ","}}' "$spatial_test_image")"
+          echo "OPENVIETGIS_TEST_DATABASE_IMAGE_DIGEST=$spatial_test_digest" >> "$GITHUB_ENV"
+          echo "Observed spatial test image: $spatial_test_image $spatial_test_digest"
 
       - name: Verify reference realm discovery before browser tests
         run: >-
