@@ -117,7 +117,7 @@ def _reads(world, source, layer_id, url, first):
             _pins(source) | {"limit": 2, "after_feature_id": first["next_after_feature_id"]},
         ),
         (f"{url}/{first['items'][0]['feature_id']}", _pins(source)),
-        (f"{_project(world)}/spatial/crs-profiles", {}),
+        # CRS discovery is introduced and separately exercised in US5 (T053/T057).
     )
 
 
@@ -150,7 +150,7 @@ def _read_all(client, routes):
     results = []
     for url, params in routes:
         response = client.get(url, params=params)
-        assert response.status_code == 200, response.text
+        assert response.status_code == 200, (url, response.text)
         results.append(response.json())
     return results
 
