@@ -4,11 +4,13 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass, replace
-from datetime import datetime
+from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 from openvietgis_api.domains.audit.domain import AuditEvent, AuditOutcome
 from openvietgis_api.domains.authorization.context import AuthorizationContext
+from openvietgis_api.domains.authorization.permissions import Permission
+from openvietgis_api.domains.authorization.service import TenantResourceNotFoundError
 from openvietgis_api.domains.spatial.domain import (
     MAX_REVISION,
     CatalogChange,
@@ -22,11 +24,19 @@ from openvietgis_api.domains.spatial.domain import (
     ResourceType,
     SourceField,
     SpatialValidationError,
+    ValidationState,
     content_revision_digest,
     schema_revision_digest,
     validate_source_contents,
 )
-from openvietgis_api.domains.spatial.ports import SpatialRevisionConflictError, SpatialScopeError
+from openvietgis_api.domains.spatial.ports import (
+    SpatialActiveLayerDependenciesError,
+    SpatialNoChangesError,
+    SpatialRevisionConflictError,
+    SpatialScopeError,
+    SpatialSourceAlreadyRegisteredError,
+    SpatialSourceRepository,
+)
 from openvietgis_api.domains.tenancy.domain import ActorType
 
 
@@ -290,3 +300,219 @@ def build_mutation_evidence(
         created_at=change.created_at,
     )
     return MutationEvidence(change, audit)
+
+
+@dataclass(frozen=True, slots=True)
+class SourceDetail:
+    source: DataSource
+    fields: tuple[SourceField, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class SourceCatalogPage:
+    items: tuple[SourceDetail, ...]
+    next_after_id: UUID | None
+
+
+@dataclass(frozen=True, slots=True)
+class SourceMutationResult:
+    source: DataSource
+    change: CatalogChange
+
+
+def _source_name(name: str) -> str:
+    if not isinstance(name, str):
+        raise SpatialValidationError("source name must be text")
+    cleaned = name.strip()
+    if not 1 <= len(cleaned) <= 200 or "\x00" in cleaned:
+        raise SpatialValidationError("source name outside bounds")
+    try:
+        cleaned.encode("utf-8")
+    except UnicodeError:
+        raise SpatialValidationError("source name has invalid encoding") from None
+    return cleaned
+
+
+@dataclass(slots=True)
+class SpatialCatalogService:
+    """One authorized request transaction; no independent commit or storage locator."""
+
+    repository: SpatialSourceRepository
+
+    def _active(self, *, context: AuthorizationContext, source_id: UUID) -> DataSource:
+        source = self.repository.get_source(context=context, source_id=source_id, lock=True)
+        if source is None or source.lifecycle != Lifecycle.ACTIVE:
+            raise TenantResourceNotFoundError("resource not found")
+        return source
+
+    def _detail(self, *, context: AuthorizationContext, source: DataSource) -> SourceDetail:
+        fields = tuple(self.repository.get_fields(context=context, source_id=source.id))
+        if any(
+            (f.organization_id, f.project_id, f.source_id, f.schema_revision)
+            != (source.organization_id, source.project_id, source.id, source.schema_revision)
+            for f in fields
+        ):
+            raise SpatialValidationError("catalog schema scope or pin disagrees")
+        if (
+            schema_revision_digest(
+                fields,
+                source.geometry_family,
+                source.dimensions,
+                schema_state=source.schema_state,
+            )
+            != source.schema_revision
+        ):
+            raise SpatialValidationError("catalog schema revision disagrees")
+        return SourceDetail(source, fields)
+
+    def list_sources(
+        self,
+        *,
+        context: AuthorizationContext,
+        after_id: UUID | None,
+        limit: int,
+    ) -> SourceCatalogPage:
+        self.repository.prepare_scope(
+            context=context,
+            permission=Permission.PROJECT_READ,
+            mutation=False,
+        )
+        if type(limit) is not int or not 1 <= limit <= 100:
+            raise SpatialValidationError("catalog limit out of bounds")
+        sources = self.repository.list_sources(context=context, after_id=after_id, limit=limit + 1)
+        visible = sources[:limit]
+        items = tuple(self._detail(context=context, source=source) for source in visible)
+        return SourceCatalogPage(items, visible[-1].id if len(sources) > limit else None)
+
+    def get_source(self, *, context: AuthorizationContext, source_id: UUID) -> SourceDetail:
+        self.repository.prepare_scope(
+            context=context,
+            permission=Permission.PROJECT_READ,
+            mutation=False,
+        )
+        return self._detail(
+            context=context, source=self._active(context=context, source_id=source_id)
+        )
+
+    def register_source(
+        self,
+        *,
+        context: AuthorizationContext,
+        reference_key: str,
+        name: str,
+    ) -> SourceMutationResult:
+        self.repository.prepare_scope(
+            context=context,
+            permission=Permission.PROJECT_EDIT,
+            mutation=True,
+        )
+        clean_name = _source_name(name)
+        if (
+            self.repository.find_source_by_reference_key(
+                context=context, reference_key=reference_key
+            )
+            is not None
+        ):
+            raise SpatialSourceAlreadyRegisteredError("reference fixture already registered")
+        now = datetime.now(UTC)
+        source, fields, features = self.repository.prepare_reference_source(
+            context=context,
+            reference_key=reference_key,
+            source_id=uuid4(),
+            name=clean_name,
+            now=now,
+        )
+        evidence = build_mutation_evidence(
+            context=context,
+            prior=None,
+            current=source,
+            operation=CatalogOperation.REGISTER_SOURCE,
+            now=now,
+        )
+        self.repository.insert_source(source, fields, features, context=context)
+        self.repository.append_change(evidence.change, evidence.audit, context=context)
+        return SourceMutationResult(source, evidence.change)
+
+    def update_source(
+        self,
+        *,
+        context: AuthorizationContext,
+        source_id: UUID,
+        expected_revision: int,
+        name: str | None = None,
+        declared_crs: int | None = None,
+    ) -> SourceMutationResult:
+        self.repository.prepare_scope(
+            context=context,
+            permission=Permission.PROJECT_EDIT,
+            mutation=True,
+        )
+        prior = self._active(context=context, source_id=source_id)
+        revision = next_revision(prior.catalog_revision, expected_revision)
+        clean_name = _source_name(name) if name is not None else prior.name
+        now = datetime.now(UTC)
+        if declared_crs is not None and (
+            declared_crs != prior.source_crs or prior.validation_state != ValidationState.READY
+        ):
+            current = self.repository.correct_reference_source(
+                context=context,
+                source=prior,
+                declared_crs=declared_crs,
+                now=now,
+            )
+            current = replace(current, name=clean_name)
+            operation = CatalogOperation.CORRECT_SOURCE_CRS
+        else:
+            if clean_name == prior.name:
+                raise SpatialNoChangesError("source metadata did not change")
+            current = replace(prior, name=clean_name, catalog_revision=revision, updated_at=now)
+            operation = CatalogOperation.UPDATE_SOURCE
+        if current.catalog_revision != revision:
+            raise SpatialValidationError("source validation returned unexpected revision")
+        evidence = build_mutation_evidence(
+            context=context,
+            prior=prior,
+            current=current,
+            operation=operation,
+            now=now,
+        )
+        self.repository.update_source(current, context=context, expected_revision=expected_revision)
+        self.repository.append_change(evidence.change, evidence.audit, context=context)
+        return SourceMutationResult(current, evidence.change)
+
+    def retire_source(
+        self,
+        *,
+        context: AuthorizationContext,
+        source_id: UUID,
+        expected_revision: int,
+    ) -> SourceMutationResult:
+        self.repository.prepare_scope(
+            context=context,
+            permission=Permission.PROJECT_MANAGE,
+            mutation=True,
+        )
+        prior = self._active(context=context, source_id=source_id)
+        revision = next_revision(prior.catalog_revision, expected_revision)
+        if self.repository.has_active_layers(context=context, source_id=source_id):
+            raise SpatialActiveLayerDependenciesError(
+                "Retire active Layers before retiring the source"
+            )
+        now = datetime.now(UTC)
+        current = replace(
+            prior,
+            lifecycle=Lifecycle.RETIRED,
+            retired_at=now,
+            updated_at=now,
+            catalog_revision=revision,
+        )
+        evidence = build_mutation_evidence(
+            context=context,
+            prior=prior,
+            current=current,
+            operation=CatalogOperation.RETIRE_SOURCE,
+            now=now,
+        )
+        self.repository.update_source(current, context=context, expected_revision=expected_revision)
+        self.repository.append_change(evidence.change, evidence.audit, context=context)
+        return SourceMutationResult(current, evidence.change)
