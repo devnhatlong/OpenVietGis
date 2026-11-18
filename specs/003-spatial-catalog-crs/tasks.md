@@ -14,10 +14,10 @@ description: "Dependency-ordered implementation tasks for R003"
 
 **Goal / independent test**: Confirm baseline, tools, reproducible environment.
 
-- [ ] T001 Verify clean baseline, Graphify graph and dependency versions, record isolated DB config in specs/003-spatial-catalog-crs/quickstart.md; no runtime coding until exact design review passes.
+- [X] T001 Verify clean baseline, Graphify graph and dependency versions, record isolated DB config in specs/003-spatial-catalog-crs/quickstart.md; no runtime coding until exact design review passes.
 - [ ] T002 Verify the approved explicit PostGIS pipelines and all published controls against pinned image digest, verify actual library APIs with Context7; record evidence in specs/003-spatial-catalog-crs/research.md.
 - [ ] T003 [P] Extend OpenAPI validation and generation in tools/check_contracts.py and packages/client-sdk/package.json for contracts/spatial-catalog-api.yaml, retaining every R002 contract and output check.
-- [ ] T004 [P] Add domain package scaffold apps/api/openvietgis_api/domains/spatial/__init__.py and test file skeletons in apps/api/tests/{unit,contract,integration,performance}/spatial; maintain existing modular boundary.
+- [X] T004 [P] Add domain package scaffold apps/api/openvietgis_api/domains/spatial/__init__.py and test file skeletons in apps/api/tests/{unit,contract,integration,performance}/spatial; maintain existing modular boundary.
 
 ---
 

@@ -9,6 +9,10 @@ This is the planned reproducible protocol, not executed R003 evidence yet. Use a
 3. Use the test fixture provisioner (implementation task) to create two synthetic organizations and distinct projects, authorized human and narrowly scoped service actors, and frozen reference registry entries. Do not import external data. A separate scenario provisions an archived/deleted Project, suspended Organization and revoked credential.
 4. Build SDK from the committed OpenAPI document via `pnpm contracts:generate`; verify generated output clean and contract consumer uses public IDs only.
 
+## Setup checkpoint — 2026-11-18
+
+Owner approved implementation with the outcomes checklist item still unchecked; all SC-001–009 remain required. Baseline 25ff038: independent design review passed; Graphify 311 files, 2632 nodes, 7447 edges, 152 communities. Verified portable Node 26.13.1 (`C:/code/openvietgis-r002-browser/dist/toolchains/node-v26.13.1-win-x64` on this host), corepack pnpm 12.21.0; node runtime check passed. Python 3.13.18; FastAPI 0.163.1, SQLAlchemy 2.1.9, Alembic 1.20.1, psycopg 3.3.9, pytest 9.2.0, openapi-spec-validator 0.9.0. For restricted integration, allocate a dedicated loopback test container/port and database named `openvietgis_test`; explicitly set `OPENVIETGIS_TEST_DATABASE_URL` before invoking `tools.run_with_test_database` (never trust its default). Guard dry-run confirms non-test DB rejected and distinct owner/runtime connection URLs, runtime only NOSUPERUSER/NOCREATEDB/NOCREATEROLE/NOINHERIT/NOBYPASSRLS. Pinned PostGIS image present. Scaffold a25c135 passed Ruff, scope and architecture checks; no actual test acceptance implied.
+
 ## Acceptance sequence
 
 | Criterion | Reproducible check |
