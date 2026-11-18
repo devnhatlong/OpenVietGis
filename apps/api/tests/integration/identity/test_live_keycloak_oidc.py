@@ -10,9 +10,12 @@ import logging
 import os
 import re
 from html.parser import HTMLParser
+from http.cookiejar import DefaultCookiePolicy
 from http.cookies import SimpleCookie
 from pathlib import Path
+from types import SimpleNamespace
 from urllib.parse import parse_qs, urljoin, urlsplit
+from urllib.request import Request
 
 import httpx
 import pytest
@@ -58,6 +61,30 @@ def _provider_url(value: str) -> bool:
     )
 
 
+class _LoopbackProviderCookiePolicy(DefaultCookiePolicy):
+    def return_ok_secure(self, cookie, request):  # type: ignore[no-untyped-def]
+        # Keycloak issues Secure transaction cookies even on trusted loopback
+        # HTTP. Python CookieJar rejects them by default, unlike local browsers.
+        # Emulate that browser exception only for the pinned synthetic realm.
+        if cookie.secure and _provider_url(request.get_full_url()):
+            return True
+        return super().return_ok_secure(cookie, request)
+
+
+def _check_loopback_cookie_policy() -> None:
+    policy = _LoopbackProviderCookiePolicy()
+    secure_cookie = SimpleNamespace(secure=True)
+    # Test the precise exception without constructing or sending real cookies.
+    _require(
+        policy.return_ok_secure(secure_cookie, Request(ISSUER + "/login-actions/authenticate"))
+        and not policy.return_ok_secure(secure_cookie, Request("http://127.0.0.1:18081/realms/openvietgis/"))
+        and not policy.return_ok_secure(secure_cookie, Request("http://127.0.0.1:18080/realms/other/"))
+        and not policy.return_ok_secure(secure_cookie, Request("http://example.test/realms/openvietgis/"))
+        and not policy.return_ok_secure(secure_cookie, Request(APP_ORIGIN + CALLBACK_PATH)),
+        "loopback provider Secure cookie policy was not narrowly confined",
+    )
+
+
 def _callback_url(value: str) -> bool:
     parts = urlsplit(value)
     return (
@@ -95,8 +122,20 @@ def _fixture_password() -> str:
     return password["value"]
 
 
+def _provider_request(
+    client: httpx.Client, method: str, url: str, *,
+    data: dict[str, str] | None = None, headers: dict[str, str] | None = None,
+) -> httpx.Response:
+    _require(_provider_url(url), "refusing unexpected provider request")
+    # Client.build_request copies cookies into a new default CookieJar, losing
+    # the custom policy; make the request directly and apply only the pinned jar.
+    request = httpx.Request(method, url, data=data, headers=headers)
+    client.cookies.set_cookie_header(request)
+    return client.send(request, follow_redirects=False)
+
+
 def _check_discovery(client: httpx.Client) -> None:
-    response = client.get(ISSUER + "/.well-known/openid-configuration")
+    response = _provider_request(client, "GET", ISSUER + "/.well-known/openid-configuration")
     _require(response.status_code == 200, "Keycloak loopback discovery is not healthy")
     metadata = response.json()
     protocol = ISSUER + "/protocol/openid-connect/"
@@ -146,7 +185,7 @@ class _LoginForm(HTMLParser):
 def _login_page(client: httpx.Client, url: str) -> httpx.Response:
     for _ in range(8):
         _require(_provider_url(url), "refusing unexpected provider navigation")
-        response = client.get(url)
+        response = _provider_request(client, "GET", url)
         if response.status_code == 200:
             return response
         url = _redirect(response)
@@ -173,8 +212,8 @@ def _provider_callback(client: httpx.Client, authorization_url: str) -> str:
     )
     # The password is sent only to Keycloak's standard browser login action.
     # No direct password grant and no token endpoint mocking.
-    response = client.post(
-        action,
+    response = _provider_request(
+        client, "POST", action,
         data={
             **form.hidden,
             "username": FIXTURE_USERNAME,
@@ -191,7 +230,7 @@ def _provider_callback(client: httpx.Client, authorization_url: str) -> str:
         if _callback_url(location):
             return location
         _require(_provider_url(location), "refusing unexpected post-login navigation")
-        response = client.get(location)
+        response = _provider_request(client, "GET", location)
     pytest.fail("post-login provider redirect limit exceeded", pytrace=False)
 
 
@@ -337,6 +376,7 @@ def test_live_keycloak_code_pkce_login_logout_and_stable_identity(
 ) -> None:
     stage = "local-only configuration"
     try:
+        _check_loopback_cookie_policy()
         settings = get_settings()
         assert_safe_test_target(settings.migration_db_url)
         assert_safe_test_target(settings.runtime_db_url)
@@ -362,6 +402,7 @@ def test_live_keycloak_code_pkce_login_logout_and_stable_identity(
         ) as app:
             stage = "first real Keycloak login"
             with httpx.Client(follow_redirects=False, trust_env=False, timeout=20) as provider_http:
+                provider_http.cookies.jar.set_policy(_LoopbackProviderCookiePolicy())
                 _check_discovery(provider_http)
                 first_id, first_token = _login_once(app, provider_http)
             stage = "first application logout"
@@ -370,6 +411,7 @@ def test_live_keycloak_code_pkce_login_logout_and_stable_identity(
             stage = "second real Keycloak login"
             # Fresh provider cookies force another real login form and code exchange.
             with httpx.Client(follow_redirects=False, trust_env=False, timeout=20) as provider_http:
+                provider_http.cookies.jar.set_policy(_LoopbackProviderCookiePolicy())
                 second_id, second_token = _login_once(app, provider_http)
             _require(
                 first_id == second_id
