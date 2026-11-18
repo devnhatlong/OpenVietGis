@@ -25,6 +25,14 @@ class SpatialRevisionConflictError(ValueError):
     """A write did not match the expected catalog or layer revision."""
 
 
+class SpatialLayerRevisionConflictError(SpatialRevisionConflictError):
+    """A write did not match the expected independent layer revision."""
+
+
+class SpatialSourceNotReadyError(ValueError):
+    """A current scoped source cannot support layer creation or feature reads."""
+
+
 class SpatialProjectReadOnlyError(ValueError):
     """An archived project may be inspected but not changed."""
 
@@ -129,8 +137,8 @@ class SpatialSourceRepository(Protocol):
         ...
 
 
-class SpatialRepository(SpatialSourceRepository, Protocol):
-    """Full R003 port, including layer and pinned feature reads."""
+class SpatialLayerRepository(SpatialSourceRepository, Protocol):
+    """Authorized catalog port, including same-Project layer lifecycle."""
 
     def get_layer(
         self, *, context: AuthorizationContext, layer_id: UUID, lock: bool = False
@@ -145,6 +153,10 @@ class SpatialRepository(SpatialSourceRepository, Protocol):
     def update_layer(
         self, layer: Layer, *, context: AuthorizationContext, expected_revision: int
     ) -> None: ...
+
+
+class SpatialRepository(SpatialLayerRepository, Protocol):
+    """Full R003 port, including pinned feature reads."""
 
     def read_features(
         self,

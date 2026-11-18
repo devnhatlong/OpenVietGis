@@ -34,8 +34,18 @@ def test_layer_repository_scoped_keyset_and_shared_source(migrated_database: Non
         assert repository.has_active_layers(context=ctx, source_id=source.id) is False
         now = datetime.now(UTC)
         layers = [
-            Layer(uuid4(), source.organization_id, source.project_id, source.id,
-                  "Same name", Lifecycle.ACTIVE, 1, now, now, None)
+            Layer(
+                uuid4(),
+                source.organization_id,
+                source.project_id,
+                source.id,
+                "Same name",
+                Lifecycle.ACTIVE,
+                1,
+                now,
+                now,
+                None,
+            )
             for _ in range(2)
         ]
         for layer in layers:
@@ -53,11 +63,17 @@ def test_layer_repository_scoped_keyset_and_shared_source(migrated_database: Non
             repository.insert_layer(layers[0], context=ctx)
         session.commit()
     with get_admin_engine().begin() as connection:
-        assert connection.execute(
-            text("SELECT count(*) FROM spatial.reference_features WHERE source_id=:source"),
-            {"source": source.id},
-        ).scalar_one() == 4
-        assert connection.execute(
-            text("SELECT count(*) FROM spatial.layers WHERE source_id=:source"),
-            {"source": source.id},
-        ).scalar_one() == 2
+        assert (
+            connection.execute(
+                text("SELECT count(*) FROM spatial.reference_features WHERE source_id=:source"),
+                {"source": source.id},
+            ).scalar_one()
+            == 4
+        )
+        assert (
+            connection.execute(
+                text("SELECT count(*) FROM spatial.layers WHERE source_id=:source"),
+                {"source": source.id},
+            ).scalar_one()
+            == 2
+        )

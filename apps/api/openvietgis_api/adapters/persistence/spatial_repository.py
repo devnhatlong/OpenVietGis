@@ -61,10 +61,12 @@ from openvietgis_api.domains.spatial.domain import (
 )
 from openvietgis_api.domains.spatial.ports import (
     SpatialCrsCorrectionUnverifiedError,
+    SpatialLayerRevisionConflictError,
     SpatialProjectReadOnlyError,
     SpatialRevisionConflictError,
     SpatialScopeError,
     SpatialSourceAlreadyRegisteredError,
+    SpatialSourceNotReadyError,
     SpatialUnknownReferenceKeyError,
 )
 from openvietgis_api.domains.spatial.service import PinnedSource, verify_source_pins
@@ -157,7 +159,7 @@ class SqlSpatialRepository:
             raise AuthorizationDeniedError("organization is not active")
         # Existing project repository does not expose a row-lock argument.
         # Organization lock precedes this exact owner-scoped project lock.
-        lock = " FOR UPDATE" if mutation else ""
+        lock = " FOR UPDATE" if mutation else " FOR SHARE"
         status = self._session.execute(
             text(
                 "SELECT status FROM workspace.projects "
@@ -502,6 +504,62 @@ class SqlSpatialRepository:
                 return None
         return _layer_from_row(row)
 
+    def list_layers(
+        self, *, context: AuthorizationContext, after_id: UUID | None, limit: int
+    ) -> list[Layer]:
+        if type(limit) is not int or not 1 <= limit <= 101:
+            raise SpatialValidationError("catalog query limit out of bounds")
+        params = self._scope(context, permission=Permission.PROJECT_READ)
+        # prepare_scope holds the Project share lock. All spatial mutations
+        # take that Project exclusively before locking source and layer, so
+        # this bounded page and its nested source details cannot mix states.
+        rows = (
+            self._session.execute(
+                text("""
+                    SELECT * FROM spatial.layers
+                    WHERE organization_id=:organization AND project_id=:project
+                        AND lifecycle='active'
+                        AND (CAST(:after_id AS uuid) IS NULL OR id > CAST(:after_id AS uuid))
+                    ORDER BY id LIMIT :limit
+                """),
+                params | {"after_id": after_id, "limit": limit},
+            )
+            .mappings()
+            .all()
+        )
+        return [_layer_from_row(row) for row in rows]
+
+    def insert_layer(self, layer: Layer, *, context: AuthorizationContext) -> None:
+        params = self._scope(context, permission=Permission.PROJECT_EDIT)
+        self._assert_owner(context, layer)
+        if layer.lifecycle != Lifecycle.ACTIVE or layer.layer_revision != 1:
+            raise SpatialValidationError("invalid initial layer lifecycle or revision")
+        source = self.get_source(context=context, source_id=layer.source_id, lock=True)
+        if source is None or source.lifecycle != Lifecycle.ACTIVE:
+            raise TenantResourceNotFoundError("resource not found")
+        if source.validation_state != ValidationState.READY:
+            raise SpatialSourceNotReadyError("source not ready")
+        layer.validate_source(source)
+        self._session.execute(
+            text("""
+                INSERT INTO spatial.layers (
+                    id,organization_id,project_id,source_id,name,lifecycle,layer_revision,
+                    created_at,updated_at,retired_at
+                ) VALUES (
+                    :id,:organization,:project,:source,:name,'active',1,
+                    :created_at,:updated_at,NULL
+                )
+            """),
+            params
+            | {
+                "id": layer.id,
+                "source": layer.source_id,
+                "name": layer.name,
+                "created_at": layer.created_at,
+                "updated_at": layer.updated_at,
+            },
+        )
+
     def update_source(
         self, source: DataSource, *, context: AuthorizationContext, expected_revision: int
     ) -> None:
@@ -634,14 +692,14 @@ class SqlSpatialRepository:
         params = self._scope(context, permission=Permission.PROJECT_EDIT)
         self._assert_owner(context, layer)
         if type(expected_revision) is not int or layer.layer_revision != expected_revision + 1:
-            raise SpatialRevisionConflictError("stale layer revision")
+            raise SpatialLayerRevisionConflictError("stale layer revision")
         prior = self.get_layer(context=context, layer_id=layer.id, lock=True)
         if (
             prior is None
             or prior.lifecycle != Lifecycle.ACTIVE
             or prior.layer_revision != expected_revision
         ):
-            raise SpatialRevisionConflictError("stale layer revision")
+            raise SpatialLayerRevisionConflictError("stale layer revision")
         if (prior.source_id, prior.created_at) != (layer.source_id, layer.created_at):
             raise SpatialScopeError("layer source and identity are immutable")
         if (
@@ -675,7 +733,7 @@ class SqlSpatialRepository:
             },
         ).scalar_one_or_none()
         if changed is None:
-            raise SpatialRevisionConflictError("stale layer revision")
+            raise SpatialLayerRevisionConflictError("stale layer revision")
 
     def has_active_layers(self, *, context: AuthorizationContext, source_id: UUID) -> bool:
         params = self._scope(context) | {"source": source_id}
