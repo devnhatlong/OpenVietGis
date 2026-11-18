@@ -1,6 +1,6 @@
 # R003 Reference Fixture and Benchmark Profile
 
-**Status**: research preparation; implementation remains gated by R002 convergence/promotion.
+**Status**: planning input on verified R002 main; runtime remains gated by R003 plan/tasks approval.
 
 **Captured**: 2026-11-18
 
@@ -29,7 +29,7 @@ A source fixture may contain null geometry only in an explicit negative/availabi
 
 ## Primary 10,000-feature benchmark source
 
-Create three deterministic physical fixture tables owned by the platform test fixture, all under one synthetic Project and one synthetic Organization:
+Create three deterministic reference source datasets owned by the platform fixture registry, materialized into scoped feature storage under one synthetic Project and one synthetic Organization. Physical table names are not part of the source contract:
 
 | Dataset | Features | Native CRS | Geometry |
 | --- | ---: | --- | --- |

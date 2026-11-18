@@ -1,6 +1,6 @@
 # R003 VN-2000 CRS Control Evidence
 
-**Status**: research evidence only; does not authorize R003 runtime implementation before R002 convergence/promotion.
+**Status**: research evidence on verified R002 main; runtime still requires approved R003 plan/tasks and independent acceptance.
 
 **Captured**: 2026-11-18
 
@@ -74,6 +74,17 @@ OpenVietGIS research transformed each projected point first to EPSG:4756 and ind
 | HVS-QN3 | 2,292,185.83 / 438,891.96 | 0.147 m | 0.052 m |
 | HVS-QN4 | 2,291,378.72 / 439,365.92 | 0.168 m | 0.096 m |
 
+### Frozen published target coordinates
+
+The same cited EIA printed p.45 Table 1.4 and drawing QH-04, table ‘TOẠ ĐỘ KHU NEO CHUYỂN TẢI NAM HÒN MIỀU’, independently publish the following targets for the identical projected X/Y rows. DMS to 0.01 arc-second; store as independently parsed numeric fixtures, not coordinates generated from the tested transform.
+
+| Point | Published VN-2000 (lat, lon) | Published WGS-84 (lat, lon) |
+| --- | --- | --- |
+| HVS-QN1 | 20°42'42.09"N, 107°09'32.44"E | 20°42'38.48"N, 107°09'39.19"E |
+| HVS-QN2 | 20°43'09.30"N, 107°09'15.56"E | 20°43'05.69"N, 107°09'22.31"E |
+| HVS-QN3 | 20°43'19.41"N, 107°09'47.82"E | 20°43'15.80"N, 107°09'54.57"E |
+| HVS-QN4 | 20°42'53.22"N, 107°10'04.30"E | 20°42'49.61"N, 107°10'11.05"E |
+
 Observed residuals are **0.125–0.189 m** against the published VN-2000 geographic values and **0.052–0.129 m** against the published WGS-84 values.
 
 The inverse checks were run independently from the published geographic targets back to EPSG:5899. VN-2000 geographic -> 5899 residuals are **0.125–0.189 m** and WGS-84 -> 5899 residuals are **0.052–0.129 m**, matching the forward fixture within rounding. This verifies both advertised directions against the independent published coordinates rather than relying on a round-trip through the implementation itself.
@@ -84,7 +95,7 @@ For the first R003 Quang Ninh projected profile, use a conservative **1 m accept
 
 For the first R003 slice, the evidence supports treating **EPSG:4756 -> EPSG:4326** as a validated geographic transformation in the Quang Ninh control region with a conservative **3 m acceptance tolerance**. The 3 m number is an OpenVietGIS test tolerance for this rounded public control table, not a claim of survey/cadastral accuracy and not a replacement for RTK/geodetic control.
 
-The inverse 4326 -> 4756 may be tested against the same pairs but must be recorded separately before acceptance if shipped.
+The inverse 4326 -> 4756 has independent research evidence as recorded above; re-run both directions as separate acceptance tests.
 
 The evidence supports **EPSG:5899 <-> EPSG:4756** and **EPSG:5899 <-> EPSG:4326** for the first Quang Ninh projected profile with the 1 m control-fixture tolerance above. EPSG:5899 therefore moves from a definition-only candidate into the selected verified VN-2000 profile set for R003.
 

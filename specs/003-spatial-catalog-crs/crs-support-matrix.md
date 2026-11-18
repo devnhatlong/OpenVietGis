@@ -1,6 +1,6 @@
 # R003 CRS Support Matrix
 
-**Status**: research gate candidate; runtime implementation remains blocked until R002 convergence/promotion and R003 plan/tasks approval.
+**Status**: research input on verified R002 main; runtime remains gated by R003 plan/tasks approval and independent control evidence.
 
 **Captured**: 2026-11-18
 
@@ -99,6 +99,7 @@ If the planner chooses a different convention, it must change the contract and c
 - EPSG:3857: only its published web-mapping latitude domain is accepted.
 - EPSG:4756 / operation 6960: Vietnam onshore; the first independent acceptance fixture is Quang Ninh.
 - EPSG:5899: only areas covered by the EPSG definition may be considered, and R003 first-slice validated transformation evidence is specifically the Quang Ninh fixture.
+- Product guard rails: trusted reference-fixture provenance plus closed geographic longitude/latitude rectangles [106.88,108.07] × [20.70,21.42] (4756↔4326), [107.15,107.18] × [20.70,20.73] (all 5899 edges); every vertex must pass input/output checks, projected inputs checked by approved inverse projection. Published controls include water/anchorage coordinates; these are limited fixture validations, not an extension of EPSG 6960's onshore scope or a survey accuracy guarantee.
 - "Inside numerical bounds" is not enough to prove a mislabeled CRS. R003 rejects known contradictions but does not claim to infer a CRS from plausible coordinate values.
 
 ## Runtime pin
