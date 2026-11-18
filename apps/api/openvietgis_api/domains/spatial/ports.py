@@ -12,6 +12,7 @@ from openvietgis_api.domains.spatial.domain import (
     CatalogChange,
     DataSource,
     Layer,
+    NativeGeometry,
     ReferenceFeature,
     SourceField,
 )
@@ -55,6 +56,10 @@ class SpatialUnsupportedTransformationError(ValueError):
 
 class SpatialTransformationUnavailableError(ValueError):
     """The operation is approved but has no validated execution runtime yet."""
+
+
+class SpatialTransformationOutOfAreaError(ValueError):
+    """A vertex or fixture provenance is outside the approved operation domain."""
 
 
 class SpatialProjectReadOnlyError(ValueError):
@@ -181,6 +186,13 @@ class SpatialLayerRepository(SpatialSourceRepository, Protocol):
 
 class SpatialFeatureRepository(SpatialLayerRepository, Protocol):
     """Authorized pinned feature reads and controlled fixture refresh."""
+
+    def transform_features(
+        self, *, context: AuthorizationContext, source: DataSource,
+        features: Sequence[ReferenceFeature], target_code: int,
+    ) -> tuple[NativeGeometry, ...]:
+        """Transform a bounded pinned response copy using only a direct approved edge."""
+        ...
 
     def read_features(
         self,

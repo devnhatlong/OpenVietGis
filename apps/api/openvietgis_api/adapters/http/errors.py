@@ -25,6 +25,7 @@ from openvietgis_api.domains.spatial.ports import (
     SpatialSourceAlreadyRegisteredError,
     SpatialSourceNotReadyError,
     SpatialStaleReadPinError,
+    SpatialTransformationOutOfAreaError,
     SpatialTransformationUnavailableError,
     SpatialUnknownReferenceKeyError,
     SpatialUnsupportedCRSError,
@@ -68,6 +69,11 @@ _SPATIAL_ERRORS: dict[type[Exception], tuple[int, str, str]] = {
         422,
         "UNSUPPORTED_TRANSFORMATION",
         "No approved direct operation exists.",
+    ),
+    SpatialTransformationOutOfAreaError: (
+        422,
+        "TRANSFORMATION_OUT_OF_AREA",
+        "The source is outside the approved operation area or evidence.",
     ),
     SpatialTransformationUnavailableError: (
         422,

@@ -645,11 +645,16 @@ def _ready_parts(geometry: NativeGeometry) -> tuple[tuple[tuple[float, float], .
     return parts
 
 
-def _validate_position_domain(x: float, y: float, srid: int) -> None:
+def _validate_position_domain(
+    x: float, y: float, srid: int, *, output_roundoff: bool = False
+) -> None:
     if srid in (4326, 4756):
         if not -180 <= x <= 180 or not -90 <= y <= 90:
             raise SpatialValidationError("geographic position outside XY domain")
-    elif srid == 3857 and (abs(x) > WEB_MERCATOR_MAX or abs(y) > WEB_MERCATOR_MAX):
+    elif srid == 3857 and (
+        abs(x) > WEB_MERCATOR_MAX + (1e-6 if output_roundoff else 0)
+        or abs(y) > WEB_MERCATOR_MAX + (1e-6 if output_roundoff else 0)
+    ):
         raise SpatialValidationError("Web Mercator position outside domain")
     # 5899 operation area/provenance are separately determined by the approved CRS pipeline.
 
@@ -658,6 +663,8 @@ def validate_ready_geometry(
     geometry: NativeGeometry,
     expected_family: GeometryFamily | None = None,
     expected_srid: int | None = None,
+    *,
+    output_roundoff: bool = False,
 ) -> tuple[tuple[float, float], ...]:
     """Validate shape/XY/domain/bounds; native PostGIS topology is also checked by the adapter."""
     _readable_crs(geometry.srid)
@@ -670,7 +677,7 @@ def validate_ready_geometry(
     parts = _ready_parts(geometry)
     for part in parts:
         for x, y in part:
-            _validate_position_domain(x, y, srid)
+            _validate_position_domain(x, y, srid, output_roundoff=output_roundoff)
         if srid in (4326, 4756) and any(
             abs(previous[0] - following[0]) > 180
             for previous, following in zip(part, part[1:], strict=False)

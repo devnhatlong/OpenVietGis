@@ -15,6 +15,7 @@ from openvietgis_api.domains.authorization.permissions import Permission
 from openvietgis_api.domains.authorization.service import TenantResourceNotFoundError
 from openvietgis_api.domains.spatial.crs import (
     CoordinateReferenceWire,
+    TransformationProfileWire,
     get_coordinate_reference,
     get_transformation_profile,
 )
@@ -56,7 +57,6 @@ from openvietgis_api.domains.spatial.ports import (
     SpatialSourceNotReadyError,
     SpatialSourceRepository,
     SpatialStaleReadPinError,
-    SpatialTransformationUnavailableError,
     SpatialUnsupportedCRSError,
     SpatialUnsupportedTransformationError,
 )
@@ -771,7 +771,7 @@ class FeatureReadContextWire(TypedDict):
     schema_revision: str
     geometry_included: bool
     response_crs: CoordinateReferenceWire | None
-    transformation: None
+    transformation: TransformationProfileWire | None
 
 
 class FeaturePageWire(TypedDict):
@@ -876,6 +876,7 @@ class SpatialFeatureService:
         if type(include_geometry) is not bool:
             raise SpatialValidationError("invalid geometry inclusion")
         reference = None
+        transformation = None
         if not include_geometry:
             if response_crs is not None:
                 raise SpatialInvalidFeatureRequestError("response CRS requires geometry")
@@ -888,11 +889,10 @@ class SpatialFeatureService:
             if reference is None:
                 raise SpatialUnsupportedCRSError("requested CRS is not readable")
             if target != native:
-                if get_transformation_profile(native, target) is None:
+                operation = get_transformation_profile(native, target)
+                if operation is None:
                     raise SpatialUnsupportedTransformationError("no approved direct operation")
-                # US5 must verify exact control evidence and native runtime before
-                # any coordinate-changing operation is allowed.
-                raise SpatialTransformationUnavailableError("transformation execution unavailable")
+                transformation = operation.to_wire()
         detail = catalog._detail(context=context, source=source)
         wire: FeatureReadContextWire = {
             "organization_id": source.organization_id,
@@ -903,9 +903,40 @@ class SpatialFeatureService:
             "schema_revision": source.schema_revision,
             "geometry_included": include_geometry,
             "response_crs": reference.to_wire() if reference is not None else None,
-            "transformation": None,
+            "transformation": transformation,
         }
         return detail, wire
+
+    def _serialize_response(
+        self, *, context: AuthorizationContext, detail: SourceDetail,
+        wire: FeatureReadContextWire, features: Sequence[ReferenceFeature],
+    ) -> list[FeatureWire]:
+        result = [
+            serialize_feature(
+                detail.source, detail.fields, feature,
+                include_geometry=wire["geometry_included"],
+            )
+            for feature in features
+        ]
+        if wire["transformation"] is None:
+            return result
+        reference = wire["response_crs"]
+        if reference is None or not wire["geometry_included"]:
+            raise SpatialValidationError("transform response requires coordinate reference")
+        geometries = self.repository.transform_features(
+            context=context, source=detail.source, features=features, target_code=reference["code"],
+        )
+        if len(geometries) != len(result):
+            raise SpatialValidationError("transform response count disagrees")
+        for item, geometry in zip(result, geometries, strict=True):
+            validate_ready_geometry(
+                geometry, detail.source.geometry_family, reference["code"], output_roundoff=True,
+            )
+            item["geometry"] = {
+                "type": geometry.type, "coordinates": geometry.coordinates,
+                "coordinate_reference": reference,
+            }
+        return result
 
     def read_features(
         self,
@@ -947,11 +978,9 @@ class SpatialFeatureService:
             if previous is not None and row.feature_id <= previous:
                 raise SpatialValidationError("feature page is not strictly ordered")
             previous = row.feature_id
-            serialized = serialize_feature(
-                detail.source, detail.fields, row, include_geometry=include_geometry
-            )
-            if len(items) < limit:
-                items.append(serialized)
+        items = self._serialize_response(
+            context=context, detail=detail, wire=wire, features=rows,
+        )[:limit]
         return {
             "context": wire,
             "items": items,
@@ -991,9 +1020,9 @@ class SpatialFeatureService:
             raise SpatialValidationError("feature identity disagrees")
         return {
             "context": wire,
-            "feature": serialize_feature(
-                detail.source, detail.fields, feature, include_geometry=include_geometry
-            ),
+            "feature": self._serialize_response(
+                context=context, detail=detail, wire=wire, features=[feature],
+            )[0],
         }
 
     def refresh_reference_fixture_for_test(

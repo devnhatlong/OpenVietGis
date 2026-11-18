@@ -31,6 +31,7 @@ from openvietgis_api.adapters.persistence.spatial_fixtures import (
     validate_reference_candidate,
     validate_reference_correction,
 )
+from openvietgis_api.adapters.persistence.spatial_transform import transform_response_geometries
 from openvietgis_api.adapters.persistence.tenancy_repository import SqlTenancyRepository
 from openvietgis_api.config import get_settings
 from openvietgis_api.domains.audit.domain import AuditEvent, AuditOutcome
@@ -908,6 +909,22 @@ class SqlSpatialRepository:
         if (source.content_revision, source.schema_revision) != (content_revision, schema_revision):
             raise SpatialStaleReadPinError("read pins are stale; reload the current catalog")
         return source
+
+    def transform_features(
+        self, *, context: AuthorizationContext, source: DataSource,
+        features: Sequence[ReferenceFeature], target_code: int,
+    ) -> tuple[NativeGeometry, ...]:
+        current = self._pinned_source(
+            context=context, source_id=source.id,
+            content_revision=source.content_revision, schema_revision=source.schema_revision,
+        )
+        if current != source:
+            raise SpatialValidationError("transform source snapshot disagrees")
+        return transform_response_geometries(
+            self._session,
+            scope=self._scope(context, permission=Permission.PROJECT_READ),
+            source=current, features=features, target_code=target_code, decode=_read_native_wkb,
+        )
 
     def read_features(
         self,

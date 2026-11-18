@@ -69,6 +69,11 @@ class FeatureRepositoryDouble(LayerRepositoryDouble):
     page_calls: list[tuple[UUID, str, str, str | None, int]] = field(default_factory=list)
     detail_calls: list[tuple[UUID, str, str, str]] = field(default_factory=list)
 
+    def transform_features(self, **kwargs):
+        from openvietgis_api.domains.spatial.ports import SpatialTransformationUnavailableError
+
+        raise SpatialTransformationUnavailableError("synthetic unavailable runtime")
+
     def _pinned_records(self, *, context, source_id, content_revision, schema_revision):
         self._assert_scope(context)
         source = self.sources[source_id]
@@ -171,6 +176,7 @@ def feature_http(monkeypatch: pytest.MonkeyPatch) -> Iterator[FeatureHTTP]:
         "insert_layer",
         "read_features",
         "get_feature",
+        "transform_features",
     ):
         method = getattr(repository, name)
         monkeypatch.setattr(

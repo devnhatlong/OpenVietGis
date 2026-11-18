@@ -30,7 +30,10 @@ from openvietgis_api.adapters.http.security import (
     require_csrf,
 )
 from openvietgis_api.adapters.persistence.spatial_repository import SqlSpatialRepository
+from openvietgis_api.domains.authorization.permissions import Permission
 from openvietgis_api.domains.spatial.crs import (
+    CRS_PROFILES,
+    TRANSFORMATION_PROFILES,
     CRSProfileWire,
     get_coordinate_reference,
     get_crs_profile,
@@ -54,6 +57,27 @@ from openvietgis_api.domains.spatial.service import (
 
 router = APIRouter(tags=["spatial"])
 _SOURCE_PATH = "/organizations/{organization_id}/projects/{project_id}/spatial/sources"
+
+
+@router.get(
+    "/organizations/{organization_id}/projects/{project_id}/spatial/crs-profiles",
+    operation_id="listSpatialCrsProfiles",
+)
+def list_crs_profiles(
+    organization_id: UUID,
+    project_id: UUID,
+    authentication: Annotated[AuthenticatedRequest, Depends(authenticate_request)],
+    session: Annotated[Session, Depends(get_db_session, scope="function")],
+) -> dict[str, object]:
+    context = context_for(authentication, organization_id=organization_id, project_id=project_id)
+    SqlSpatialRepository(session).prepare_scope(
+        context=context, permission=Permission.PROJECT_READ, mutation=False,
+    )
+    return {
+        "organization_id": organization_id, "project_id": project_id,
+        "profiles": [profile.to_wire() for profile in CRS_PROFILES],
+        "transformations": [profile.to_wire() for profile in TRANSFORMATION_PROFILES],
+    }
 
 SourceName = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)]
 ReferenceKey = Annotated[
