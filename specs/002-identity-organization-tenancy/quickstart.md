@@ -86,6 +86,13 @@ Expected result before login:
 
 ## 5. Authenticate and bootstrap the first Organization
 
+**P1 prerequisite fixture (FR-051):** T080 exercises normal human Tenant Core using a dedicated
+synthetic test database initialized by the tracked test fixture. Run the actual provider login,
+then normal Organization creation (5A) and sections 6–10. Do not require bootstrap in P1 or
+implement bootstrap early to satisfy T080. The bootstrap-specific assertions below, including
+the one-time authority and anonymous denial, remain mandatory for P2 (T097–T105) and full T113.
+A fixture marker is not evidence that bootstrap itself works.
+
 1. Sign in with the synthetic bootstrap Owner identity through Keycloak.
 2. Observe that the internal User exists but has no Organization yet.
 3. Open the one-time setup flow.
