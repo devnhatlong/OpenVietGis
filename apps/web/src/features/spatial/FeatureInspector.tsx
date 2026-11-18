@@ -9,7 +9,7 @@ import { apiClient } from "../../app/api";
 import { currentProtectedData, protectedQueryOptions } from "../../app/protected-query";
 import {
   canReadFeatures, createTraversal, FEATURE_PAGE_SIZE,
-  featureDetailKey, featurePageKey, featureResponseMatchesScope, formatFeatureValue,
+  featureDetailKey, featureDetailNeedsRevalidation, featurePageKey, featureResponseMatchesScope, formatFeatureValue,
   isStaleFeaturePin, nextFeaturePage, previousFeaturePage, reconcileTraversal,
   restartFeatureTraversal, selectFeature, type FeatureReadScope, type FeatureTraversal
 } from "./feature-inspector";
@@ -63,8 +63,9 @@ function CurrentFeatureInspector({
 }: {
   scope: FeatureReadScope; fields: SpatialSource["schema"]["fields"];
   state: FeatureTraversal; setTraversal: (state: FeatureTraversal) => void;
-  reloadMetadata: () => void;
+  reloadMetadata: (clearSelection?: boolean) => void;
 }) {
+  const [detailBlocked, setDetailBlocked] = useState(false);
   const options = {
     content_revision: scope.contentRevision,
     schema_revision: scope.schemaRevision,
@@ -76,23 +77,32 @@ function CurrentFeatureInspector({
       ...options, limit: FEATURE_PAGE_SIZE,
       ...(state.cursor === null ? {} : { after_feature_id: state.cursor })
     }),
+    enabled: !detailBlocked,
     ...protectedQueryOptions
   });
   const detailQuery = useQuery({
     queryKey: featureDetailKey(scope, state.selected),
     queryFn: () => getSpatialFeature(apiClient, scope.organizationId, scope.projectId,
       scope.layerId, state.selected ?? "", options),
-    enabled: state.selected !== null,
+    enabled: state.selected !== null && !detailBlocked,
     ...protectedQueryOptions
   });
 
+  const blocked = featureDetailNeedsRevalidation(detailBlocked, detailQuery.error);
+  if (blocked !== detailBlocked) setDetailBlocked(blocked);
+  if (blocked) {
+    return <>
+      <p role="alert">The selected feature or Layer is unavailable. Reload current Layer metadata and restart before showing feature data.</p>
+      <button type="button" onClick={() => reloadMetadata(true)}>Revalidate Layer and restart</button>
+    </>;
+  }
   const stale = isStaleFeaturePin(pageQuery.error) || isStaleFeaturePin(detailQuery.error);
   // A stale response in either read invalidates the whole pinned view: never
   // show an older cached page or detail while retrying the other.
   if (stale) {
     return <>
       <p role="alert">The content or schema changed. Reload current metadata and restart from the first page.</p>
-      <button type="button" onClick={reloadMetadata}>Reload revisions and restart</button>
+      <button type="button" onClick={() => reloadMetadata()}>Reload revisions and restart</button>
     </>;
   }
   if (detailQuery.error instanceof ApiError && [401, 403].includes(detailQuery.error.status)) {
@@ -159,9 +169,7 @@ function CurrentFeatureInspector({
           </p>
           {matchingDetail ? <FeatureDetail feature={detail.feature} fields={fields} /> :
             <p role={detailQuery.error || detail ? "alert" : "status"}>
-              {detailQuery.error instanceof ApiError && detailQuery.error.status === 404
-                ? "The selected feature is unavailable under the current revisions. Select a different ID or clear the selection."
-                : detailQuery.error ? readError(detailQuery.error)
+              {detailQuery.error ? readError(detailQuery.error)
                   : detail ? "The feature detail does not match the selected ID and current revisions."
                     : "Checking current feature detail access…"}
             </p>}
@@ -205,8 +213,9 @@ export function FeatureInspector({
     <section aria-label="Feature inspector" style={{ borderTop: "1px solid #aaa", paddingTop: 16, marginTop: 16 }}>
       <h3>Feature inspector</h3>
       <CurrentFeatureInspector scope={scope} fields={layer.source.schema.fields}
-        state={state} setTraversal={setTraversal} reloadMetadata={() => {
-          setTraversal(restartFeatureTraversal(state));
+        state={state} setTraversal={setTraversal} reloadMetadata={clearSelection => {
+          const restarted = restartFeatureTraversal(state);
+          setTraversal(clearSelection ? selectFeature(restarted, null) : restarted);
           setReloading(true);
           void reloadMetadata().finally(() => setReloading(false));
         }} />

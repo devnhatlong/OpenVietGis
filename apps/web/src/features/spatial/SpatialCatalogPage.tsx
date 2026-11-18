@@ -27,6 +27,8 @@ import { apiClient } from "../../app/api";
 import { currentProtectedData, protectedQueryOptions } from "../../app/protected-query";
 import { FreshAccount } from "../auth/FreshAccount";
 import { FeatureInspector } from "./FeatureInspector";
+import { CatalogHistoryPanel } from "./CatalogHistoryPanel";
+import { canReadHistory, historyPrefix } from "./catalog-history";
 
 const fixtureSuggestions = [
   "reference_points_4326", "reference_lines_4326", "reference_polygons_4326",
@@ -128,6 +130,7 @@ function LayerPanel({ organizationId, projectId, accountId, source, writable }: 
 }) {
   const queryClient = useQueryClient();
   const prefix = ["spatial-catalog", accountId, organizationId, projectId, "layers"];
+  const changesPrefix = historyPrefix({ accountId, organizationId, projectId });
   const [cursor, setCursor] = useState<string | undefined>();
   const [history, setHistory] = useState<(string | undefined)[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
@@ -170,11 +173,17 @@ function LayerPanel({ organizationId, projectId, accountId, source, writable }: 
       }
       if (input.kind === "retire") setSelected(null);
       setRename(""); setConfirmRetire(false);
-      await queryClient.invalidateQueries({ queryKey: prefix });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: prefix }),
+        queryClient.invalidateQueries({ queryKey: changesPrefix })
+      ]);
     },
     onError: async (error) => {
       setConfirmRetire(false);
-      await queryClient.invalidateQueries({ queryKey: prefix });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: prefix }),
+        queryClient.invalidateQueries({ queryKey: changesPrefix })
+      ]);
       // Preserve an actionable stale/no-op error across a local re-read;
       // current-access failures also revalidate the parent gate.
       if ((error instanceof ApiError && [401, 403, 404].includes(error.status)) ||
@@ -316,6 +325,8 @@ function CatalogView({ organizationId, projectId, accountId }: {
     ...protectedQueryOptions
   });
   const project = currentProtectedData(projectQuery);
+  const historyScope = { accountId, organizationId, projectId };
+  const hasProjectAccess = canReadHistory(historyScope, project);
   const listQuery = useQuery({
     queryKey: [...queryPrefix, "list", afterId ?? null],
     queryFn: () => listSpatialSources(apiClient, organizationId, projectId, {
@@ -327,7 +338,7 @@ function CatalogView({ organizationId, projectId, accountId }: {
   const detailQuery = useQuery({
     queryKey: [...queryPrefix, "detail", selected],
     queryFn: () => getSpatialSource(apiClient, organizationId, projectId, selected ?? ""),
-    enabled: selected !== null && project !== undefined && catalog !== undefined,
+    enabled: selected !== null && hasProjectAccess && catalog !== undefined,
     ...protectedQueryOptions
   });
   const detail = currentProtectedData(detailQuery);
@@ -384,9 +395,10 @@ function CatalogView({ organizationId, projectId, accountId }: {
       <p><Link to={"/organizations/" + encodeURIComponent(organizationId) + "/projects"}>← Projects</Link></p>
       <h1>Spatial source catalog</h1>
       <p>Register and inspect trusted reference fixtures. No uploads or external data connections.</p>
-      {!project || !catalog ? (
-        <p role={projectQuery.error || listQuery.error ? "alert" : "status"}>
-          {projectQuery.error || listQuery.error ? "Unable to load current Project access." : "Checking Project access…"}
+      {!project || !hasProjectAccess || !catalog ? (
+        <p role={projectQuery.error || listQuery.error || (project && !hasProjectAccess) ? "alert" : "status"}>
+          {project && !hasProjectAccess ? "Current Project scope is unavailable." :
+            projectQuery.error || listQuery.error ? "Unable to load current Project access." : "Checking Project access…"}
         </p>
       ) : (
         <>
@@ -478,6 +490,7 @@ function CatalogView({ organizationId, projectId, accountId }: {
           </> : null}
           <LayerPanel organizationId={organizationId} projectId={projectId}
             accountId={accountId} source={detail} writable={writable} />
+          <CatalogHistoryPanel scope={historyScope} />
         </>
       )}
     </main>

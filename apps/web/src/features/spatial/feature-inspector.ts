@@ -1,4 +1,4 @@
-import { SpatialApiError, type SpatialFeatureReadContext } from "@openvietgis/client-sdk";
+import { ApiError, SpatialApiError, type SpatialFeatureReadContext } from "@openvietgis/client-sdk";
 
 /** All reads remain in the existing account/owner/Layer cache boundary. */
 export interface FeatureReadScope {
@@ -130,4 +130,13 @@ export function formatFeatureValue(value: string | number | boolean | null | und
 
 export function isStaleFeaturePin(error: unknown): boolean {
   return error instanceof SpatialApiError && error.status === 409 && error.code === "STALE_READ_PIN";
+}
+
+/**
+ * Detail 404 is ambiguous (the feature, Layer, or current authority may be
+ * gone). Keep the entire view blocked through background refetches. The caller
+ * clears this latch only by explicit current Layer metadata revalidation.
+ */
+export function featureDetailNeedsRevalidation(blocked: boolean, error: unknown): boolean {
+  return blocked || (error instanceof ApiError && error.status === 404);
 }
