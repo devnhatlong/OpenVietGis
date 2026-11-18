@@ -2,18 +2,22 @@
 
 from __future__ import annotations
 
+import json
+from dataclasses import asdict, replace
 from uuid import UUID
 
 from sqlalchemy import text
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.orm import Session
 
+from openvietgis_api.adapters.persistence.audit_repository import SqlAuditRepository
 from openvietgis_api.adapters.persistence.rls import (
     bind_verified_project_context,
     clear_project_context,
     require_project_context,
 )
 from openvietgis_api.adapters.persistence.tenancy_repository import SqlTenancyRepository
+from openvietgis_api.domains.audit.domain import AuditEvent, AuditOutcome
 from openvietgis_api.domains.authorization.context import AuthorizationContext
 from openvietgis_api.domains.authorization.permissions import Permission
 from openvietgis_api.domains.authorization.service import (
@@ -21,6 +25,8 @@ from openvietgis_api.domains.authorization.service import (
     TenantResourceNotFoundError,
 )
 from openvietgis_api.domains.spatial.domain import (
+    CatalogChange,
+    CatalogOperation,
     DataSource,
     Extent,
     ExtentState,
@@ -29,14 +35,17 @@ from openvietgis_api.domains.spatial.domain import (
     GeometryFamily,
     Layer,
     Lifecycle,
+    ResourceType,
     SchemaState,
     SourceKind,
+    SpatialValidationError,
     ValidationReason,
     ValidationReasonCode,
     ValidationState,
 )
 from openvietgis_api.domains.spatial.ports import (
     SpatialProjectReadOnlyError,
+    SpatialRevisionConflictError,
     SpatialScopeError,
 )
 from openvietgis_api.domains.tenancy.domain import OrganizationStatus, ProjectStatus
@@ -59,7 +68,8 @@ def _source_from_row(row: RowMapping) -> DataSource:
         validation_state=ValidationState(row["validation_state"]),
         validation_reason=(
             ValidationReason(ValidationReasonCode(reason["code"]), reason["message"])
-            if reason is not None else None
+            if reason is not None
+            else None
         ),
         source_crs=row["source_crs"],
         stored_crs=row["stored_crs"],
@@ -113,7 +123,8 @@ class SqlSpatialRepository:
             raise SpatialScopeError("explicit project scope required")
         allowed = (
             {Permission.PROJECT_EDIT, Permission.PROJECT_MANAGE}
-            if mutation else {Permission.PROJECT_READ}
+            if mutation
+            else {Permission.PROJECT_READ}
         )
         if permission not in allowed:
             raise SpatialScopeError("spatial action does not match requested scope")
@@ -152,7 +163,8 @@ class SqlSpatialRepository:
     @staticmethod
     def _assert_owner(context: AuthorizationContext, resource: DataSource | Layer) -> None:
         if (resource.organization_id, resource.project_id) != (
-            context.organization_id, context.project_id
+            context.organization_id,
+            context.project_id,
         ):
             raise TenantResourceNotFoundError("resource not found")
 
@@ -166,14 +178,18 @@ class SqlSpatialRepository:
         self, *, context: AuthorizationContext, source_id: UUID, lock: bool = False
     ) -> DataSource | None:
         params = self._scope(context) | {"id": source_id}
-        row = self._session.execute(
-            text(
-                "SELECT * FROM spatial.data_sources "
-                "WHERE organization_id=:organization AND project_id=:project AND id=:id"
-                + self._target_lock(context, lock)
-            ),
-            params,
-        ).mappings().one_or_none()
+        row = (
+            self._session.execute(
+                text(
+                    "SELECT * FROM spatial.data_sources "
+                    "WHERE organization_id=:organization AND project_id=:project AND id=:id"
+                    + self._target_lock(context, lock)
+                ),
+                params,
+            )
+            .mappings()
+            .one_or_none()
+        )
         return _source_from_row(row) if row is not None else None
 
     def get_layer(
@@ -193,10 +209,291 @@ class SqlSpatialRepository:
             source = self.get_source(context=context, source_id=row["source_id"], lock=True)
             if source is None:
                 raise TenantResourceNotFoundError("resource not found")
-            row = self._session.execute(
-                text(query + " AND source_id=:source" + self._target_lock(context, True)),
-                params | {"source": source.id},
-            ).mappings().one_or_none()
+            row = (
+                self._session.execute(
+                    text(query + " AND source_id=:source" + self._target_lock(context, True)),
+                    params | {"source": source.id},
+                )
+                .mappings()
+                .one_or_none()
+            )
             if row is None:
                 return None
         return _layer_from_row(row)
+
+    def update_source(
+        self, source: DataSource, *, context: AuthorizationContext, expected_revision: int
+    ) -> None:
+        permission = (
+            Permission.PROJECT_MANAGE
+            if source.lifecycle == Lifecycle.RETIRED
+            else Permission.PROJECT_EDIT
+        )
+        params = self._scope(context, permission=permission)
+        self._assert_owner(context, source)
+        if type(expected_revision) is not int or source.catalog_revision != expected_revision + 1:
+            raise SpatialRevisionConflictError("stale source catalog revision")
+        prior = self.get_source(context=context, source_id=source.id, lock=True)
+        if (
+            prior is None
+            or prior.lifecycle != Lifecycle.ACTIVE
+            or prior.catalog_revision != expected_revision
+        ):
+            raise SpatialRevisionConflictError("stale source catalog revision")
+        if (
+            source.reference_key,
+            source.fixture_version,
+            source.manifest_digest,
+            source.stored_crs,
+            source.created_at,
+        ) != (
+            prior.reference_key,
+            prior.fixture_version,
+            prior.manifest_digest,
+            prior.stored_crs,
+            prior.created_at,
+        ):
+            raise SpatialScopeError("source identity/native storage is immutable")
+        if (
+            source.lifecycle == Lifecycle.ACTIVE
+            and replace(
+                source, catalog_revision=prior.catalog_revision, updated_at=prior.updated_at
+            )
+            == prior
+        ):
+            raise SpatialValidationError("no material source change")
+        if source.lifecycle == Lifecycle.RETIRED:
+            if (
+                replace(
+                    source,
+                    lifecycle=prior.lifecycle,
+                    catalog_revision=prior.catalog_revision,
+                    updated_at=prior.updated_at,
+                    retired_at=prior.retired_at,
+                )
+                != prior
+            ):
+                raise SpatialScopeError("retirement cannot rewrite source data")
+            if self.has_active_layers(context=context, source_id=source.id):
+                raise SpatialValidationError("active layer dependencies")
+        changed = self._session.execute(
+            text(
+                """
+                UPDATE spatial.data_sources SET
+                    name=:name, lifecycle=:lifecycle, validation_state=:validation_state,
+                    validation_reason=CAST(:reason AS jsonb), source_crs=:source_crs,
+                    schema_state=:schema_state, geometry_family=:family, dimensions=:dimensions,
+                    feature_count_state=:count_state, feature_count=:feature_count,
+                    extent_state=:extent_state, extent=CAST(:extent AS jsonb),
+                    catalog_revision=:revision, content_revision=:content, schema_revision=:schema,
+                    updated_at=:updated_at, retired_at=:retired_at
+                WHERE organization_id=:organization AND project_id=:project AND id=:id
+                    AND catalog_revision=:expected AND lifecycle='active'
+                RETURNING id
+                """
+            ),
+            params
+            | {
+                "id": source.id,
+                "name": source.name,
+                "lifecycle": source.lifecycle.value,
+                "validation_state": source.validation_state.value,
+                "reason": json.dumps(source.validation_reason.to_wire())
+                if source.validation_reason is not None
+                else None,
+                "source_crs": source.source_crs,
+                "schema_state": source.schema_state.value,
+                "family": source.geometry_family.value,
+                "dimensions": source.dimensions.value,
+                "count_state": source.feature_count_state.value,
+                "feature_count": source.feature_count,
+                "extent_state": source.extent_state.value,
+                "extent": json.dumps(asdict(source.extent)) if source.extent is not None else None,
+                "revision": source.catalog_revision,
+                "content": source.content_revision,
+                "schema": source.schema_revision,
+                "updated_at": source.updated_at,
+                "retired_at": source.retired_at,
+                "expected": expected_revision,
+            },
+        ).scalar_one_or_none()
+        if changed is None:
+            raise SpatialRevisionConflictError("stale source catalog revision")
+        # Current-only pins; deferrable scoped FKs ensure all are consistent at commit.
+        pins = params | {
+            "source": source.id,
+            "schema": source.schema_revision,
+            "content": source.content_revision,
+        }
+        if prior.schema_revision != source.schema_revision:
+            self._session.execute(
+                text(
+                    "UPDATE spatial.source_fields SET schema_revision=:schema "
+                    "WHERE organization_id=:organization AND project_id=:project "
+                    "AND source_id=:source"
+                ),
+                pins,
+            )
+        if (prior.schema_revision, prior.content_revision) != (
+            source.schema_revision,
+            source.content_revision,
+        ):
+            self._session.execute(
+                text(
+                    "UPDATE spatial.reference_features SET schema_revision=:schema, "
+                    "content_revision=:content WHERE organization_id=:organization "
+                    "AND project_id=:project AND source_id=:source"
+                ),
+                pins,
+            )
+
+    def update_layer(
+        self, layer: Layer, *, context: AuthorizationContext, expected_revision: int
+    ) -> None:
+        params = self._scope(context, permission=Permission.PROJECT_EDIT)
+        self._assert_owner(context, layer)
+        if type(expected_revision) is not int or layer.layer_revision != expected_revision + 1:
+            raise SpatialRevisionConflictError("stale layer revision")
+        prior = self.get_layer(context=context, layer_id=layer.id, lock=True)
+        if (
+            prior is None
+            or prior.lifecycle != Lifecycle.ACTIVE
+            or prior.layer_revision != expected_revision
+        ):
+            raise SpatialRevisionConflictError("stale layer revision")
+        if (prior.source_id, prior.created_at) != (layer.source_id, layer.created_at):
+            raise SpatialScopeError("layer source and identity are immutable")
+        if (
+            layer.lifecycle == Lifecycle.ACTIVE
+            and replace(layer, layer_revision=prior.layer_revision, updated_at=prior.updated_at)
+            == prior
+        ):
+            raise SpatialValidationError("no material layer change")
+        if layer.lifecycle == Lifecycle.RETIRED and layer.name != prior.name:
+            raise SpatialValidationError("retirement cannot rename layer")
+        changed = self._session.execute(
+            text(
+                """
+                UPDATE spatial.layers SET name=:name, lifecycle=:lifecycle,
+                    layer_revision=:revision, updated_at=:updated_at, retired_at=:retired_at
+                WHERE organization_id=:organization AND project_id=:project AND id=:id
+                    AND source_id=:source AND layer_revision=:expected AND lifecycle='active'
+                RETURNING id
+                """
+            ),
+            params
+            | {
+                "id": layer.id,
+                "source": layer.source_id,
+                "name": layer.name,
+                "lifecycle": layer.lifecycle.value,
+                "revision": layer.layer_revision,
+                "updated_at": layer.updated_at,
+                "retired_at": layer.retired_at,
+                "expected": expected_revision,
+            },
+        ).scalar_one_or_none()
+        if changed is None:
+            raise SpatialRevisionConflictError("stale layer revision")
+
+    def has_active_layers(self, *, context: AuthorizationContext, source_id: UUID) -> bool:
+        params = self._scope(context) | {"source": source_id}
+        return bool(
+            self._session.execute(
+                text(
+                    "SELECT EXISTS (SELECT 1 FROM spatial.layers "
+                    "WHERE organization_id=:organization "
+                    "AND project_id=:project AND source_id=:source AND lifecycle='active')"
+                ),
+                params,
+            ).scalar_one()
+        )
+
+    def append_change(
+        self, change: CatalogChange, audit: AuditEvent, *, context: AuthorizationContext
+    ) -> None:
+        permission = (
+            Permission.PROJECT_MANAGE
+            if change.operation == CatalogOperation.RETIRE_SOURCE
+            else Permission.PROJECT_EDIT
+        )
+        params = self._scope(context, permission=permission)
+        if (
+            (change.organization_id, change.project_id)
+            != (context.organization_id, context.project_id)
+            or change.actor_id != context.actor.actor_id
+            or change.actor_type.value != context.actor.actor_type
+            or change.actor_display_snapshot != context.actor.display_name
+            or (
+                audit.id,
+                audit.organization_id,
+                audit.actor_type,
+                audit.actor_id,
+                audit.actor_display_snapshot,
+                audit.resource_type,
+                audit.resource_id,
+                audit.outcome,
+                audit.created_at,
+                audit.action,
+            )
+            != (
+                change.audit_event_id,
+                change.organization_id,
+                change.actor_type,
+                change.actor_id,
+                change.actor_display_snapshot,
+                change.resource_type.value,
+                change.resource_id,
+                AuditOutcome.SUCCESS,
+                change.created_at,
+                f"spatial.catalog.{change.operation.value}",
+            )
+            or audit.metadata
+            != {"project_id": str(change.project_id), "catalog_change_id": str(change.id)}
+        ):
+            raise SpatialScopeError("catalog and audit evidence mismatch")
+        resource = (
+            self.get_source(context=context, source_id=change.resource_id)
+            if change.resource_type == ResourceType.DATA_SOURCE
+            else self.get_layer(context=context, layer_id=change.resource_id)
+        )
+        if resource is None or resource.revision != change.new_revision:
+            raise SpatialRevisionConflictError("catalog evidence revision mismatch")
+        # Same session and outer transaction; append only, never independent commit.
+        SqlAuditRepository(self._session).append(audit)
+        self._scope(context, permission=permission)
+        self._session.execute(
+            text(
+                """
+                INSERT INTO spatial.catalog_changes (
+                    id, organization_id, project_id, resource_type, resource_id, source_id,
+                    layer_id, actor_type, actor_id, actor_display_snapshot, operation, created_at,
+                    audit_event_id, prior_revision, new_revision, changes
+                ) VALUES (
+                    :id, :organization, :project, :resource_type, :resource_id, :source_id,
+                    :layer_id, :actor_type, :actor_id, :actor_display_snapshot, :operation,
+                    :created_at, :audit_event_id, CAST(:prior AS jsonb),
+                    CAST(:new AS jsonb), CAST(:changes AS jsonb)
+                )
+                """
+            ),
+            params
+            | {
+                "id": change.id,
+                "resource_type": change.resource_type.value,
+                "resource_id": change.resource_id,
+                "source_id": change.source_id,
+                "layer_id": change.layer_id,
+                "actor_type": change.actor_type.value,
+                "actor_id": change.actor_id,
+                "actor_display_snapshot": change.actor_display_snapshot,
+                "operation": change.operation.value,
+                "created_at": change.created_at,
+                "audit_event_id": change.audit_event_id,
+                "prior": json.dumps(change.prior_revision.to_wire())
+                if change.prior_revision is not None
+                else None,
+                "new": json.dumps(change.new_revision.to_wire()),
+                "changes": json.dumps([item.to_wire() for item in change.changes]),
+            },
+        )

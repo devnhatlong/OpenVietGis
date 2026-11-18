@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 import pytest
@@ -16,7 +18,16 @@ from openvietgis_api.domains.authorization.service import (
     AuthorizationDeniedError,
     TenantResourceNotFoundError,
 )
-from openvietgis_api.domains.spatial.ports import SpatialProjectReadOnlyError
+from openvietgis_api.domains.spatial.domain import (
+    CatalogOperation,
+    Lifecycle,
+    SpatialValidationError,
+)
+from openvietgis_api.domains.spatial.ports import (
+    SpatialProjectReadOnlyError,
+    SpatialRevisionConflictError,
+)
+from openvietgis_api.domains.spatial.service import build_mutation_evidence
 from tests.fixtures.db_admin import get_admin_engine
 from tests.fixtures.identity_tenancy import AccessWorld, seed_access_world
 
@@ -32,7 +43,8 @@ def _context(world: AccessWorld, *, project: UUID | None = None) -> Authorizatio
 def _seed(world: AccessWorld) -> tuple[UUID, UUID]:
     source, layer = uuid4(), uuid4()
     with get_admin_engine().begin() as connection:
-        connection.execute(text("""
+        connection.execute(
+            text("""
             INSERT INTO spatial.data_sources (
                 id, organization_id, project_id, name, kind, reference_key, fixture_version,
                 manifest_digest, lifecycle, validation_state, source_crs, stored_crs, schema_state,
@@ -43,19 +55,30 @@ def _seed(world: AccessWorld) -> tuple[UUID, UUID]:
                 'reference_empty_4326','v1',:manifest,'active','ready',4326,4326,'known',
                 'Point','XY','known',0,'empty',1,:content,:schema,now(),now()
             )
-        """), {
-            "source": source, "org": world.organization_id, "project": world.project_id,
-            "manifest": "a"*64, "content": "b"*64, "schema": "c"*64,
-        })
-        connection.execute(text("""
+        """),
+            {
+                "source": source,
+                "org": world.organization_id,
+                "project": world.project_id,
+                "manifest": "a" * 64,
+                "content": "b" * 64,
+                "schema": "c" * 64,
+            },
+        )
+        connection.execute(
+            text("""
             INSERT INTO spatial.layers (
                 id,organization_id,project_id,source_id,name,lifecycle,layer_revision,
                 created_at,updated_at
             ) VALUES (:layer,:org,:project,:source,'Layer','active',1,now(),now())
-        """), {
-            "layer": layer, "source": source, "org": world.organization_id,
-            "project": world.project_id,
-        })
+        """),
+            {
+                "layer": layer,
+                "source": source,
+                "org": world.organization_id,
+                "project": world.project_id,
+            },
+        )
     return source, layer
 
 
@@ -95,10 +118,13 @@ def test_repository_archived_read_allowed_mutation_denied_and_scope_cleared(
     world = seed_access_world()
     source, _ = _seed(world)
     with get_admin_engine().begin() as connection:
-        connection.execute(text("""
+        connection.execute(
+            text("""
             UPDATE workspace.projects SET status='archived',archived_at=now(),updated_at=now()
             WHERE organization_id=:org AND id=:project
-        """), {"org": world.organization_id, "project": world.project_id})
+        """),
+            {"org": world.organization_id, "project": world.project_id},
+        )
     with get_session_factory()() as session:
         ctx = _context(world)
         bind_authenticated_actor(session, ctx.actor)
@@ -134,3 +160,109 @@ def test_repository_denies_ungranted_member_and_action_mismatch(
             repository.prepare_scope(
                 context=ctx, permission=Permission.PROJECT_EDIT, mutation=False
             )
+
+
+def test_source_cas_and_audit_are_atomic(migrated_database: None) -> None:
+    world = seed_access_world()
+    source_id, _ = _seed(world)
+    ctx = _context(world)
+    with get_session_factory()() as session:
+        bind_authenticated_actor(session, ctx.actor)
+        repo = SqlSpatialRepository(session)
+        repo.prepare_scope(context=ctx, permission=Permission.PROJECT_EDIT, mutation=True)
+        prior = repo.get_source(context=ctx, source_id=source_id, lock=True)
+        assert prior is not None
+        now = datetime.now(UTC)
+        current = replace(prior, name="Changed", catalog_revision=2, updated_at=now)
+        evidence = build_mutation_evidence(
+            context=ctx,
+            prior=prior,
+            current=current,
+            operation=CatalogOperation.UPDATE_SOURCE,
+            now=now,
+        )
+        repo.update_source(current, context=ctx, expected_revision=1)
+        repo.append_change(evidence.change, evidence.audit, context=ctx)
+        session.commit()
+    with get_admin_engine().begin() as connection:
+        result = (
+            connection.execute(
+                text("""
+            SELECT c.prior_revision,c.new_revision,c.changes,a.metadata
+            FROM spatial.catalog_changes c JOIN audit.audit_events a ON a.id=c.audit_event_id
+            WHERE c.resource_id=:id
+        """),
+                {"id": source_id},
+            )
+            .mappings()
+            .one()
+        )
+        assert result["prior_revision"] == prior.revision.to_wire()
+        assert result["new_revision"] == current.revision.to_wire()
+        assert result["changes"] == [item.to_wire() for item in evidence.change.changes]
+        assert result["metadata"] == evidence.audit.metadata
+    with get_session_factory()() as session:
+        bind_authenticated_actor(session, ctx.actor)
+        repo = SqlSpatialRepository(session)
+        repo.prepare_scope(context=ctx, permission=Permission.PROJECT_EDIT, mutation=True)
+        with pytest.raises(SpatialRevisionConflictError):
+            repo.update_source(current, context=ctx, expected_revision=1)
+        later = datetime.now(UTC)
+        rolled_back = replace(current, name="Rolled back", catalog_revision=3, updated_at=later)
+        evidence2 = build_mutation_evidence(
+            context=ctx,
+            prior=current,
+            current=rolled_back,
+            operation=CatalogOperation.UPDATE_SOURCE,
+            now=later,
+        )
+        repo.update_source(rolled_back, context=ctx, expected_revision=2)
+        repo.append_change(evidence2.change, evidence2.audit, context=ctx)
+        session.rollback()
+    with get_admin_engine().begin() as connection:
+        row = connection.execute(
+            text("""
+            SELECT name,catalog_revision FROM spatial.data_sources WHERE id=:id
+        """),
+            {"id": source_id},
+        ).one()
+        assert tuple(row) == ("Changed", 2)
+        assert (
+            connection.execute(
+                text("SELECT count(*) FROM spatial.catalog_changes WHERE resource_id=:id"),
+                {"id": source_id},
+            ).scalar_one()
+            == 1
+        )
+        assert (
+            connection.execute(
+                text("SELECT count(*) FROM audit.audit_events WHERE resource_id=:id"),
+                {"id": source_id},
+            ).scalar_one()
+            == 1
+        )
+
+
+def test_read_scope_cannot_write_and_active_layer_blocks_retire(
+    migrated_database: None,
+) -> None:
+    world = seed_access_world()
+    source_id, _ = _seed(world)
+    ctx = _context(world)
+    with get_session_factory()() as session:
+        bind_authenticated_actor(session, ctx.actor)
+        repo = SqlSpatialRepository(session)
+        repo.prepare_scope(context=ctx, permission=Permission.PROJECT_READ, mutation=False)
+        prior = repo.get_source(context=ctx, source_id=source_id)
+        assert prior is not None
+        now = datetime.now(UTC)
+        renamed = replace(prior, name="Not allowed", catalog_revision=2, updated_at=now)
+        with pytest.raises(PermissionError):
+            repo.update_source(renamed, context=ctx, expected_revision=1)
+        repo.prepare_scope(context=ctx, permission=Permission.PROJECT_MANAGE, mutation=True)
+        retired = replace(
+            prior, catalog_revision=2, lifecycle=Lifecycle.RETIRED, retired_at=now, updated_at=now
+        )
+        with pytest.raises(SpatialValidationError, match="active layer dependencies"):
+            repo.update_source(retired, context=ctx, expected_revision=1)
+        assert repo.get_source(context=ctx, source_id=source_id) == prior
