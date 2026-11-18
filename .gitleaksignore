@@ -1,0 +1,4 @@
+# Exact historical false positive: test_secret_surfaces exercises a 12-character
+# synthetic invitation prefix (inv_12345678), not an invitation credential.
+# No rule, path, real token, or future commit is exempted.
+41530b8071651eec9e6f9f8203aa720877614b31:tools/tests/test_secret_surfaces.py:generic-api-key:69

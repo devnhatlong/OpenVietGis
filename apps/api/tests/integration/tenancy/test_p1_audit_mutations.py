@@ -108,7 +108,7 @@ def _exercise_sensitive_mutations(
                     "slug": f"audit-{uuid4().hex}",
                 },
             )
-            assert created.status_code == 201, created.text
+            assert created.status_code == 201
             org_id = created.json()["organization"]["id"]
             owner_membership = created.json()["owner_membership"]["id"]
             root = f"/api/v1/organizations/{org_id}"
@@ -119,7 +119,7 @@ def _exercise_sensitive_mutations(
                     "slug": f"audit-project-{uuid4().hex}",
                 },
             )
-            assert project.status_code == 201, project.text
+            assert project.status_code == 201
             project_id = project.json()["id"]
 
             issued = owner.post(
@@ -159,7 +159,7 @@ def _exercise_sensitive_mutations(
                     "role": "viewer",
                 },
             )
-            assert grant.status_code == 201, grant.text
+            assert grant.status_code == 201
             grant_id = grant.json()["id"]
             assert owner.post(f"{root}/grants/{grant_id}/revoke").status_code == 204
             assert owner.post(f"{root}/grants/{bundled_grant_id}/revoke").status_code == 204
@@ -219,7 +219,7 @@ def _exercise_sensitive_mutations(
                     "target_membership_id": membership_id,
                 },
             )
-            assert transferred.status_code == 200, transferred.text
+            assert transferred.status_code == 200
             assert transferred.json()["new_owner"]["id"] == membership_id
             assert (
                 member.patch(
