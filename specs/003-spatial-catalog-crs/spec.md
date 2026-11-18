@@ -4,7 +4,7 @@
 
 **Created**: 2026-11-18
 
-**Status**: Planning on verified R002 main — first-slice research and contract/design review in progress; runtime acceptance not yet achieved.
+**Status**: Plan and tasks prepared on verified R002 main; independent design review passed after corrections. Runtime implementation and acceptance not yet achieved.
 
 **Input**: Parent roadmap: [ROADMAP.md, R003](../../ROADMAP.md#r003). Let authorized users register a spatial source, organize it into a reusable Layer within a Project, discover its schema, geometry and coordinate reference information, and read an explicitly supported reference dataset safely. Prepare the contract used by R004 Map Workspace and R005 Import & Export, without implementing either.
 
@@ -28,7 +28,7 @@ A GIS user working inside an authorized Project opens the catalog, registers an 
 
 **Acceptance Scenarios**:
 
-1. **Given** a supported reference source with a known geometry family and CRS, **When** an authorized user registers it in a Project, **Then** the catalog returns a stable source identity, provenance, schema, geometry description, CRS, extent state and readable status.
+1. **Given** a supported reference source with a known geometry family and CRS, **When** an authorized user registers it in a Project and a user with current catalog read authority inspects the newly registered source, **Then** the catalog exposes a stable source identity, provenance, schema, geometry description, CRS, extent state and readable status.
 2. **Given** a reference source has no reliable CRS, **When** registration is requested, **Then** the source cannot be reported ready for coordinate-dependent reads and the user receives an actionable reason; coordinates remain unchanged.
 3. **Given** the source is empty, **When** its metadata is requested, **Then** count is zero and extent is explicitly absent rather than a fabricated world extent.
 4. **Given** the supplied metadata conflicts with the actual geometry family, dimensions or CRS, **When** validation occurs, **Then** the catalog reports the mismatch and never silently coerces it.

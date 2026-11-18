@@ -30,7 +30,7 @@ Deliver Project-scoped spatial catalog registration and read-only feature inspec
 | Testable, independently verifiable delivery | Contract first; deterministic acceptance fixtures and independent geodetic controls; no self-derived target or claimed benchmark before measuring. |
 | Scope and reuse | R004/R005 consume contracts only; no map, import/export, external connectors or generic processing. |
 
-Pre-research check passes on verified-main. Phase 1 gate requires contract/model consistency, independent numeric control evidence, final scope/security review and generated task trace. No constitutional exception requested.
+Pre-research check passes on verified main. Phase 1 design and independent cross-spec/security review pass after aligning scoped audit FK, native fixtures in foundation, permission-safe metadata inspection, and numeric domain tolerance. OpenAPI 3.1 validates 10 paths/14 operations, 64 implementation tasks trace five stories and nine SCs. No constitutional exception requested. Runtime acceptance remains unmeasured; the unchecked requirements checklist outcome is not a design finding or a successful runtime result.
 
 ## Decisions and implementation sequence
 
