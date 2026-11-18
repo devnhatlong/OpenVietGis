@@ -23,8 +23,12 @@ from openvietgis_api.domains.authorization.context import (
     AuthorizationContext,
     InvitationAcceptanceContext,
 )
+from openvietgis_api.domains.authorization.roles import (
+    ORGANIZATION_ROLE_PERMISSIONS,
+    RESOURCE_ROLE_PERMISSIONS,
+)
 from openvietgis_api.domains.authorization.service import TenantResourceNotFoundError
-from openvietgis_api.domains.tenancy.domain import InvitationStatus
+from openvietgis_api.domains.tenancy.domain import InvitationStatus, MembershipRole, ResourceRole
 
 
 @pytest.fixture
@@ -106,25 +110,72 @@ def test_invitation_context_is_exact_id_and_never_member_authorization(session, 
     session.execute.assert_not_called()
 
 
-@pytest.mark.parametrize("scope", ["project", "workspace", "mismatch"])
+@pytest.mark.parametrize("scope", ["project", "workspace", "mismatch", "inactive"])
 def test_effective_permissions_do_not_inherit_for_missing_or_mismatched_scope(
     session, context, scope
 ):
-    response = session.execute.return_value
-    response.mappings.return_value.one_or_none.side_effect = [
-        {"id": uuid4(), "role": "owner"},
-        {"id": uuid4(), "workspace_id": uuid4()} if scope == "mismatch" else None,
-    ]
-    if scope == "workspace":
-        require_member_context(session, context, context.organization_id)
-        response.scalar_one_or_none.return_value = None
+    require_member_context(session, context, context.organization_id)
+    session.reset_mock()
+    session.execute.return_value.mappings.return_value.all.return_value = []
     scoped = AuthorizationContext(
         context.actor,
         context.organization_id,
         workspace_id=uuid4() if scope != "project" else None,
-        project_id=uuid4() if scope != "workspace" else None,
+        project_id=uuid4() if scope not in ("workspace", "inactive") else None,
     )
     assert SqlEffectivePermissionProvider(session).resolve(scoped) == frozenset()
+
+    session.execute.assert_called_once()
+    statement, params = session.execute.call_args.args
+    assert params["organization_id"] == context.organization_id
+    assert params["user_id"] == context.actor.actor_id
+    assert params["workspace_id"] == scoped.workspace_id
+    assert params["project_id"] == scoped.project_id
+    sql = str(statement)
+    # Scope validity is part of the same query as role selection, not a
+    # separate lookup that may observe an incompatible project placement.
+    for predicate in (
+        "m.status = 'active'",
+        "o.status = 'active'",
+        "p.organization_id = r.organization_id",
+        "w.organization_id = r.organization_id",
+        "p.id IS NOT NULL",
+        "r.workspace_id = p.workspace_id",
+        "w.id IS NOT NULL",
+        "g.organization_id = r.organization_id",
+        "g.membership_id = m.id",
+        "g.revoked_at IS NULL",
+        "WHEN r.project_id IS NOT NULL THEN p.workspace_id",
+    ):
+        assert predicate in sql
+
+
+def test_effective_permissions_union_multiple_grants_without_decision_cache(session, context):
+    require_member_context(session, context, context.organization_id)
+    provider = SqlEffectivePermissionProvider(session)
+    result = session.execute.return_value.mappings.return_value.all
+    result.return_value = [
+        {"membership_role": "member", "grant_role": "viewer"},
+        {"membership_role": "member", "grant_role": "manager"},
+    ]
+    session.reset_mock()
+    assert provider.resolve(context) == (
+        ORGANIZATION_ROLE_PERMISSIONS[MembershipRole.MEMBER]
+        | RESOURCE_ROLE_PERMISSIONS[ResourceRole.VIEWER]
+        | RESOURCE_ROLE_PERMISSIONS[ResourceRole.MANAGER]
+    )
+    session.execute.assert_called_once()
+
+    # A new decision in the same authorization-bound transaction must still
+    # query membership, organization, placement and grants. No grant rows
+    # still gives the organization-role permissions from the LEFT JOIN.
+    result.return_value = [{"membership_role": "member", "grant_role": None}]
+    assert provider.resolve(context) == ORGANIZATION_ROLE_PERMISSIONS[MembershipRole.MEMBER]
+    assert session.execute.call_count == 2
+
+    result.return_value = []
+    assert provider.resolve(context) == frozenset()
+    assert session.execute.call_count == 3
 
 
 @pytest.mark.parametrize("payload", [{}, {"name": None}, {"status": None}])

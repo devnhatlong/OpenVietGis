@@ -36,101 +36,83 @@ class SqlEffectivePermissionProvider:
             require_member_context(self._session, context, context.organization_id)
         except TenantResourceNotFoundError:
             return frozenset()
-        membership = (
+        # Resolve live membership, project placement, and applicable grants in
+        # one database snapshot. Missing/mismatched scope eliminates the row
+        # before organization permissions are applied; LEFT JOIN grants preserves
+        # organization role permissions even when no resource grant applies.
+        rows = (
             self._session.execute(
                 text(
                     """
-                    SELECT m.id, m.role
-                    FROM org.organization_memberships AS m
+                    WITH requested AS (
+                        SELECT CAST(:organization_id AS uuid) AS organization_id,
+                               CAST(:user_id AS uuid) AS user_id,
+                               CAST(:workspace_id AS uuid) AS workspace_id,
+                               CAST(:project_id AS uuid) AS project_id
+                    )
+                    SELECT m.role AS membership_role, g.role AS grant_role
+                    FROM requested AS r
+                    JOIN org.organization_memberships AS m
+                      ON m.organization_id = r.organization_id
+                     AND m.user_id = r.user_id
+                     AND m.status = 'active'
                     JOIN org.organizations AS o
                       ON o.id = m.organization_id
-                    WHERE m.organization_id = :organization_id
-                      AND m.user_id = :user_id
-                      AND m.status = 'active'
-                      AND o.status = 'active'
+                     AND o.status = 'active'
+                    LEFT JOIN workspace.projects AS p
+                      ON p.organization_id = r.organization_id
+                     AND p.id = r.project_id
+                    LEFT JOIN workspace.workspaces AS w
+                      ON r.project_id IS NULL
+                     AND w.organization_id = r.organization_id
+                     AND w.id = r.workspace_id
+                    LEFT JOIN org.resource_grants AS g
+                      ON g.organization_id = r.organization_id
+                     AND g.subject_kind = 'membership'
+                     AND g.membership_id = m.id
+                     AND g.revoked_at IS NULL
+                     AND (
+                          g.scope_kind = 'organization'
+                          OR (
+                              g.scope_kind = 'workspace'
+                              AND g.workspace_id = CASE
+                                  WHEN r.project_id IS NOT NULL THEN p.workspace_id
+                                  ELSE r.workspace_id
+                              END
+                          )
+                          OR (
+                              g.scope_kind = 'project'
+                              AND g.project_id = r.project_id
+                          )
+                     )
+                    WHERE (
+                        r.project_id IS NOT NULL
+                        AND p.id IS NOT NULL
+                        AND (r.workspace_id IS NULL OR r.workspace_id = p.workspace_id)
+                    ) OR (
+                        r.project_id IS NULL
+                        AND (r.workspace_id IS NULL OR w.id IS NOT NULL)
+                    )
                     """
                 ),
                 {
                     "organization_id": context.organization_id,
                     "user_id": actor.actor_id,
+                    "workspace_id": context.workspace_id,
+                    "project_id": context.project_id,
                 },
             )
             .mappings()
-            .one_or_none()
+            .all()
         )
-        if membership is None:
-            return frozenset()
 
-        permissions = set(ORGANIZATION_ROLE_PERMISSIONS[MembershipRole(membership["role"])])
-
-        workspace_id = context.workspace_id
-        if context.project_id is not None:
-            project = (
-                self._session.execute(
-                    text(
-                        """
-                    SELECT id, workspace_id
-                    FROM workspace.projects
-                    WHERE organization_id = :organization_id
-                      AND id = :project_id
-                    """
-                    ),
-                    {
-                        "organization_id": context.organization_id,
-                        "project_id": context.project_id,
-                    },
-                )
-                .mappings()
-                .one_or_none()
+        permissions: set[Permission] = set()
+        for row in rows:
+            permissions.update(
+                ORGANIZATION_ROLE_PERMISSIONS[MembershipRole(row["membership_role"])]
             )
-            if project is None or (
-                workspace_id is not None and workspace_id != project["workspace_id"]
-            ):
-                return frozenset()
-            workspace_id = project["workspace_id"]
-        elif workspace_id is not None:
-            found = self._session.execute(
-                text(
-                    "SELECT id FROM workspace.workspaces "
-                    "WHERE organization_id = :org AND id = :workspace"
-                ),
-                {"org": context.organization_id, "workspace": workspace_id},
-            ).scalar_one_or_none()
-            if found is None:
-                return frozenset()
-
-        rows = self._session.execute(
-            text(
-                """
-                SELECT role
-                FROM org.resource_grants
-                WHERE organization_id = :organization_id
-                  AND subject_kind = 'membership'
-                  AND membership_id = :membership_id
-                  AND revoked_at IS NULL
-                  AND (
-                    scope_kind = 'organization'
-                    OR (
-                        scope_kind = 'workspace'
-                        AND workspace_id = :workspace_id
-                    )
-                    OR (
-                        scope_kind = 'project'
-                        AND project_id = :project_id
-                    )
-                  )
-                """
-            ),
-            {
-                "organization_id": context.organization_id,
-                "membership_id": membership["id"],
-                "workspace_id": workspace_id,
-                "project_id": context.project_id,
-            },
-        ).scalars()
-
-        for role in rows:
-            permissions.update(RESOURCE_ROLE_PERMISSIONS[ResourceRole(role)])
+            if row["grant_role"] is not None:
+                permissions.update(RESOURCE_ROLE_PERMISSIONS[ResourceRole(row["grant_role"])])
 
         return frozenset(permissions)
 
