@@ -431,3 +431,29 @@ def test_layer_and_change_revision_evidence_is_safe_and_immutable() -> None:
         ChangedValue("name", "same", "same")
     with pytest.raises(SpatialValidationError):
         ChangedValue("name", None, {"dsn": "secret"})
+
+
+@pytest.mark.parametrize(
+    ("geometry", "expected"),
+    [
+        (NativeGeometry("Point", (1, 2), 4326), "POINT (1.0 2.0)"),
+        (NativeGeometry("Point", (1, 2, 3), 4326, GeometryDimensions.XYM), "POINT M (1.0 2.0 3.0)"),
+        (NativeGeometry("LineString", ((1, 2), (3, 4)), 4326), "LINESTRING (1.0 2.0,3.0 4.0)"),
+        (
+            NativeGeometry("Polygon", (((0, 0), (1, 0), (1, 1), (0, 0)),), 4326),
+            "POLYGON ((0.0 0.0,1.0 0.0,1.0 1.0,0.0 0.0))",
+        ),
+        (NativeGeometry("MultiPoint", ((1, 2), (3, 4)), 4326), "MULTIPOINT ((1.0 2.0),(3.0 4.0))"),
+        (
+            NativeGeometry("MultiLineString", (((1, 2), (3, 4)),), 4326),
+            "MULTILINESTRING ((1.0 2.0,3.0 4.0))",
+        ),
+        (
+            NativeGeometry("MultiPolygon", ((((0, 0), (1, 0), (1, 1), (0, 0)),),), 4326),
+            "MULTIPOLYGON (((0.0 0.0,1.0 0.0,1.0 1.0,0.0 0.0)))",
+        ),
+        (NativeGeometry("Point", (), 4326), "POINT EMPTY"),
+    ],
+)
+def test_native_wkt_exact_standard_nesting(geometry: NativeGeometry, expected: str) -> None:
+    assert geometry.to_wkt() == expected

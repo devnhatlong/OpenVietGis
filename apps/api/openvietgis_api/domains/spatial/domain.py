@@ -572,17 +572,28 @@ class NativeGeometry:
             return head + " EMPTY"
         if self.type == "GeometryCollection":
             return head + " (" + ",".join(member.to_wkt() for member in self.members) + ")"
-        return head + " " + _coordinate_wkt(self.coordinates)
+        return (
+            head
+            + " "
+            + _coordinate_wkt(self.coordinates, wrap_positions=self.type in ("Point", "MultiPoint"))
+        )
 
 
-def _coordinate_wkt(tree: CoordinateTree) -> str:
+def _coordinate_wkt(tree: CoordinateTree, *, wrap_positions: bool) -> str:
     if not tree:
         raise SpatialValidationError("unexpected empty coordinate component")
     if all(isinstance(item, float) for item in tree):
-        return "(" + " ".join(repr(item) for item in tree) + ")"
+        position = " ".join(repr(item) for item in tree)
+        return "(" + position + ")" if wrap_positions else position
     if all(isinstance(item, tuple) for item in tree):
         return (
-            "(" + ",".join(_coordinate_wkt(item) for item in tree if isinstance(item, tuple)) + ")"
+            "("
+            + ",".join(
+                _coordinate_wkt(item, wrap_positions=wrap_positions)
+                for item in tree
+                if isinstance(item, tuple)
+            )
+            + ")"
         )
     raise SpatialValidationError("mixed coordinate nesting")
 
