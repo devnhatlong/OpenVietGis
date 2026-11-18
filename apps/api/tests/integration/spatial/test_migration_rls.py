@@ -105,7 +105,7 @@ class SpatialScope:
             "extent": json.dumps({
                 "min_x": 107, "min_y": 21, "max_x": 107, "max_y": 21, "crs_code": 4326,
             }),
-            "changes": json.dumps([{"field": "name", "old": None, "new": "Reference"}]),
+            "changes": json.dumps([{"field": "name", "old_value": None, "new_value": "Reference"}]),
             "revision": json.dumps({
                 "catalog_revision": 1, "content_revision": CONTENT_REVISION,
                 "schema_revision": SCHEMA_REVISION,
@@ -295,6 +295,81 @@ def test_append_only_catalog_evidence_and_source_uniqueness(
         assert connection.execute(text(
             "SELECT id FROM spatial.catalog_changes"
         )).scalar_one() == a.change
+
+
+def test_storage_constraints_enforce_metadata_identity_and_evidence(
+    spatial_world: tuple[SpatialScope, SpatialScope, SpatialScope],
+) -> None:
+    a, _, _ = spatial_world
+    with get_engine().begin() as connection:
+        _bind(connection, a.organization, a.project)
+        for statement in (
+            "UPDATE spatial.data_sources SET name='' WHERE id=:source_id",
+            "UPDATE spatial.data_sources SET catalog_revision=0 WHERE id=:source_id",
+            "UPDATE spatial.data_sources SET source_crs=3405 WHERE id=:source_id",
+            "UPDATE spatial.data_sources SET feature_count=0 WHERE id=:source_id",
+            "UPDATE spatial.data_sources SET validation_state='invalid' WHERE id=:source_id",
+            "UPDATE spatial.source_fields SET ordinal=100 WHERE source_id=:source_id",
+            "UPDATE spatial.reference_features SET geometry_state='absent' "
+            "WHERE source_id=:source_id",
+            "UPDATE spatial.reference_features SET attributes='[]'::jsonb "
+            "WHERE source_id=:source_id",
+            "UPDATE spatial.layers SET layer_revision=0 WHERE id=:layer_id",
+        ):
+            _assert_denied(connection, statement, a.values(), "23514")
+        for statement in (
+            "UPDATE spatial.data_sources SET id=id WHERE id=:source_id",
+            "UPDATE spatial.data_sources SET reference_key=reference_key WHERE id=:source_id",
+            "UPDATE spatial.layers SET source_id=source_id WHERE id=:layer_id",
+            "DELETE FROM spatial.data_sources WHERE id=:source_id",
+        ):
+            _assert_denied(connection, statement, a.values(), "42501")
+        for changes in (
+            [],
+            [{"field": "name", "old": None, "new": "Reference"}],
+            [{"field": "name", "old_value": None, "new_value": {"nested": "secret"}}],
+            [{"field": "name", "old_value": None, "new_value": None}],
+            [{"field": "credential_secret", "old_value": None, "new_value": "bad"}],
+        ):
+            _assert_denied(connection, CHANGE_SQL, {
+                **a.values(), "change_id": uuid4(), "changes": json.dumps(changes),
+            }, "23514")
+        _assert_denied(connection, CHANGE_SQL, {
+            **a.values(), "change_id": uuid4(), "revision": json.dumps({"layer_revision": 1}),
+        }, "23514")
+
+
+def test_revision_pins_require_consistent_atomic_parent_and_children(
+    spatial_world: tuple[SpatialScope, SpatialScope, SpatialScope],
+) -> None:
+    a, _, _ = spatial_world
+    new_pin = "d" * 64
+    values = {**a.values(), "new_pin": new_pin}
+    with get_engine().begin() as connection:
+        _bind(connection, a.organization, a.project)
+        with pytest.raises(DBAPIError) as exc, connection.begin_nested():
+            connection.execute(text("""
+                UPDATE spatial.data_sources SET schema_revision=:new_pin WHERE id=:source_id
+            """), values)
+            connection.execute(text("SET CONSTRAINTS ALL IMMEDIATE"))
+        assert getattr(exc.value.orig, "sqlstate", None) == "23503"
+        connection.execute(text("""
+            UPDATE spatial.data_sources SET schema_revision=:new_pin WHERE id=:source_id
+        """), values)
+        connection.execute(text("""
+            UPDATE spatial.source_fields SET schema_revision=:new_pin WHERE source_id=:source_id
+        """), values)
+        connection.execute(text("""
+            UPDATE spatial.reference_features SET schema_revision=:new_pin
+            WHERE source_id=:source_id
+        """), values)
+        connection.execute(text("SET CONSTRAINTS ALL IMMEDIATE"))
+    with get_engine().begin() as connection:
+        _bind(connection, a.organization, a.project)
+        for table in ("data_sources", "source_fields", "reference_features"):
+            assert connection.execute(text(
+                f"SELECT schema_revision FROM spatial.{table}"
+            )).scalar_one() == new_pin
 
 
 def test_project_guc_does_not_survive_pool_checkout_or_savepoint_rollback(
