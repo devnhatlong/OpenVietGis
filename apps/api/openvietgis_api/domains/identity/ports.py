@@ -12,6 +12,8 @@ from openvietgis_api.domains.identity.domain import (
 
 
 class IdentityRepository(Protocol):
+    def lock_external_identity(self, *, issuer: str, subject: str) -> None: ...
+
     def find_by_external_identity(
         self,
         *,

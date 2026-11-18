@@ -65,6 +65,7 @@ class IdentityService:
         now: datetime | None = None,
     ) -> LoginResult:
         now = now or datetime.now(UTC)
+        self._repository.lock_external_identity(issuer=claims.issuer, subject=claims.subject)
         existing = self._repository.find_by_external_identity(
             issuer=claims.issuer,
             subject=claims.subject,
@@ -136,6 +137,7 @@ class IdentityService:
         user = self._repository.get_user(user_id)
         if user is None or user.status != UserStatus.ACTIVE:
             raise IdentityConflictError("user not found")
+        self._repository.lock_external_identity(issuer=claims.issuer, subject=claims.subject)
         existing = self._repository.find_by_external_identity(
             issuer=claims.issuer,
             subject=claims.subject,

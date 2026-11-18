@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 from secrets import compare_digest, token_urlsafe
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from authlib.integrations.base_client import OAuthError  # type: ignore[import-untyped]
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from fastapi.responses import JSONResponse, RedirectResponse
 from sqlalchemy.orm import Session
+from starlette.concurrency import run_in_threadpool
 
 from openvietgis_api.adapters.http.security import (
     AuthenticatedRequest,
@@ -23,6 +24,7 @@ from openvietgis_api.adapters.persistence.audit_repository import SqlAuditReposi
 from openvietgis_api.adapters.persistence.identity_repository import SqlIdentityRepository
 from openvietgis_api.config import Settings, get_settings
 from openvietgis_api.domains.identity.service import (
+    ExternalIdentityClaims,
     IdentityConflictError,
     IdentityLinkConflictError,
     IdentityService,
@@ -84,7 +86,7 @@ async def begin_login(
             or request.headers.get("sec-fetch-user") != "?1"
         ):
             raise HTTPException(status_code=403, detail="explicit identity link intent required")
-        authentication = authenticate_request(request, session, settings)
+        authentication = await run_in_threadpool(authenticate_request, request, session, settings)
         if authentication.actor.actor_id is None or authentication.session_id is None:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED)
         transaction["user_id"] = str(authentication.actor.actor_id)
@@ -137,6 +139,20 @@ async def complete_login(
     except (OAuthError, OidcInvalidResponseError) as exc:
         raise HTTPException(status_code=400, detail="invalid OIDC response") from exc
 
+    # The synchronous SQLAlchemy transaction can wait on another callback's
+    # locks. Keep it off the event loop so that the other request can commit.
+    return await run_in_threadpool(
+        _complete_verified_login, request, session, settings, transaction, claims
+    )
+
+
+def _complete_verified_login(
+    request: Request,
+    session: Session,
+    settings: Settings,
+    transaction: dict[str, Any],
+    claims: ExternalIdentityClaims,
+) -> Response:
     service = _identity_service(session)
     return_to = _safe_return_to(transaction.get("return_to"))
     redirect = RedirectResponse(

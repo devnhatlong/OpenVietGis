@@ -44,6 +44,14 @@ class SqlIdentityRepository:
     def __init__(self, session: Session) -> None:
         self._session = session
 
+    def lock_external_identity(self, *, issuer: str, subject: str) -> None:
+        # Claim the verified external identity for this transaction, including when
+        # it has no existing row to lock. Hash collisions only serialize requests.
+        key = f"openvietgis.identity:{len(issuer)}:{issuer}{subject}"
+        self._session.execute(
+            text("SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))"), {"key": key}
+        )
+
     def find_by_external_identity(
         self,
         *,
