@@ -245,17 +245,17 @@
 
 ### Tests first
 
-- [ ] T097 [P] [US7] Add bootstrap read/lock/uninitialized→initialized state-transition and immutable-initialization tests over the foundational InstallationState table in `apps/api/tests/integration/identity/test_bootstrap_storage.py`
-- [ ] T098 [P] [US7] Add anonymous, secret-only, authenticated-with-wrong-secret, success-once, and reuse-denial tests in `apps/api/tests/integration/identity/test_bootstrap.py`
-- [ ] T099 [P] [US7] Add bootstrap concurrency race proving only one initialization transaction commits in `apps/api/tests/integration/identity/test_bootstrap_concurrency.py`
-- [ ] T100 [P] [US7] Add Playwright OIDC + first Organization/Owner bootstrap flow covering SC-011 in `tests/e2e/bootstrap-service-identity.spec.ts`
+- [x] T097 [P] [US7] Add bootstrap read/lock/uninitialized→initialized state-transition and immutable-initialization tests over the foundational InstallationState table in `apps/api/tests/integration/identity/test_bootstrap_storage.py`
+- [x] T098 [P] [US7] Add anonymous, secret-only, authenticated-with-wrong-secret, success-once, and reuse-denial tests in `apps/api/tests/integration/identity/test_bootstrap.py`
+- [x] T099 [P] [US7] Add bootstrap concurrency race proving only one initialization transaction commits in `apps/api/tests/integration/identity/test_bootstrap_concurrency.py`
+- [x] T100 [P] [US7] Add Playwright OIDC + first Organization/Owner bootstrap flow covering SC-011 in `tests/e2e/bootstrap-service-identity.spec.ts`
 
 ### Implementation
 
-- [ ] T101 [US7] Implement bootstrap state read/lock/update operations over the foundational InstallationState table in `apps/api/openvietgis_api/adapters/persistence/platform_repository.py` and `apps/api/openvietgis_api/domains/bootstrap/service.py`; schema/field implementation remains owned by T018
-- [ ] T102 [US7] Implement one-time bootstrap service requiring authenticated User + installation authority and atomically creating Organization/Owner/AuditEvent/initialized state in `apps/api/openvietgis_api/domains/bootstrap/service.py`
-- [ ] T103 [US7] Implement bootstrap status/initialize HTTP endpoints with session+bootstrap-secret AND semantics from `contracts/service-admin-api.yaml` in `apps/api/openvietgis_api/adapters/http/bootstrap.py`
-- [ ] T104 [US7] Implement minimal first-time bootstrap UI gated by bootstrap status and authenticated User in `apps/web/src/features/organizations/BootstrapPage.tsx`
+- [x] T101 [US7] Implement bootstrap state read/lock/update operations over the foundational InstallationState table in `apps/api/openvietgis_api/adapters/persistence/platform_repository.py` and `apps/api/openvietgis_api/domains/bootstrap/service.py`; schema/field implementation remains owned by T018
+- [x] T102 [US7] Implement one-time bootstrap service requiring authenticated User + installation authority and atomically creating Organization/Owner/AuditEvent/initialized state in `apps/api/openvietgis_api/domains/bootstrap/service.py`
+- [x] T103 [US7] Implement bootstrap status/initialize HTTP endpoints with session+bootstrap-secret AND semantics from `contracts/service-admin-api.yaml` in `apps/api/openvietgis_api/adapters/http/bootstrap.py`
+- [x] T104 [US7] Implement minimal first-time bootstrap UI gated by bootstrap status and authenticated User in `apps/web/src/features/organizations/BootstrapPage.tsx`
 - [ ] T105 [US7] Add logical shared-vs-isolated configuration fixture parity tests for identity/membership/grant/invitation/service/audit semantics in `apps/api/tests/integration/tenancy/test_isolated_deployment_parity.py`
 
 **Checkpoint**: Self-host initialization has no anonymous-first-caller backdoor and shares normal identity/authorization semantics.

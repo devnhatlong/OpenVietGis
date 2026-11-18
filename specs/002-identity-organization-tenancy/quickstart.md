@@ -481,3 +481,15 @@ T091-T094 and T096 are implemented on the dedicated audit worktree. Evidence:
 - Ruff and strict mypy: **passed**.
 
 Task evidence: **T091-T094 and T096 checked**. T095 remains open until bootstrap audit wiring is implemented and verified.
+
+---
+
+## 2026-11-18 P2 Bootstrap checkpoint
+
+Code commit `22d1615` was verified by [GitHub CI 44232402147](https://github.com/nguyentrieu210/OpenVietGis/actions/runs/44232402147), all three jobs successful. Status/read-lock/update, atomic first Organization/Owner/audit commit, session plus bootstrap authority and CSRF, and authenticated UI have been implemented. Restricted runtime integration covers anonymous, secret-only, wrong authority, invalid CSRF, success-once, reuse denial, stored state/owner/audit, two concurrent requests with exactly one successful commit, immutable state transition. Browser runs separately against a guarded uninitialized test fixture rather than mixing it with P1 initialized flows.
+
+- GitHub Python static/unit/contract/tools/architecture: 192 passed; restricted-runtime integration/performance: 77 passed, 1 skipped; opt-in live OIDC: 2 passed. Ruff and mypy: 66 source files, green.
+- Node 26 frontend: SDK 14, web 15 tests passed; lint, TypeScript, build and generated contracts passed. Existing browser E2E 8/8 (12.8s), separate first-owner OIDC/bootstrap browser 1/1 (2.8s total suite), including wrong authority, successful owner context and reuse denial. Test enforces SC-011 under 300 seconds and attaches measured timing; the 2.8s suite duration is not a claim about fresh infrastructure installation time.
+- Gitleaks green; test suite uses synthetic secrets only. No final T107 evidence claimed.
+
+Task evidence: **T097-T104 checked**. T095 still needs real service-actor mutation audit/snapshot evidence, T105 parity and final gates remain open. T112 remains open for the separate unfamiliar-user exercise and remaining timing evidence.
