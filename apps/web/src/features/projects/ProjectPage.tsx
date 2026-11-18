@@ -163,7 +163,10 @@ function OrganizationProjects({ organizationId, userId }: { organizationId: stri
           return (
             <li key={project.id} data-testid={"project-" + project.id}>
               <strong>{project.name}</strong> — {project.status} — workspace{" "}
-              {project.workspace_id ?? "none"}
+              {project.workspace_id ?? "none"}{" "}
+              {project.status !== "deleted" ? (
+                <Link to={"/organizations/" + encodeURIComponent(organizationId) + "/projects/" + encodeURIComponent(project.id) + "/spatial"}>Spatial catalog</Link>
+              ) : null}
               <div>
                 <label>
                   Workspace for {project.name}
