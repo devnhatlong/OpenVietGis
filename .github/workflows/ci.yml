@@ -5,9 +5,16 @@ on:
     branches: [main, "001-platform-foundation", "takeover/002-identity-tenancy"]
   pull_request:
   workflow_dispatch:
+    inputs:
+      browser_only:
+        description: "Focused browser diagnosis only; never a full acceptance gate"
+        type: boolean
+        required: false
+        default: false
 
 jobs:
   backend:
+    if: ${{ !inputs.browser_only }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -142,7 +149,14 @@ jobs:
           connection = get_engine().connect(); connection.close()"
 
       - name: Run the full Node 26 root validation workflow
+        if: ${{ !inputs.browser_only }}
         run: pnpm validate
+
+      - name: Run focused browser diagnosis
+        if: ${{ inputs.browser_only }}
+        run: |
+          pnpm validate:e2e
+          pnpm validate:e2e:bootstrap
 
       - name: Scan explicit synthetic test evidence
         run: |
