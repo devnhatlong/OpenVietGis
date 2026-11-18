@@ -1,0 +1,60 @@
+import type { InvitationResourceGrant, Project, Workspace } from "@openvietgis/client-sdk";
+
+export type ScopeSelection = {
+  scope: "organization" | "workspace" | "project";
+  resourceId: string;
+  role: "manager" | "editor" | "contributor" | "viewer";
+};
+
+export const initialScope: ScopeSelection = { scope: "organization", resourceId: "", role: "viewer" };
+
+export function selectedGrant(selection: ScopeSelection): InvitationResourceGrant | undefined {
+  if (selection.scope !== "organization" && !selection.resourceId) return undefined;
+  return {
+    scope_kind: selection.scope,
+    role: selection.role,
+    ...(selection.scope === "workspace" ? { workspace_id: selection.resourceId } : {}),
+    ...(selection.scope === "project" ? { project_id: selection.resourceId } : {})
+  };
+}
+
+export function ResourceScopeFields({ label, value, onChange, workspaces, projects }: {
+  label: string;
+  value: ScopeSelection;
+  onChange: (selection: ScopeSelection) => void;
+  workspaces: Workspace[];
+  projects: Project[];
+}) {
+  return (
+    <fieldset>
+      <legend>{label}</legend>
+      <label>Scope
+        <select value={value.scope} onChange={(event) => onChange({
+          ...value, scope: event.target.value as ScopeSelection["scope"], resourceId: ""
+        })}>
+          <option value="organization">Organization</option>
+          <option value="workspace">Workspace</option>
+          <option value="project">Project</option>
+        </select>
+      </label>
+      {value.scope !== "organization" ? (
+        <label>Resource
+          <select required value={value.resourceId} onChange={(event) => onChange({ ...value, resourceId: event.target.value })}>
+            <option value="">Select resource</option>
+            {(value.scope === "workspace" ? workspaces : projects).filter((item) => item.status === "active").map((item) => (
+              <option key={item.id} value={item.id}>{item.name}</option>
+            ))}
+          </select>
+        </label>
+      ) : null}
+      <label>Resource role
+        <select value={value.role} onChange={(event) => onChange({ ...value, role: event.target.value as ScopeSelection["role"] })}>
+          <option value="viewer">Viewer</option>
+          <option value="contributor">Contributor</option>
+          <option value="editor">Editor</option>
+          <option value="manager">Manager</option>
+        </select>
+      </label>
+    </fieldset>
+  );
+}

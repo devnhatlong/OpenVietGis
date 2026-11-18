@@ -79,7 +79,8 @@ export function OrganizationHome() {
         <h1>{activeOrganization ? activeOrganization.name : "Organizations"}</h1>
         <p>
           Signed in as <strong>{user.data.display_name}</strong>.{" "}
-          <Link to="/identity">Identity & session</Link>
+          <Link to="/identity">Identity & session</Link>{" "}
+          <Link to="/invitations/accept">Accept invitation</Link>
         </p>
       </header>
 
@@ -148,6 +149,9 @@ export function OrganizationHome() {
             </Link>{" "}
             <Link to={"/organizations/" + activeOrganization.id + "/projects"}>
               Projects
+            </Link>{" "}
+            <Link to={"/organizations/" + activeOrganization.id + "/membership"}>
+              Membership and access
             </Link>
           </p>
           <dl data-testid="active-organization">

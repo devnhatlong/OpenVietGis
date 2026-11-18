@@ -2,6 +2,7 @@ export * from "./workspaces";
 export * from "./projects";
 export * from "./auth";
 export * from "./organizations";
+export * from "./invitations";
 export * from "./foundation";
 export * from "./health";
 export * from "./http";export type {

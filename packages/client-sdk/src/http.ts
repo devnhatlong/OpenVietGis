@@ -32,7 +32,7 @@ export class ApiClient {
     this.csrfToken = token;
   }
 
-  async request<T>(path: string, init?: RequestInit): Promise<T> {
+  private async send(path: string, init?: RequestInit): Promise<Response> {
     const method = (init?.method ?? "GET").toUpperCase();
     const headers = new Headers(init?.headers);
     if (init?.body !== undefined && !headers.has("content-type")) {
@@ -53,6 +53,15 @@ export class ApiClient {
       throw new ApiError(response.status, response);
     }
 
+    return response;
+  }
+
+  async requestWithoutBody(path: string, init?: RequestInit): Promise<void> {
+    await this.send(path, init);
+  }
+
+  async request<T>(path: string, init?: RequestInit): Promise<T> {
+    const response = await this.send(path, init);
     if (response.status === 204) {
       return undefined as T;
     }
