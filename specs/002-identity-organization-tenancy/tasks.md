@@ -266,7 +266,7 @@
 
 **Purpose**: Cross-cutting hardening after all required user stories pass.
 
-- [ ] T106 [P] Add authorization benchmark fixture with >=50 mixed relevant/irrelevant grants and dynamic Workspace inheritance in `apps/api/tests/performance/test_authorization_benchmark.py`, enforcing the quickstart p95 <= 50 ms target
+- [X] T106 [P] Add authorization benchmark fixture with >=50 mixed relevant/irrelevant grants and dynamic Workspace inheritance in `apps/api/tests/performance/test_authorization_benchmark.py`, enforcing the quickstart p95 <= 50 ms target
 - [ ] T107 [P] Add full security log/audit scan ensuring provider tokens, session secrets, invitation secrets, service secrets, and bootstrap secret never appear in logs/test artifacts in `tools/check_secret_surfaces.py` and `tools/tests/test_secret_surfaces.py`
 - [ ] T108 [P] Extend root CI to start Keycloak reference profile, use migration/runtime DB roles, validate OpenAPI/generated types, and run Spec 002 E2E in `.github/workflows/ci.yml`
 - [ ] T109 Remove disposable FoundationSampleRecord API/domain/repository/client/UI/tests and drop `foundation.sample_records` in `apps/api/migrations/versions/0005_retire_foundation_sample.py` only after the P1 E2E checkpoint is green
