@@ -1,5 +1,10 @@
 import {
   ApiError,
+  createSpatialLayer,
+  getSpatialLayer,
+  listSpatialLayers,
+  renameSpatialLayer,
+  retireSpatialLayer,
   getProject,
   getSpatialSource,
   listSpatialSources,
@@ -9,6 +14,8 @@ import {
   SpatialApiError,
   updateSpatialSource,
   type SpatialSource,
+  type SpatialLayer,
+  type SpatialLayerMutation,
   type SpatialDeclaredCrs,
   type SpatialSourceMutation
 } from "@openvietgis/client-sdk";
@@ -29,6 +36,8 @@ const fixtureSuggestions = [
 function safeError(error: unknown): string {
   if (error instanceof SpatialApiError) {
     switch (error.code) {
+      case "STALE_LAYER_REVISION": return "The Layer changed. Review the latest revision before retrying.";
+      case "SOURCE_NOT_READY": return "The source is not ready for Layer creation.";
       case "STALE_CATALOG_REVISION": return "The source changed. Review the latest revision before retrying.";
       case "ACTIVE_LAYER_DEPENDENCIES": return "Retire active Layers before retiring the source.";
       case "SOURCE_ALREADY_REGISTERED": return "This reference is already registered in this Project, including retired sources.";
@@ -102,6 +111,172 @@ function SourceMetadata({ source }: { source: SpatialSource }) {
           </table>
         </div>
       }
+    </section>
+  );
+}
+
+
+type LayerCommand =
+  | { kind: "create"; sourceId: string; name: string }
+  | { kind: "rename"; layer: SpatialLayer; name: string }
+  | { kind: "retire"; layer: SpatialLayer };
+
+function LayerPanel({ organizationId, projectId, accountId, source, writable }: {
+  organizationId: string; projectId: string; accountId: string;
+  source: SpatialSource | undefined; writable: boolean;
+}) {
+  const queryClient = useQueryClient();
+  const prefix = ["spatial-catalog", accountId, organizationId, projectId, "layers"];
+  const [cursor, setCursor] = useState<string | undefined>();
+  const [history, setHistory] = useState<(string | undefined)[]>([]);
+  const [selected, setSelected] = useState<string | null>(null);
+  const [name, setName] = useState("");
+  const [rename, setRename] = useState("");
+  const [confirmRetire, setConfirmRetire] = useState(false);
+  const listQuery = useQuery({
+    queryKey: [...prefix, "list", cursor ?? null],
+    queryFn: () => listSpatialLayers(apiClient, organizationId, projectId, {
+      limit: 20, ...(cursor === undefined ? {} : { after_id: cursor })
+    }),
+    ...protectedQueryOptions
+  });
+  const layers = currentProtectedData(listQuery);
+  const detailQuery = useQuery({
+    queryKey: [...prefix, "detail", selected],
+    queryFn: () => getSpatialLayer(apiClient, organizationId, projectId, selected ?? ""),
+    enabled: selected !== null && layers !== undefined,
+    ...protectedQueryOptions
+  });
+  const detail = currentProtectedData(detailQuery);
+  const command = useMutation<SpatialLayerMutation, Error, LayerCommand>({
+    mutationFn: async input => {
+      await loadCsrfToken(apiClient);
+      switch (input.kind) {
+        case "create": return createSpatialLayer(apiClient, organizationId, projectId, {
+          source_id: input.sourceId, name: input.name
+        });
+        case "rename": return renameSpatialLayer(apiClient, organizationId, projectId, input.layer.id, {
+          expected_revision: input.layer.layer_revision, name: input.name
+        });
+        case "retire": return retireSpatialLayer(apiClient, organizationId, projectId, input.layer.id, {
+          expected_revision: input.layer.layer_revision
+        });
+      }
+    },
+    onSuccess: async (_result, input) => {
+      if (input.kind === "create") {
+        setName(""); setCursor(undefined); setHistory([]);
+      }
+      if (input.kind === "retire") setSelected(null);
+      setRename(""); setConfirmRetire(false);
+      await queryClient.invalidateQueries({ queryKey: prefix });
+    },
+    onError: async () => {
+      setConfirmRetire(false);
+      await queryClient.invalidateQueries({ queryKey: prefix });
+      // Auth/project denial needs a fresh check of the parent gate too.
+      await queryClient.invalidateQueries({
+        queryKey: ["spatial-project", accountId, organizationId, projectId]
+      });
+    }
+  });
+  const editable = writable && !command.isPending && layers !== undefined;
+  function choose(id: string | null) {
+    setSelected(id); setRename(""); setConfirmRetire(false); command.reset();
+  }
+  return (
+    <section aria-label="Layer catalog" style={{ borderTop: "1px solid #aaa", marginTop: 32, paddingTop: 16 }}>
+      <h2>Layers</h2>
+      <p>Multiple Layers can reference one registered source without copying feature data.</p>
+      {writable ? (
+        <form onSubmit={event => {
+          event.preventDefault();
+          if (editable && source?.validation_state === "ready" && name.trim()) {
+            command.mutate({ kind: "create", sourceId: source.id, name: name.trim() });
+          }
+        }}>
+          <fieldset disabled={!editable || source?.validation_state !== "ready"}>
+            <legend>Create a Layer from the selected source</legend>
+            <p>{source ? source.name + " — " + source.validation_state : "Select a ready source above."}</p>
+            <label>Layer name{" "}
+              <input value={name} onChange={event => setName(event.target.value)} required maxLength={200} />
+            </label>{" "}
+            <button type="submit" disabled={!name.trim()}>Create Layer</button>
+          </fieldset>
+        </form>
+      ) : null}
+      {command.error ? <p role="alert">{safeError(command.error)}</p> : null}
+      {!layers ? <p role={listQuery.error ? "alert" : "status"}>
+        {listQuery.error ? "Unable to load current Layer access." : "Checking Layer access…"}
+      </p> : <>
+        {layers.items.length ? (
+          <ul aria-label="Registered Layers">
+            {layers.items.map(layer => (
+              <li key={layer.id}>
+                <button type="button" onClick={() => choose(layer.id)}
+                  disabled={command.isPending} aria-pressed={selected === layer.id}>
+                  {layer.name} — {layer.source.name} — revision {layer.layer_revision}
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : <p>No active Layers.</p>}
+        <button type="button" disabled={command.isPending || history.length === 0} onClick={() => {
+          setCursor(history[history.length - 1]); setHistory(history.slice(0, -1)); choose(null);
+        }}>Previous Layers</button>{" "}
+        <button type="button" disabled={command.isPending || !layers.next_after_id} onClick={() => {
+          if (layers.next_after_id) {
+            setHistory([...history, cursor]); setCursor(layers.next_after_id); choose(null);
+          }
+        }}>Next Layers</button>
+        {selected !== null ? !detail ? <p role={detailQuery.error ? "alert" : "status"}>
+          {detailQuery.error ? "Unable to load current Layer access." : "Checking Layer metadata…"}
+        </p> : (
+          <section aria-label="Layer metadata">
+            <h3>{detail.name}</h3>
+            <dl style={{ overflowWrap: "anywhere" }}>
+              <dt>Layer ID</dt><dd>{detail.id}</dd>
+              <dt>Layer revision</dt><dd>{detail.layer_revision}</dd>
+              <dt>Source</dt><dd>{detail.source.name} ({detail.source_id})</dd>
+              <dt>Source state</dt><dd>{detail.source.validation_state}</dd>
+            </dl>
+            <h4>Capabilities</h4>
+            <div style={{ overflowX: "auto" }}>
+              <table>
+                <thead><tr><th>Operation</th><th>Supported</th><th>Available</th><th>Required permission</th><th>Authorized</th></tr></thead>
+                <tbody>{detail.capabilities.map(capability => (
+                  <tr key={capability.name}>
+                    <td>{capability.name}</td><td>{capability.technical_supported ? "Yes" : "No"}</td>
+                    <td>{capability.available ? "Yes" : "No"}</td><td>{capability.required_permission ?? "None"}</td>
+                    <td>{capability.actor_authorized ? "Yes" : "No"}</td>
+                  </tr>
+                ))}</tbody>
+              </table>
+            </div>
+            <details>
+              <summary>Current source schema, CRS and revisions</summary>
+              <SourceMetadata source={detail.source} />
+            </details>
+            {writable ? <fieldset disabled={!editable}>
+              <legend>Layer metadata controls</legend>
+              <form onSubmit={event => {
+                event.preventDefault();
+                if (editable && rename.trim()) command.mutate({ kind: "rename", layer: detail, name: rename.trim() });
+              }}>
+                <label>New Layer name{" "}
+                  <input value={rename} onChange={event => setRename(event.target.value)} required maxLength={200} />
+                </label>{" "}
+                <button type="submit" disabled={!rename.trim()}>Rename Layer</button>
+              </form>
+              {!confirmRetire ? <button type="button" onClick={() => setConfirmRetire(true)}>Retire Layer</button> : <>
+                <p>Retirement hides this Layer. Its source and other Layers remain unchanged.</p>
+                <button type="button" onClick={() => command.mutate({ kind: "retire", layer: detail })}>Confirm Layer retirement</button>{" "}
+                <button type="button" onClick={() => setConfirmRetire(false)}>Cancel</button>
+              </>}
+            </fieldset> : null}
+          </section>
+        ) : null}
+      </>}
     </section>
   );
 }
@@ -291,6 +466,8 @@ function CatalogView({ organizationId, projectId, accountId }: {
               </fieldset>
             ) : null}
           </> : null}
+          <LayerPanel organizationId={organizationId} projectId={projectId}
+            accountId={accountId} source={detail} writable={writable} />
         </>
       )}
     </main>
