@@ -17,7 +17,8 @@ services:
       - ./postgres/001-runtime-role.sql:/docker-entrypoint-initdb.d/001-runtime-role.sql:ro
 
   postgres-test:
-    image: postgis/postgis:18-3.7
+    # R003 approved control runtime; CI records the observed image too.
+    image: postgis/postgis@sha256:fe440a27c6567aefa932e988962e5827bb2c29e4b97dac2ca5268f5eafe10262
     environment:
       POSTGRES_DB: openvietgis_test
       POSTGRES_USER: openvietgis

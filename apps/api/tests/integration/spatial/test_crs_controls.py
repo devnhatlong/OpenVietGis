@@ -8,11 +8,14 @@ conditions without editing the checked-in production allowlist or native rows.
 
 from __future__ import annotations
 
+import json
 import math
+import os
 import re
 from collections import defaultdict
 from collections.abc import Iterator
 from contextlib import contextmanager
+from pathlib import Path
 from types import MappingProxyType
 from uuid import uuid4
 
@@ -185,8 +188,47 @@ def _residual(actual, target, edge: DirectedControlSet) -> float:
         ).scalar_one()
 
 
+_MEASURED_CONTROLS: list[dict] = []
+
+
+@pytest.fixture(autouse=True)
+def _record_control_measurements(capsys):
+    start = len(_MEASURED_CONTROLS)
+    yield
+    measured = _MEASURED_CONTROLS[start:]
+    if not measured:
+        return
+    maxima = {}
+    for row in _MEASURED_CONTROLS:
+        key = row["operation_id"]
+        maxima[key] = max(maxima.get(key, 0.0), row["residual"])
+    with get_engine().connect() as connection:
+        runtime = connection.execute(text("SELECT version(),PostGIS_Full_Version()")).one()
+    report = {
+        "runtime": list(runtime),
+        "observed_image_digest": os.environ.get("OPENVIETGIS_TEST_DATABASE_IMAGE_DIGEST"),
+        "max_residual_by_operation": maxima,
+        "controls": _MEASURED_CONTROLS,
+    }
+    destination = Path("dist/performance/r003-crs-controls.json")
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.write_text(json.dumps(report, indent=2), encoding="utf-8")
+    with capsys.disabled():
+        print("R003_CRS_CONTROLS " + json.dumps({
+            "max_residual_by_operation": maxima,
+            "control_observations": len(_MEASURED_CONTROLS),
+            "runtime": list(runtime),
+            "observed_image_digest": report["observed_image_digest"],
+        }))
+
+
 def _assert_target(actual, expected, edge: DirectedControlSet, point_id: str) -> None:
     residual = _residual(actual, expected, edge)
+    _MEASURED_CONTROLS.append({
+        "operation_id": edge.operation_id, "point_id": point_id,
+        "actual": list(actual), "expected": list(expected),
+        "residual": residual, "tolerance": edge.tolerance, "unit": edge.tolerance_unit,
+    })
     assert residual <= edge.tolerance, (
         f"{edge.operation_id}/{point_id}: {residual:.12g} {edge.tolerance_unit} "
         f"> {edge.tolerance:.12g}"
