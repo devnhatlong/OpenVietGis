@@ -36,7 +36,7 @@ def _private_runtime_logs() -> Iterator[io.StringIO]:
 
 def test_private_runtime_logs_are_not_forwarded(caplog: pytest.LogCaptureFixture) -> None:
     with _private_runtime_logs() as captured:
-        logging.getLogger("openvietgis.synthetic").warning("synthetic-fixture-marker")
+        logging.getLogger().warning("synthetic-fixture-marker")
         assert "synthetic-fixture-marker" in captured.getvalue()
     assert "synthetic-fixture-marker" not in caplog.text
 

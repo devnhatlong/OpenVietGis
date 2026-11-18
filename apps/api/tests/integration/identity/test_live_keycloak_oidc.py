@@ -150,7 +150,7 @@ def test_live_oidc_secret_monitor_is_private_and_nonvacuous(
     evidence.surfaces(marker, allowed=("code",))
     assert not evidence.has_leak()
     with _private_runtime_logs() as captured:
-        logging.getLogger("openvietgis.synthetic").warning("%s", marker)
+        logging.getLogger().warning("%s", marker)
         evidence.surfaces(captured.getvalue())
         assert evidence.has_leak()
     assert marker not in caplog.text
