@@ -48,7 +48,7 @@ def test_cross_tenant_routes_and_identifier_substitution(migrated_database: None
             "organization_role": "guest",
             "expires_at": (datetime.now(UTC)+timedelta(hours=1)).isoformat(),
         })
-        assert invitation.status_code == 201, invitation.text
+        assert invitation.status_code == 201
         invitation_id = invitation.json()["id"]
         assert owner_a.get(root_a).status_code == 200
         assert owner_a.get(f"{root_a}/projects/{a.project_id}").status_code == 200
@@ -89,3 +89,55 @@ def test_cross_tenant_routes_and_identifier_substitution(migrated_database: None
     with client_for_user(a.member_user_id) as member_a:
         denied = member_a.get(f"/api/v1/organizations/{a.organization_id}/members")
         assert denied.status_code == 403
+
+        root_a = f"/api/v1/organizations/{a.organization_id}"
+        assert member_a.patch(
+            f"{root_a}/projects/{a.project_id}", json={"name": "Denied"}
+        ).status_code == 403
+        assert member_a.patch(
+            f"{root_a}/projects/{b.project_id}", json={"name": "Denied"}
+        ).status_code == 404
+        assert member_a.patch(
+            f"{root_a}/workspaces/{a.workspace_a_id}", json={"name": "Denied"}
+        ).status_code == 403
+        assert member_a.patch(
+            f"{root_a}/workspaces/{b.workspace_a_id}", json={"name": "Denied"}
+        ).status_code == 404
+
+
+def test_invitation_accept_and_immediate_revocation_via_runtime_api(
+    migrated_database: None,
+) -> None:
+    world = seed_access_world()
+    root = f"/api/v1/organizations/{world.organization_id}"
+    with (
+        client_for_user(world.owner_user_id) as owner,
+        client_for_user(world.wrong_user_id) as target,
+        client_for_user(world.member_user_id) as wrong,
+    ):
+        issued = owner.post(f"{root}/invitations", json={
+            "target": {"kind": "email", "email": "wrong@example.test"},
+            "organization_role": "guest",
+            "resource_grant": {
+                "scope_kind": "project", "project_id": str(world.project_id),
+                "role": "viewer",
+            },
+            "expires_at": (datetime.now(UTC)+timedelta(hours=1)).isoformat(),
+        })
+        assert issued.status_code == 201
+        payload = {
+            "organization_id": str(world.organization_id),
+            "invitation_id": issued.json()["id"],
+            "secret": issued.json()["secret"],
+        }
+        assert target.get(root).status_code == 404
+        assert wrong.post("/api/v1/invitations/accept", json=payload).status_code == 400
+        accepted = target.post("/api/v1/invitations/accept", json=payload)
+        assert accepted.status_code == 200
+        membership_id = accepted.json()["membership"]["id"]
+        assert target.get(f"{root}/projects/{world.project_id}").status_code == 200
+        assert target.post("/api/v1/invitations/accept", json=payload).status_code == 400
+        assert owner.patch(
+            f"{root}/members/{membership_id}", json={"status": "revoked"}
+        ).status_code == 200
+        assert target.get(f"{root}/projects/{world.project_id}").status_code == 404

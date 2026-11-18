@@ -194,6 +194,7 @@ def accept_invitation(
             organization_id=payload.organization_id,
             invitation_id=payload.invitation_id,
             secret=payload.secret,
+            identity_link_id=authentication.identity_link_id,
         )
         if (
             existing is not None

@@ -22,7 +22,10 @@ from openvietgis_api.adapters.persistence.authorization_repository import (
 from openvietgis_api.adapters.persistence.platform_repository import SqlPlatformRepository
 from openvietgis_api.adapters.persistence.tenancy_repository import SqlTenancyRepository
 from openvietgis_api.domains.authorization.permissions import Permission
-from openvietgis_api.domains.authorization.service import AuthorizationService
+from openvietgis_api.domains.authorization.service import (
+    AuthorizationService,
+    TenantResourceNotFoundError,
+)
 from openvietgis_api.domains.tenancy.domain import WorkspaceStatus
 from openvietgis_api.domains.tenancy.service import TenancyService
 
@@ -119,6 +122,10 @@ def update_workspace(
     session: Annotated[Session, Depends(get_db_session, scope="function")],
 ) -> dict[str, object]:
     human_tenant(session, authentication, organization_id, lock=True)
+    if SqlTenancyRepository(session).get_workspace(
+        organization_id=organization_id, workspace_id=workspace_id,
+    ) is None:
+        raise TenantResourceNotFoundError("workspace not found")
     context = context_for(
         authentication,
         organization_id=organization_id,

@@ -5,7 +5,7 @@ export default defineConfig({
   timeout: 45_000,
   use: {
     baseURL: "http://127.0.0.1:5178",
-    trace: "retain-on-failure"
+    trace: "off"
   },
   webServer: [
     {
@@ -29,8 +29,7 @@ export default defineConfig({
     },
     {
       command:
-        "npm exec --yes --package=pnpm@12.21.0 -- " +
-        "pnpm --config.minimum-release-age=0 --filter @openvietgis/web exec vite --host 127.0.0.1 --port 5178",
+        "corepack pnpm --filter @openvietgis/web exec vite --host 127.0.0.1 --port 5178",
       url: "http://127.0.0.1:5178",
       reuseExistingServer: false,
       timeout: 60_000

@@ -62,6 +62,7 @@ def test_invitation_recipient_binding_accept_once_and_optional_grant(
             service.accept(
                 actor=wrong,
                 user_id=world.wrong_user_id,
+                identity_link_id=SqlIdentityRepository(session).list_identity_links(world.wrong_user_id)[0].id,
                 organization_id=world.organization_id,
                 invitation_id=issued.invitation.id,
                 secret=issued.secret,
@@ -71,6 +72,7 @@ def test_invitation_recipient_binding_accept_once_and_optional_grant(
         membership, grant = service.accept(
             actor=member,
             user_id=world.member_user_id,
+            identity_link_id=SqlIdentityRepository(session).list_identity_links(world.member_user_id)[0].id,
             organization_id=world.organization_id,
             invitation_id=issued.invitation.id,
             secret=issued.secret,
@@ -85,6 +87,7 @@ def test_invitation_recipient_binding_accept_once_and_optional_grant(
             service.accept(
                 actor=member,
                 user_id=world.member_user_id,
+                identity_link_id=SqlIdentityRepository(session).list_identity_links(world.member_user_id)[0].id,
                 organization_id=world.organization_id,
                 invitation_id=issued.invitation.id,
                 secret=issued.secret,
