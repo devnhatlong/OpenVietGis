@@ -31,6 +31,9 @@ _PATTERNS = {
     "application-session": re.compile(
         r"(?<![A-Za-z0-9_-])ovgs_[0-9a-fA-F]{32}\.s_[A-Za-z0-9_-]{43}(?![A-Za-z0-9_-])"
     ),
+    "raw-session-secret": re.compile(
+        r"(?<![A-Za-z0-9_-])s_[A-Za-z0-9_-]{43}(?![A-Za-z0-9_-])"
+    ),
     "invitation-secret": re.compile(
         r"(?<![A-Za-z0-9_-])inv_[A-Za-z0-9_-]{43}(?![A-Za-z0-9_-])"
     ),

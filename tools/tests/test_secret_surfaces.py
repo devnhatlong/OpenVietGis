@@ -24,6 +24,7 @@ JWT = "eyJsynthetic." + ("C" * 12) + "." + ("D" * 11) + "-"
     ("sample", "expected"),
     [
         (f"session {SESSION}", "application-session"),
+        (f"raw {SESSION.split('.')[1]}", "raw-session-secret"),
         (f"invite {INVITATION}", "invitation-secret"),
         (f"E       assert '{INVITATION}' not in raw_metadata", "invitation-secret"),
         (f"E       +  where {SESSION} = cookie_value", "application-session"),
