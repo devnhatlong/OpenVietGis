@@ -1,0 +1,1028 @@
+openapi: "3.1.0"
+info:
+  title: "OpenVietGIS Spatial Catalog and CRS API"
+  version: "0.3.0"
+  description: "R003 reference fixture catalog, explicit CRS and pinned bounded feature reads. See catalog-semantics.md for cross-field, authorization, revision and validation invariants."
+servers: [{"url":"/api/v1"}]
+paths:
+  "/organizations/{organization_id}/projects/{project_id}/spatial/sources":
+    get:
+      operationId: "listSpatialSources"
+      x-required-permission: "project.read"
+      description: "Active sources including invalid/not-ready; stable UUID order."
+      security: [{"sessionCookie":[]},{"serviceBearer":[]}]
+      parameters:
+        - {"$ref":"#/components/parameters/OrganizationId"}
+        - {"$ref":"#/components/parameters/ProjectId"}
+        - {"$ref":"#/components/parameters/Limit"}
+        - {"$ref":"#/components/parameters/AfterId"}
+      responses:
+        "200":
+          description: "Successful authorized operation."
+          content: {"application/json":{"schema":{"$ref":"#/components/schemas/SourceList"}}}
+        "401":
+          description: "Authentication/credential missing or invalid."
+          content: {"application/json":{"schema":{"$ref":"#/components/schemas/R002Error"}}}
+        "403":
+          description: "R002 current authorization, lifecycle or CSRF denial; generic to inaccessible target."
+          content: {"application/json":{"schema":{"$ref":"#/components/schemas/R002Error"}}}
+        "404":
+          description: "Scoped resource missing, retired, hidden, or wrong owner; no private details."
+          content: {"application/json":{"schema":{"$ref":"#/components/schemas/R002Error"}}}
+        "422":
+          description: "Invalid request or fail-closed spatial semantics; validation never echoes raw input."
+          content:
+            "application/json":
+              schema: {"oneOf":[{"$ref":"#/components/schemas/RequestValidationError"},{"$ref":"#/components/schemas/SpatialError"}]}
+    post:
+      operationId: "registerSpatialSource"
+      x-required-permission: "project.edit"
+      description: "Register allowlisted fixture; valid registration may persist truthful invalid/not-ready state. Atomic materialization and change evidence."
+      security: [{"sessionCookie":[]},{"serviceBearer":[]}]
+      parameters:
+        - {"$ref":"#/components/parameters/OrganizationId"}
+        - {"$ref":"#/components/parameters/ProjectId"}
+        - {"$ref":"#/components/parameters/CsrfHeaderOptionalForBearer"}
+      requestBody: {"required":true,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/RegisterSource"}}}}
+      responses:
+        "201":
+          description: "Created atomically."
+          content: {"application/json":{"schema":{"$ref":"#/components/schemas/SourceMutation"}}}
+        "401":
+          description: "Authentication/credential missing or invalid."
+          content: {"application/json":{"schema":{"$ref":"#/components/schemas/R002Error"}}}
+        "403":
+          description: "R002 current authorization, lifecycle or CSRF denial; generic to inaccessible target."
+          content: {"application/json":{"schema":{"$ref":"#/components/schemas/R002Error"}}}
+        "404":
+          description: "Scoped resource missing, retired, hidden, or wrong owner; no private details."
+          content: {"application/json":{"schema":{"$ref":"#/components/schemas/R002Error"}}}
+        "409":
+          description: "Current state conflicts: stale revisions/pins, dependency, duplicate reference key, source unavailable, read-only Project."
+          content: {"application/json":{"schema":{"$ref":"#/components/schemas/SpatialError"}}}
+        "422":
+          description: "Invalid request or fail-closed spatial semantics; validation never echoes raw input."
+          content:
+            "application/json":
+              schema: {"oneOf":[{"$ref":"#/components/schemas/RequestValidationError"},{"$ref":"#/components/schemas/SpatialError"}]}
+  "/organizations/{organization_id}/projects/{project_id}/spatial/sources/{source_id}":
+    get:
+      operationId: "getSpatialSource"
+      x-required-permission: "project.read"
+      description: "Read active same-scope source with schema, CRS, extent and state."
+      security: [{"sessionCookie":[]},{"serviceBearer":[]}]
+      parameters:
+        - {"$ref":"#/components/parameters/OrganizationId"}
+        - {"$ref":"#/components/parameters/ProjectId"}
+        - {"$ref":"#/components/parameters/SourceId"}
+      responses:
+        "200":
+          description: "Successful authorized operation."
+          content: {"application/json":{"schema":{"$ref":"#/components/schemas/Source"}}}
+        "401":
+          description: "Authentication/credential missing or invalid."
+          content: {"application/json":{"schema":{"$ref":"#/components/schemas/R002Error"}}}
+        "403":
+          description: "R002 current authorization, lifecycle or CSRF denial; generic to inaccessible target."
+          content: {"application/json":{"schema":{"$ref":"#/components/schemas/R002Error"}}}
+        "404":
+          description: "Scoped resource missing, retired, hidden, or wrong owner; no private details."
+          content: {"application/json":{"schema":{"$ref":"#/components/schemas/R002Error"}}}
+        "422":
+          description: "Invalid request or fail-closed spatial semantics; validation never echoes raw input."
+          content:
+            "application/json":
+              schema: {"oneOf":[{"$ref":"#/components/schemas/RequestValidationError"},{"$ref":"#/components/schemas/SpatialError"}]}
+    patch:
+      operationId: "updateSpatialSource"
+      x-required-permission: "project.edit"
+      description: "Compare expected catalog revision; rename and/or explicit declaration correction with independent registry evidence. Never alter coordinates."
+      security: [{"sessionCookie":[]},{"serviceBearer":[]}]
+      parameters:
+        - {"$ref":"#/components/parameters/OrganizationId"}
+        - {"$ref":"#/components/parameters/ProjectId"}
+        - {"$ref":"#/components/parameters/SourceId"}
+        - {"$ref":"#/components/parameters/CsrfHeaderOptionalForBearer"}
+      requestBody: {"required":true,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/UpdateSource"}}}}
+      responses:
+        "200":
+          description: "Successful authorized operation."
+          content: {"application/json":{"schema":{"$ref":"#/components/schemas/SourceMutation"}}}
+        "401":
+          description: "Authentication/credential missing or invalid."
+          content: {"application/json":{"schema":{"$ref":"#/components/schemas/R002Error"}}}
+        "403":
+          description: "R002 current authorization, lifecycle or CSRF denial; generic to inaccessible target."
+          content: {"application/json":{"schema":{"$ref":"#/components/schemas/R002Error"}}}
+        "404":
+          description: "Scoped resource missing, retired, hidden, or wrong owner; no private details."
+          content: {"application/json":{"schema":{"$ref":"#/components/schemas/R002Error"}}}
+        "409":
+          description: "Current state conflicts: stale revisions/pins, dependency, duplicate reference key, source unavailable, read-only Project."
+          content: {"application/json":{"schema":{"$ref":"#/components/schemas/SpatialError"}}}
+        "422":
+          description: "Invalid request or fail-closed spatial semantics; validation never echoes raw input."
+          content:
+            "application/json":
+              schema: {"oneOf":[{"$ref":"#/components/schemas/RequestValidationError"},{"$ref":"#/components/schemas/SpatialError"}]}
+  "/organizations/{organization_id}/projects/{project_id}/spatial/sources/{source_id}/retire":
+    post:
+      operationId: "retireSpatialSource"
+      x-required-permission: "project.manage"
+      description: "Non-destructive retirement; reject active dependent layers."
+      security: [{"sessionCookie":[]},{"serviceBearer":[]}]
+      parameters:
+        - {"$ref":"#/components/parameters/OrganizationId"}
+        - {"$ref":"#/components/parameters/ProjectId"}
+        - {"$ref":"#/components/parameters/SourceId"}
+        - {"$ref":"#/components/parameters/CsrfHeaderOptionalForBearer"}
+      requestBody: {"required":true,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/RetireResource"}}}}
+      responses:
+        "200":
+          description: "Successful authorized operation."
+          content: {"application/json":{"schema":{"$ref":"#/components/schemas/SourceMutation"}}}
+        "401":
+          description: "Authentication/credential missing or invalid."
+          content: {"application/json":{"schema":{"$ref":"#/components/schemas/R002Error"}}}
+        "403":
+          description: "R002 current authorization, lifecycle or CSRF denial; generic to inaccessible target."
+          content: {"application/json":{"schema":{"$ref":"#/components/schemas/R002Error"}}}
+        "404":
+          description: "Scoped resource missing, retired, hidden, or wrong owner; no private details."
+          content: {"application/json":{"schema":{"$ref":"#/components/schemas/R002Error"}}}
+        "409":
+          description: "Current state conflicts: stale revisions/pins, dependency, duplicate reference key, source unavailable, read-only Project."
+          content: {"application/json":{"schema":{"$ref":"#/components/schemas/SpatialError"}}}
+        "422":
+          description: "Invalid request or fail-closed spatial semantics; validation never echoes raw input."
+          content:
+            "application/json":
+              schema: {"oneOf":[{"$ref":"#/components/schemas/RequestValidationError"},{"$ref":"#/components/schemas/SpatialError"}]}
+  "/organizations/{organization_id}/projects/{project_id}/layers":
+    get:
+      operationId: "listSpatialLayers"
+      x-required-permission: "project.read"
+      description: "Active layers, same-scope current source metadata and capabilities."
+      security: [{"sessionCookie":[]},{"serviceBearer":[]}]
+      parameters:
+        - {"$ref":"#/components/parameters/OrganizationId"}
+        - {"$ref":"#/components/parameters/ProjectId"}
+        - {"$ref":"#/components/parameters/Limit"}
+        - {"$ref":"#/components/parameters/AfterId"}
+      responses:
+        "200":
+          description: "Successful authorized operation."
+          content: {"application/json":{"schema":{"$ref":"#/components/schemas/LayerList"}}}
+        "401":
+          description: "Authentication/credential missing or invalid."
+          content: {"application/json":{"schema":{"$ref":"#/components/schemas/R002Error"}}}
+        "403":
+          description: "R002 current authorization, lifecycle or CSRF denial; generic to inaccessible target."
+          content: {"application/json":{"schema":{"$ref":"#/components/schemas/R002Error"}}}
+        "404":
+          description: "Scoped resource missing, retired, hidden, or wrong owner; no private details."
+          content: {"application/json":{"schema":{"$ref":"#/components/schemas/R002Error"}}}
+        "422":
+          description: "Invalid request or fail-closed spatial semantics; validation never echoes raw input."
+          content:
+            "application/json":
+              schema: {"oneOf":[{"$ref":"#/components/schemas/RequestValidationError"},{"$ref":"#/components/schemas/SpatialError"}]}
+    post:
+      operationId: "createSpatialLayer"
+      x-required-permission: "project.edit"
+      description: "Create on active ready source in same Project; no duplicate feature data."
+      security: [{"sessionCookie":[]},{"serviceBearer":[]}]
+      parameters:
+        - {"$ref":"#/components/parameters/OrganizationId"}
+        - {"$ref":"#/components/parameters/ProjectId"}
+        - {"$ref":"#/components/parameters/CsrfHeaderOptionalForBearer"}
+      requestBody: {"required":true,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/CreateLayer"}}}}
+      responses:
+        "201":
+          description: "Created atomically."
+          content: {"application/json":{"schema":{"$ref":"#/components/schemas/LayerMutation"}}}
+        "401":
+          description: "Authentication/credential missing or invalid."
+          content: {"application/json":{"schema":{"$ref":"#/components/schemas/R002Error"}}}
+        "403":
+          description: "R002 current authorization, lifecycle or CSRF denial; generic to inaccessible target."
+          content: {"application/json":{"schema":{"$ref":"#/components/schemas/R002Error"}}}
+        "404":
+          description: "Scoped resource missing, retired, hidden, or wrong owner; no private details."
+          content: {"application/json":{"schema":{"$ref":"#/components/schemas/R002Error"}}}
+        "409":
+          description: "Current state conflicts: stale revisions/pins, dependency, duplicate reference key, source unavailable, read-only Project."
+          content: {"application/json":{"schema":{"$ref":"#/components/schemas/SpatialError"}}}
+        "422":
+          description: "Invalid request or fail-closed spatial semantics; validation never echoes raw input."
+          content:
+            "application/json":
+              schema: {"oneOf":[{"$ref":"#/components/schemas/RequestValidationError"},{"$ref":"#/components/schemas/SpatialError"}]}
+  "/organizations/{organization_id}/projects/{project_id}/layers/{layer_id}":
+    get:
+      operationId: "getSpatialLayer"
+      x-required-permission: "project.read"
+      description: "Read active layer metadata, current source, capabilities."
+      security: [{"sessionCookie":[]},{"serviceBearer":[]}]
+      parameters:
+        - {"$ref":"#/components/parameters/OrganizationId"}
+        - {"$ref":"#/components/parameters/ProjectId"}
+        - {"$ref":"#/components/parameters/LayerId"}
+      responses:
+        "200":
+          description: "Successful authorized operation."
+          content: {"application/json":{"schema":{"$ref":"#/components/schemas/Layer"}}}
+        "401":
+          description: "Authentication/credential missing or invalid."
+          content: {"application/json":{"schema":{"$ref":"#/components/schemas/R002Error"}}}
+        "403":
+          description: "R002 current authorization, lifecycle or CSRF denial; generic to inaccessible target."
+          content: {"application/json":{"schema":{"$ref":"#/components/schemas/R002Error"}}}
+        "404":
+          description: "Scoped resource missing, retired, hidden, or wrong owner; no private details."
+          content: {"application/json":{"schema":{"$ref":"#/components/schemas/R002Error"}}}
+        "422":
+          description: "Invalid request or fail-closed spatial semantics; validation never echoes raw input."
+          content:
+            "application/json":
+              schema: {"oneOf":[{"$ref":"#/components/schemas/RequestValidationError"},{"$ref":"#/components/schemas/SpatialError"}]}
+    patch:
+      operationId: "renameSpatialLayer"
+      x-required-permission: "project.edit"
+      description: "Compare expected layer revision and change name only."
+      security: [{"sessionCookie":[]},{"serviceBearer":[]}]
+      parameters:
+        - {"$ref":"#/components/parameters/OrganizationId"}
+        - {"$ref":"#/components/parameters/ProjectId"}
+        - {"$ref":"#/components/parameters/LayerId"}
+        - {"$ref":"#/components/parameters/CsrfHeaderOptionalForBearer"}
+      requestBody: {"required":true,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/RenameLayer"}}}}
+      responses:
+        "200":
+          description: "Successful authorized operation."
+          content: {"application/json":{"schema":{"$ref":"#/components/schemas/LayerMutation"}}}
+        "401":
+          description: "Authentication/credential missing or invalid."
+          content: {"application/json":{"schema":{"$ref":"#/components/schemas/R002Error"}}}
+        "403":
+          description: "R002 current authorization, lifecycle or CSRF denial; generic to inaccessible target."
+          content: {"application/json":{"schema":{"$ref":"#/components/schemas/R002Error"}}}
+        "404":
+          description: "Scoped resource missing, retired, hidden, or wrong owner; no private details."
+          content: {"application/json":{"schema":{"$ref":"#/components/schemas/R002Error"}}}
+        "409":
+          description: "Current state conflicts: stale revisions/pins, dependency, duplicate reference key, source unavailable, read-only Project."
+          content: {"application/json":{"schema":{"$ref":"#/components/schemas/SpatialError"}}}
+        "422":
+          description: "Invalid request or fail-closed spatial semantics; validation never echoes raw input."
+          content:
+            "application/json":
+              schema: {"oneOf":[{"$ref":"#/components/schemas/RequestValidationError"},{"$ref":"#/components/schemas/SpatialError"}]}
+  "/organizations/{organization_id}/projects/{project_id}/layers/{layer_id}/retire":
+    post:
+      operationId: "retireSpatialLayer"
+      x-required-permission: "project.edit"
+      description: "Retire layer only; preserve source and sibling layers."
+      security: [{"sessionCookie":[]},{"serviceBearer":[]}]
+      parameters:
+        - {"$ref":"#/components/parameters/OrganizationId"}
+        - {"$ref":"#/components/parameters/ProjectId"}
+        - {"$ref":"#/components/parameters/LayerId"}
+        - {"$ref":"#/components/parameters/CsrfHeaderOptionalForBearer"}
+      requestBody: {"required":true,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/RetireResource"}}}}
+      responses:
+        "200":
+          description: "Successful authorized operation."
+          content: {"application/json":{"schema":{"$ref":"#/components/schemas/LayerMutation"}}}
+        "401":
+          description: "Authentication/credential missing or invalid."
+          content: {"application/json":{"schema":{"$ref":"#/components/schemas/R002Error"}}}
+        "403":
+          description: "R002 current authorization, lifecycle or CSRF denial; generic to inaccessible target."
+          content: {"application/json":{"schema":{"$ref":"#/components/schemas/R002Error"}}}
+        "404":
+          description: "Scoped resource missing, retired, hidden, or wrong owner; no private details."
+          content: {"application/json":{"schema":{"$ref":"#/components/schemas/R002Error"}}}
+        "409":
+          description: "Current state conflicts: stale revisions/pins, dependency, duplicate reference key, source unavailable, read-only Project."
+          content: {"application/json":{"schema":{"$ref":"#/components/schemas/SpatialError"}}}
+        "422":
+          description: "Invalid request or fail-closed spatial semantics; validation never echoes raw input."
+          content:
+            "application/json":
+              schema: {"oneOf":[{"$ref":"#/components/schemas/RequestValidationError"},{"$ref":"#/components/schemas/SpatialError"}]}
+  "/organizations/{organization_id}/projects/{project_id}/layers/{layer_id}/features":
+    get:
+      operationId: "pageSpatialFeatures"
+      x-required-permission: "project.read"
+      description: "Current content and schema pins required; reauthorize; deterministic keyset order; optional native/direct validated transformed geometry."
+      security: [{"sessionCookie":[]},{"serviceBearer":[]}]
+      parameters:
+        - {"$ref":"#/components/parameters/OrganizationId"}
+        - {"$ref":"#/components/parameters/ProjectId"}
+        - {"$ref":"#/components/parameters/LayerId"}
+        - {"$ref":"#/components/parameters/ContentRevision"}
+        - {"$ref":"#/components/parameters/SchemaRevision"}
+        - {"$ref":"#/components/parameters/IncludeGeometry"}
+        - {"$ref":"#/components/parameters/ResponseCRS"}
+        - {"$ref":"#/components/parameters/Limit"}
+        - {"$ref":"#/components/parameters/AfterFeatureId"}
+      responses:
+        "200":
+          description: "Successful authorized operation."
+          content: {"application/json":{"schema":{"$ref":"#/components/schemas/FeaturePage"}}}
+        "401":
+          description: "Authentication/credential missing or invalid."
+          content: {"application/json":{"schema":{"$ref":"#/components/schemas/R002Error"}}}
+        "403":
+          description: "R002 current authorization, lifecycle or CSRF denial; generic to inaccessible target."
+          content: {"application/json":{"schema":{"$ref":"#/components/schemas/R002Error"}}}
+        "404":
+          description: "Scoped resource missing, retired, hidden, or wrong owner; no private details."
+          content: {"application/json":{"schema":{"$ref":"#/components/schemas/R002Error"}}}
+        "409":
+          description: "Current state conflicts: stale revisions/pins, dependency, duplicate reference key, source unavailable, read-only Project."
+          content: {"application/json":{"schema":{"$ref":"#/components/schemas/SpatialError"}}}
+        "422":
+          description: "Invalid request or fail-closed spatial semantics; validation never echoes raw input."
+          content:
+            "application/json":
+              schema: {"oneOf":[{"$ref":"#/components/schemas/RequestValidationError"},{"$ref":"#/components/schemas/SpatialError"}]}
+  "/organizations/{organization_id}/projects/{project_id}/layers/{layer_id}/features/{feature_id}":
+    get:
+      operationId: "getSpatialFeature"
+      x-required-permission: "project.read"
+      description: "Current content and schema pins required; exact stable feature identity; matching page semantics."
+      security: [{"sessionCookie":[]},{"serviceBearer":[]}]
+      parameters:
+        - {"$ref":"#/components/parameters/OrganizationId"}
+        - {"$ref":"#/components/parameters/ProjectId"}
+        - {"$ref":"#/components/parameters/LayerId"}
+        - {"$ref":"#/components/parameters/FeatureId"}
+        - {"$ref":"#/components/parameters/ContentRevision"}
+        - {"$ref":"#/components/parameters/SchemaRevision"}
+        - {"$ref":"#/components/parameters/IncludeGeometry"}
+        - {"$ref":"#/components/parameters/ResponseCRS"}
+      responses:
+        "200":
+          description: "Successful authorized operation."
+          content: {"application/json":{"schema":{"$ref":"#/components/schemas/FeatureDetail"}}}
+        "401":
+          description: "Authentication/credential missing or invalid."
+          content: {"application/json":{"schema":{"$ref":"#/components/schemas/R002Error"}}}
+        "403":
+          description: "R002 current authorization, lifecycle or CSRF denial; generic to inaccessible target."
+          content: {"application/json":{"schema":{"$ref":"#/components/schemas/R002Error"}}}
+        "404":
+          description: "Scoped resource missing, retired, hidden, or wrong owner; no private details."
+          content: {"application/json":{"schema":{"$ref":"#/components/schemas/R002Error"}}}
+        "409":
+          description: "Current state conflicts: stale revisions/pins, dependency, duplicate reference key, source unavailable, read-only Project."
+          content: {"application/json":{"schema":{"$ref":"#/components/schemas/SpatialError"}}}
+        "422":
+          description: "Invalid request or fail-closed spatial semantics; validation never echoes raw input."
+          content:
+            "application/json":
+              schema: {"oneOf":[{"$ref":"#/components/schemas/RequestValidationError"},{"$ref":"#/components/schemas/SpatialError"}]}
+  "/organizations/{organization_id}/projects/{project_id}/spatial/crs-profiles":
+    get:
+      operationId: "getSpatialCRSProfiles"
+      x-required-permission: "project.read"
+      description: "Finite registry of definitions and approved direct transformation edges; no arbitrary CRS."
+      security: [{"sessionCookie":[]},{"serviceBearer":[]}]
+      parameters: [{"$ref":"#/components/parameters/OrganizationId"},{"$ref":"#/components/parameters/ProjectId"}]
+      responses:
+        "200":
+          description: "Successful authorized operation."
+          content: {"application/json":{"schema":{"$ref":"#/components/schemas/CRSRegistry"}}}
+        "401":
+          description: "Authentication/credential missing or invalid."
+          content: {"application/json":{"schema":{"$ref":"#/components/schemas/R002Error"}}}
+        "403":
+          description: "R002 current authorization, lifecycle or CSRF denial; generic to inaccessible target."
+          content: {"application/json":{"schema":{"$ref":"#/components/schemas/R002Error"}}}
+        "404":
+          description: "Scoped resource missing, retired, hidden, or wrong owner; no private details."
+          content: {"application/json":{"schema":{"$ref":"#/components/schemas/R002Error"}}}
+        "422":
+          description: "Invalid request or fail-closed spatial semantics; validation never echoes raw input."
+          content:
+            "application/json":
+              schema: {"oneOf":[{"$ref":"#/components/schemas/RequestValidationError"},{"$ref":"#/components/schemas/SpatialError"}]}
+  "/organizations/{organization_id}/projects/{project_id}/spatial/changes":
+    get:
+      operationId: "listSpatialCatalogChanges"
+      x-required-permission: "project.read"
+      description: "Bounded project-scoped immutable safe change evidence, including retired resources. Not tenant-wide security audit."
+      security: [{"sessionCookie":[]},{"serviceBearer":[]}]
+      parameters:
+        - {"$ref":"#/components/parameters/OrganizationId"}
+        - {"$ref":"#/components/parameters/ProjectId"}
+        - {"$ref":"#/components/parameters/Limit"}
+        - {"$ref":"#/components/parameters/AfterId"}
+      responses:
+        "200":
+          description: "Successful authorized operation."
+          content: {"application/json":{"schema":{"$ref":"#/components/schemas/ChangeList"}}}
+        "401":
+          description: "Authentication/credential missing or invalid."
+          content: {"application/json":{"schema":{"$ref":"#/components/schemas/R002Error"}}}
+        "403":
+          description: "R002 current authorization, lifecycle or CSRF denial; generic to inaccessible target."
+          content: {"application/json":{"schema":{"$ref":"#/components/schemas/R002Error"}}}
+        "404":
+          description: "Scoped resource missing, retired, hidden, or wrong owner; no private details."
+          content: {"application/json":{"schema":{"$ref":"#/components/schemas/R002Error"}}}
+        "422":
+          description: "Invalid request or fail-closed spatial semantics; validation never echoes raw input."
+          content:
+            "application/json":
+              schema: {"oneOf":[{"$ref":"#/components/schemas/RequestValidationError"},{"$ref":"#/components/schemas/SpatialError"}]}
+components:
+  securitySchemes:
+    sessionCookie: {"type":"apiKey","in":"cookie","name":"ovg_session"}
+    serviceBearer: {"type":"http","scheme":"bearer"}
+  parameters:
+    OrganizationId: {"name":"organization_id","in":"path","required":true,"schema":{"type":"string","format":"uuid"}}
+    ProjectId: {"name":"project_id","in":"path","required":true,"schema":{"type":"string","format":"uuid"}}
+    SourceId: {"name":"source_id","in":"path","required":true,"schema":{"type":"string","format":"uuid"}}
+    LayerId: {"name":"layer_id","in":"path","required":true,"schema":{"type":"string","format":"uuid"}}
+    FeatureId:
+      name: "feature_id"
+      in: "path"
+      required: true
+      schema: {"type":"string","minLength":1,"maxLength":128,"pattern":"^[A-Za-z0-9_-]+$"}
+    CsrfHeaderOptionalForBearer:
+      name: "X-OpenVietGIS-CSRF"
+      in: "header"
+      required: false
+      schema: {"type":"string"}
+      description: "Required for human cookie session mutations, not service bearer."
+    Limit:
+      name: "limit"
+      in: "query"
+      required: false
+      schema: {"type":"integer","minimum":1,"maximum":100,"default":100}
+      description: "Reject >100; no clamp."
+    AfterId:
+      name: "after_id"
+      in: "query"
+      required: false
+      schema: {"type":"string","format":"uuid"}
+      description: "Exclusive ascending UUID keyset cursor from previous page."
+    ContentRevision: {"name":"content_revision","in":"query","required":true,"schema":{"type":"string","pattern":"^[a-f0-9]{64}$"}}
+    SchemaRevision: {"name":"schema_revision","in":"query","required":true,"schema":{"type":"string","pattern":"^[a-f0-9]{64}$"}}
+    AfterFeatureId:
+      name: "after_feature_id"
+      in: "query"
+      required: false
+      schema: {"type":"string","minLength":1,"maxLength":128,"pattern":"^[A-Za-z0-9_-]+$"}
+      description: "Exclusive ascending feature key; previous page's next_after_feature_id."
+    IncludeGeometry: {"name":"include_geometry","in":"query","required":false,"schema":{"type":"boolean","default":true}}
+    ResponseCRS:
+      name: "response_crs"
+      in: "query"
+      required: false
+      schema: {"type":"integer","minimum":1,"maximum":2147483647}
+      description: "EPSG code; only 4326/3857/4756/5899 accepted. Default verified stored CRS; only with include_geometry=true. Unsupported positive code fails domain validation."
+  schemas:
+    CoordinateReference:
+      type: "object"
+      additionalProperties: false
+      required: ["authority","code","coordinate_order","x_axis","y_axis","unit"]
+      properties:
+        authority: {"const":"EPSG"}
+        code: {"type":"integer","enum":[4326,3857,4756,5899]}
+        coordinate_order: {"const":"xy"}
+        x_axis: {"type":"string","enum":["longitude","easting"]}
+        y_axis: {"type":"string","enum":["latitude","northing"]}
+        unit: {"type":"string","enum":["degree","metre"]}
+    CRSProfile:
+      type: "object"
+      additionalProperties: false
+      required:
+        - "authority"
+        - "code"
+        - "name"
+        - "datum"
+        - "native_axes"
+        - "unit"
+        - "coordinate_order"
+        - "x_axis"
+        - "y_axis"
+        - "projection_parameters"
+        - "area_of_use"
+        - "disposition"
+      properties:
+        authority: {"const":"EPSG"}
+        code: {"type":"integer","enum":[4326,3857,4756,5899,3405,3406]}
+        name: {"type":"string","minLength":1,"maxLength":200}
+        datum: {"type":"string","minLength":1,"maxLength":200}
+        native_axes:
+          type: "array"
+          minItems: 2
+          maxItems: 2
+          items: {"type":"string","enum":["latitude","longitude","easting","northing"]}
+        unit: {"type":"string","enum":["degree","metre"]}
+        coordinate_order: {"const":"xy"}
+        x_axis: {"type":"string","enum":["longitude","easting"]}
+        y_axis: {"type":"string","enum":["latitude","northing"]}
+        projection_parameters: {"type":"object","additionalProperties":{"type":["string","number"]},"maxProperties":16}
+        area_of_use: {"type":"string","minLength":1,"maxLength":500}
+        disposition: {"type":"string","enum":["readable","definition_only"]}
+    TransformationProfile:
+      type: "object"
+      additionalProperties: false
+      required: ["source_code","target_code","operation_id","method","validated_area","tolerance","tolerance_unit","evidence_id"]
+      properties:
+        source_code: {"type":"integer","enum":[4326,3857,4756,5899]}
+        target_code: {"type":"integer","enum":[4326,3857,4756,5899]}
+        operation_id: {"type":"string","minLength":1,"maxLength":128}
+        method: {"type":"string","minLength":1,"maxLength":500}
+        validated_area: {"type":"string","minLength":1,"maxLength":500}
+        tolerance: {"type":"number","exclusiveMinimum":0}
+        tolerance_unit: {"type":"string","enum":["degree","metre"]}
+        evidence_id: {"type":"string","minLength":1,"maxLength":200}
+    CRSRegistry:
+      type: "object"
+      additionalProperties: false
+      required: ["organization_id","project_id","profiles","transformations"]
+      properties:
+        organization_id: {"type":"string","format":"uuid"}
+        project_id: {"type":"string","format":"uuid"}
+        profiles: {"type":"array","minItems":6,"maxItems":6,"items":{"$ref":"#/components/schemas/CRSProfile"}}
+        transformations: {"type":"array","minItems":8,"maxItems":8,"items":{"$ref":"#/components/schemas/TransformationProfile"}}
+    DeclaredCRS:
+      type: "object"
+      additionalProperties: false
+      required: ["authority","code","coordinate_order"]
+      properties:
+        authority: {"const":"EPSG"}
+        code:
+          type: "integer"
+          minimum: 1
+          maximum: 2147483647
+          description: "Readable CRS only: 4326, 3857, 4756, 5899; other positive EPSG codes fail domain validation."
+        coordinate_order: {"const":"xy"}
+    ValidationReason:
+      type: "object"
+      additionalProperties: false
+      required: ["code","message"]
+      properties:
+        code:
+          type: "string"
+          enum:
+            - "MISSING_CRS"
+            - "UNKNOWN_CRS"
+            - "UNSUPPORTED_CRS"
+            - "CRS_MISMATCH"
+            - "GEOMETRY_FAMILY_MISMATCH"
+            - "UNSUPPORTED_DIMENSIONS"
+            - "UNSUPPORTED_GEOMETRY"
+            - "NULL_GEOMETRY"
+            - "EMPTY_GEOMETRY"
+            - "INVALID_GEOMETRY"
+            - "AXIS_CONFLICT"
+            - "COORDINATE_OUT_OF_DOMAIN"
+            - "EXTENT_WRAP_UNSUPPORTED"
+            - "SCHEMA_MISMATCH"
+            - "FIXTURE_UNAVAILABLE"
+            - "BOUNDS_EXCEEDED"
+        message: {"type":"string","minLength":1,"maxLength":500}
+    SourceField:
+      type: "object"
+      additionalProperties: false
+      required: ["field_id","name","ordinal","type","nullable"]
+      properties:
+        field_id: {"type":"string","minLength":1,"maxLength":64,"pattern":"^[A-Za-z][A-Za-z0-9_]*$"}
+        name: {"type":"string","minLength":1,"maxLength":200}
+        ordinal: {"type":"integer","minimum":0,"maximum":99}
+        type: {"type":"string","enum":["text","integer","decimal","boolean","timestamp"]}
+        nullable: {"type":"boolean"}
+    SourceSchema:
+      type: "object"
+      additionalProperties: false
+      required: ["schema_revision","fields","geometry_family","dimensions","state"]
+      properties:
+        schema_revision: {"type":"string","pattern":"^[a-f0-9]{64}$"}
+        fields: {"type":"array","minItems":0,"maxItems":100,"items":{"$ref":"#/components/schemas/SourceField"}}
+        geometry_family: {"type":"string","enum":["Point","LineString","Polygon","mixed","unsupported","unknown"]}
+        dimensions: {"type":"string","enum":["XY","XYZ","XYM","XYZM","mixed","unknown"]}
+        state: {"type":"string","enum":["known","unavailable"]}
+    Extent:
+      type: "object"
+      additionalProperties: false
+      required: ["min_x","min_y","max_x","max_y","coordinate_reference"]
+      properties:
+        min_x: {"type":"number"}
+        min_y: {"type":"number"}
+        max_x: {"type":"number"}
+        max_y: {"type":"number"}
+        coordinate_reference: {"$ref":"#/components/schemas/CoordinateReference"}
+    Provenance:
+      type: "object"
+      additionalProperties: false
+      required: ["reference_key","fixture_version","manifest_digest","source_asset_id"]
+      properties:
+        reference_key: {"type":"string","minLength":1,"maxLength":100}
+        fixture_version: {"type":"string","minLength":1,"maxLength":100}
+        manifest_digest: {"type":"string","pattern":"^[a-f0-9]{64}$"}
+        source_asset_id: {"type":"null"}
+    Source:
+      type: "object"
+      additionalProperties: false
+      required:
+        - "id"
+        - "organization_id"
+        - "project_id"
+        - "name"
+        - "kind"
+        - "provenance"
+        - "lifecycle"
+        - "validation_state"
+        - "validation_reason"
+        - "source_crs"
+        - "stored_crs"
+        - "schema"
+        - "feature_count_state"
+        - "feature_count"
+        - "extent_state"
+        - "extent"
+        - "catalog_revision"
+        - "content_revision"
+        - "schema_revision"
+        - "created_at"
+        - "updated_at"
+        - "retired_at"
+      properties:
+        id: {"type":"string","format":"uuid"}
+        organization_id: {"type":"string","format":"uuid"}
+        project_id: {"type":"string","format":"uuid"}
+        name: {"type":"string","minLength":1,"maxLength":200}
+        kind: {"const":"reference_fixture"}
+        provenance: {"$ref":"#/components/schemas/Provenance"}
+        lifecycle: {"type":"string","enum":["active","retired"]}
+        validation_state: {"type":"string","enum":["ready","invalid","not_ready"]}
+        validation_reason: {"anyOf":[{"$ref":"#/components/schemas/ValidationReason"},{"type":"null"}]}
+        source_crs: {"anyOf":[{"$ref":"#/components/schemas/CRSProfile"},{"type":"null"}]}
+        stored_crs: {"anyOf":[{"$ref":"#/components/schemas/CRSProfile"},{"type":"null"}]}
+        schema: {"$ref":"#/components/schemas/SourceSchema"}
+        feature_count_state: {"type":"string","enum":["known","unavailable"]}
+        feature_count: {"anyOf":[{"type":"integer","minimum":0,"maximum":2147483647},{"type":"null"}]}
+        extent_state: {"type":"string","enum":["available","empty","unavailable"]}
+        extent: {"anyOf":[{"$ref":"#/components/schemas/Extent"},{"type":"null"}]}
+        catalog_revision: {"type":"integer","minimum":1,"maximum":9007199254740991}
+        content_revision: {"type":"string","pattern":"^[a-f0-9]{64}$"}
+        schema_revision: {"type":"string","pattern":"^[a-f0-9]{64}$"}
+        created_at: {"type":"string","format":"date-time"}
+        updated_at: {"type":"string","format":"date-time"}
+        retired_at: {"anyOf":[{"type":"string","format":"date-time"},{"type":"null"}]}
+    Capability:
+      type: "object"
+      additionalProperties: false
+      required: ["name","technical_supported","available","required_permission","actor_authorized"]
+      properties:
+        name: {"type":"string","enum":["metadata_read","feature_read","render","edit","style","export","analysis","offline","query"]}
+        technical_supported: {"type":"boolean"}
+        available: {"type":"boolean"}
+        required_permission: {"anyOf":[{"const":"project.read"},{"type":"null"}]}
+        actor_authorized: {"type":"boolean"}
+    Layer:
+      type: "object"
+      additionalProperties: false
+      required:
+        - "id"
+        - "organization_id"
+        - "project_id"
+        - "name"
+        - "source_id"
+        - "lifecycle"
+        - "layer_revision"
+        - "source"
+        - "capabilities"
+        - "created_at"
+        - "updated_at"
+        - "retired_at"
+      properties:
+        id: {"type":"string","format":"uuid"}
+        organization_id: {"type":"string","format":"uuid"}
+        project_id: {"type":"string","format":"uuid"}
+        name: {"type":"string","minLength":1,"maxLength":200}
+        source_id: {"type":"string","format":"uuid"}
+        lifecycle: {"type":"string","enum":["active","retired"]}
+        layer_revision: {"type":"integer","minimum":1,"maximum":9007199254740991}
+        source: {"$ref":"#/components/schemas/Source"}
+        capabilities: {"type":"array","minItems":9,"maxItems":9,"items":{"$ref":"#/components/schemas/Capability"}}
+        created_at: {"type":"string","format":"date-time"}
+        updated_at: {"type":"string","format":"date-time"}
+        retired_at: {"anyOf":[{"type":"string","format":"date-time"},{"type":"null"}]}
+    SourceList:
+      type: "object"
+      additionalProperties: false
+      required: ["organization_id","project_id","items","next_after_id"]
+      properties:
+        organization_id: {"type":"string","format":"uuid"}
+        project_id: {"type":"string","format":"uuid"}
+        items: {"type":"array","minItems":0,"maxItems":100,"items":{"$ref":"#/components/schemas/Source"}}
+        next_after_id: {"anyOf":[{"type":"string","format":"uuid"},{"type":"null"}]}
+    LayerList:
+      type: "object"
+      additionalProperties: false
+      required: ["organization_id","project_id","items","next_after_id"]
+      properties:
+        organization_id: {"type":"string","format":"uuid"}
+        project_id: {"type":"string","format":"uuid"}
+        items: {"type":"array","minItems":0,"maxItems":100,"items":{"$ref":"#/components/schemas/Layer"}}
+        next_after_id: {"anyOf":[{"type":"string","format":"uuid"},{"type":"null"}]}
+    RegisterSource:
+      type: "object"
+      additionalProperties: false
+      required: ["reference_key","name"]
+      properties:
+        reference_key:
+          type: "string"
+          minLength: 1
+          maxLength: 100
+          pattern: "^[a-z0-9_]+$"
+          description: "Logical key from accepted private platform fixture registry. No paths, SQL, credentials or URLs."
+        name: {"type":"string","minLength":1,"maxLength":200}
+    UpdateSource:
+      type: "object"
+      additionalProperties: false
+      required: ["expected_revision"]
+      properties:
+        expected_revision: {"type":"integer","minimum":1,"maximum":9007199254740991}
+        name: {"type":"string","minLength":1,"maxLength":200}
+        declared_crs: {"$ref":"#/components/schemas/DeclaredCRS"}
+      anyOf: [{"required":["name"]},{"required":["declared_crs"]}]
+    CreateLayer:
+      type: "object"
+      additionalProperties: false
+      required: ["source_id","name"]
+      properties: {"source_id":{"type":"string","format":"uuid"},"name":{"type":"string","minLength":1,"maxLength":200}}
+    RenameLayer:
+      type: "object"
+      additionalProperties: false
+      required: ["expected_revision","name"]
+      properties:
+        expected_revision: {"type":"integer","minimum":1,"maximum":9007199254740991}
+        name: {"type":"string","minLength":1,"maxLength":200}
+    RetireResource:
+      type: "object"
+      additionalProperties: false
+      required: ["expected_revision"]
+      properties: {"expected_revision":{"type":"integer","minimum":1,"maximum":9007199254740991}}
+    SourceRevision:
+      type: "object"
+      additionalProperties: false
+      required: ["catalog_revision","content_revision","schema_revision"]
+      properties:
+        catalog_revision: {"type":"integer","minimum":1,"maximum":9007199254740991}
+        content_revision: {"type":"string","pattern":"^[a-f0-9]{64}$"}
+        schema_revision: {"type":"string","pattern":"^[a-f0-9]{64}$"}
+    LayerRevision:
+      type: "object"
+      additionalProperties: false
+      required: ["layer_revision"]
+      properties: {"layer_revision":{"type":"integer","minimum":1,"maximum":9007199254740991}}
+    SourceMutation:
+      type: "object"
+      additionalProperties: false
+      required:
+        - "organization_id"
+        - "project_id"
+        - "resource_type"
+        - "resource_id"
+        - "change_id"
+        - "prior_revision"
+        - "new_revision"
+        - "lifecycle"
+        - "validation_state"
+        - "validation_reason"
+      properties:
+        organization_id: {"type":"string","format":"uuid"}
+        project_id: {"type":"string","format":"uuid"}
+        resource_type: {"const":"data_source"}
+        resource_id: {"type":"string","format":"uuid"}
+        change_id: {"type":"string","format":"uuid"}
+        prior_revision: {"anyOf":[{"$ref":"#/components/schemas/SourceRevision"},{"type":"null"}]}
+        new_revision: {"$ref":"#/components/schemas/SourceRevision"}
+        lifecycle: {"type":"string","enum":["active","retired"]}
+        validation_state: {"type":"string","enum":["ready","invalid","not_ready"]}
+        validation_reason: {"anyOf":[{"$ref":"#/components/schemas/ValidationReason"},{"type":"null"}]}
+    LayerMutation:
+      type: "object"
+      additionalProperties: false
+      required: ["organization_id","project_id","resource_type","resource_id","change_id","prior_revision","new_revision","lifecycle"]
+      properties:
+        organization_id: {"type":"string","format":"uuid"}
+        project_id: {"type":"string","format":"uuid"}
+        resource_type: {"const":"layer"}
+        resource_id: {"type":"string","format":"uuid"}
+        change_id: {"type":"string","format":"uuid"}
+        prior_revision: {"anyOf":[{"$ref":"#/components/schemas/LayerRevision"},{"type":"null"}]}
+        new_revision: {"$ref":"#/components/schemas/LayerRevision"}
+        lifecycle: {"type":"string","enum":["active","retired"]}
+    AttributeValue:
+      description: "Interpret against field type in pinned schema: integer signed 32-bit; decimal canonical base-10 string, timestamp UTC RFC3339 string, text string, boolean, explicit null only if nullable."
+      type: ["string","integer","boolean","null"]
+      maxLength: 4096
+      minimum: -2147483648
+      maximum: 2147483647
+    Position:
+      type: "array"
+      minItems: 2
+      maxItems: 2
+      items: {"type":"number"}
+      description: "Finite X,Y coordinates in application order."
+    PointGeometry:
+      type: "object"
+      additionalProperties: false
+      required: ["type","coordinates","coordinate_reference"]
+      properties:
+        type: {"const":"Point"}
+        coordinates: {"$ref":"#/components/schemas/Position"}
+        coordinate_reference: {"$ref":"#/components/schemas/CoordinateReference"}
+    LineStringGeometry:
+      type: "object"
+      additionalProperties: false
+      required: ["type","coordinates","coordinate_reference"]
+      properties:
+        type: {"const":"LineString"}
+        coordinates: {"type":"array","minItems":2,"maxItems":4096,"items":{"$ref":"#/components/schemas/Position"}}
+        coordinate_reference: {"$ref":"#/components/schemas/CoordinateReference"}
+    PolygonGeometry:
+      type: "object"
+      additionalProperties: false
+      required: ["type","coordinates","coordinate_reference"]
+      properties:
+        type: {"const":"Polygon"}
+        coordinates:
+          type: "array"
+          minItems: 1
+          maxItems: 1024
+          items: {"type":"array","minItems":4,"maxItems":4096,"items":{"$ref":"#/components/schemas/Position"}}
+        coordinate_reference: {"$ref":"#/components/schemas/CoordinateReference"}
+      description: "Closed valid rings; <=4096 total positions across all rings."
+    Geometry:
+      oneOf:
+        - {"$ref":"#/components/schemas/PointGeometry"}
+        - {"$ref":"#/components/schemas/LineStringGeometry"}
+        - {"$ref":"#/components/schemas/PolygonGeometry"}
+      description: "Explicit X/Y geometry envelope, not RFC 7946 GeoJSON."
+    Feature:
+      type: "object"
+      additionalProperties: false
+      required: ["feature_id","attributes","geometry_state"]
+      properties:
+        feature_id: {"type":"string","minLength":1,"maxLength":128,"pattern":"^[A-Za-z0-9_-]+$"}
+        attributes:
+          type: "object"
+          maxProperties: 100
+          propertyNames: {"type":"string","minLength":1,"maxLength":64,"pattern":"^[A-Za-z][A-Za-z0-9_]*$"}
+          additionalProperties: {"$ref":"#/components/schemas/AttributeValue"}
+        geometry_state: {"type":"string","enum":["present","absent","empty","invalid","unsupported"]}
+        geometry: {"anyOf":[{"$ref":"#/components/schemas/Geometry"},{"type":"null"}]}
+    FeatureReadContext:
+      type: "object"
+      additionalProperties: false
+      required:
+        - "organization_id"
+        - "project_id"
+        - "layer_id"
+        - "source_id"
+        - "content_revision"
+        - "schema_revision"
+        - "geometry_included"
+        - "response_crs"
+        - "transformation"
+      properties:
+        organization_id: {"type":"string","format":"uuid"}
+        project_id: {"type":"string","format":"uuid"}
+        layer_id: {"type":"string","format":"uuid"}
+        source_id: {"type":"string","format":"uuid"}
+        content_revision: {"type":"string","pattern":"^[a-f0-9]{64}$"}
+        schema_revision: {"type":"string","pattern":"^[a-f0-9]{64}$"}
+        geometry_included: {"type":"boolean"}
+        response_crs: {"anyOf":[{"$ref":"#/components/schemas/CoordinateReference"},{"type":"null"}]}
+        transformation: {"anyOf":[{"$ref":"#/components/schemas/TransformationProfile"},{"type":"null"}]}
+    FeaturePage:
+      type: "object"
+      additionalProperties: false
+      required: ["context","items","next_after_feature_id"]
+      properties:
+        context: {"$ref":"#/components/schemas/FeatureReadContext"}
+        items: {"type":"array","minItems":0,"maxItems":100,"items":{"$ref":"#/components/schemas/Feature"}}
+        next_after_feature_id: {"anyOf":[{"type":"string","minLength":1,"maxLength":128,"pattern":"^[A-Za-z0-9_-]+$"},{"type":"null"}]}
+    FeatureDetail:
+      type: "object"
+      additionalProperties: false
+      required: ["context","feature"]
+      properties: {"context":{"$ref":"#/components/schemas/FeatureReadContext"},"feature":{"$ref":"#/components/schemas/Feature"}}
+    ChangeValue: {"type":["string","number","boolean","null"],"maxLength":500}
+    ChangedValue:
+      type: "object"
+      additionalProperties: false
+      required: ["field","old_value","new_value"]
+      properties:
+        field: {"type":"string","minLength":1,"maxLength":100}
+        old_value: {"$ref":"#/components/schemas/ChangeValue"}
+        new_value: {"$ref":"#/components/schemas/ChangeValue"}
+    CatalogChange:
+      type: "object"
+      additionalProperties: false
+      required:
+        - "id"
+        - "organization_id"
+        - "project_id"
+        - "resource_type"
+        - "resource_id"
+        - "actor_type"
+        - "actor_id"
+        - "actor_display_snapshot"
+        - "operation"
+        - "created_at"
+        - "audit_event_id"
+        - "prior_revision"
+        - "new_revision"
+        - "changes"
+      properties:
+        id: {"type":"string","format":"uuid"}
+        organization_id: {"type":"string","format":"uuid"}
+        project_id: {"type":"string","format":"uuid"}
+        resource_type: {"type":"string","enum":["data_source","layer"]}
+        resource_id: {"type":"string","format":"uuid"}
+        actor_type: {"type":"string","enum":["human","service_principal"]}
+        actor_id: {"type":"string","format":"uuid"}
+        actor_display_snapshot: {"type":"string","minLength":1,"maxLength":200}
+        operation:
+          type: "string"
+          enum:
+            - "register_source"
+            - "update_source"
+            - "correct_source_crs"
+            - "retire_source"
+            - "create_layer"
+            - "rename_layer"
+            - "retire_layer"
+            - "refresh_reference_fixture"
+        created_at: {"type":"string","format":"date-time"}
+        audit_event_id: {"type":"string","format":"uuid"}
+        prior_revision:
+          oneOf: [{"$ref":"#/components/schemas/SourceRevision"},{"$ref":"#/components/schemas/LayerRevision"},{"type":"null"}]
+        new_revision: {"oneOf":[{"$ref":"#/components/schemas/SourceRevision"},{"$ref":"#/components/schemas/LayerRevision"}]}
+        changes: {"type":"array","minItems":1,"maxItems":100,"items":{"$ref":"#/components/schemas/ChangedValue"}}
+    ChangeList:
+      type: "object"
+      additionalProperties: false
+      required: ["organization_id","project_id","items","next_after_id"]
+      properties:
+        organization_id: {"type":"string","format":"uuid"}
+        project_id: {"type":"string","format":"uuid"}
+        items: {"type":"array","minItems":0,"maxItems":100,"items":{"$ref":"#/components/schemas/CatalogChange"}}
+        next_after_id: {"anyOf":[{"type":"string","format":"uuid"},{"type":"null"}]}
+    R002Error:
+      type: "object"
+      additionalProperties: false
+      required: ["detail"]
+      properties: {"detail":{"type":"string","minLength":1,"maxLength":500}}
+    RequestValidationError:
+      type: "object"
+      additionalProperties: false
+      required: ["detail"]
+      properties:
+        detail:
+          type: "array"
+          minItems: 1
+          maxItems: 1
+          items:
+            type: "object"
+            additionalProperties: false
+            required: ["loc","msg","type"]
+            properties: {"loc":{"type":"array","maxItems":0},"msg":{"const":"invalid request payload"},"type":{"const":"value_error"}}
+    SpatialError:
+      type: "object"
+      additionalProperties: false
+      required: ["detail","code"]
+      properties:
+        detail: {"type":"string","minLength":1,"maxLength":500}
+        code:
+          type: "string"
+          enum:
+            - "STALE_CATALOG_REVISION"
+            - "STALE_LAYER_REVISION"
+            - "STALE_READ_PIN"
+            - "ACTIVE_LAYER_DEPENDENCIES"
+            - "SOURCE_ALREADY_REGISTERED"
+            - "SOURCE_NOT_READY"
+            - "PROJECT_NOT_WRITABLE"
+            - "UNKNOWN_REFERENCE_KEY"
+            - "NO_CHANGES"
+            - "CRS_CORRECTION_UNVERIFIED"
+            - "UNSUPPORTED_CRS"
+            - "UNSUPPORTED_TRANSFORMATION"
+            - "TRANSFORMATION_OUT_OF_AREA"
+            - "TRANSFORMATION_UNAVAILABLE"
+            - "INVALID_CURSOR"
+            - "INVALID_GEOMETRY"
+            - "BOUNDS_EXCEEDED"
