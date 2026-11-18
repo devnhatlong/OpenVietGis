@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
+from typing import NoReturn
 from uuid import UUID, uuid4
 
 from openvietgis_api.domains.audit.domain import AuditEvent, AuditOutcome
@@ -37,6 +38,10 @@ class LoginResult:
 
 class IdentityConflictError(ValueError):
     pass
+
+
+class IdentityLinkConflictError(IdentityConflictError):
+    """A confirmed linking denial already recorded in the current transaction."""
 
 
 class CannotUnlinkLastIdentityError(ValueError):
@@ -138,7 +143,7 @@ class IdentityService:
         if existing is not None:
             existing_user, existing_link = existing
             if existing_user.id != user_id:
-                raise IdentityConflictError("external identity is linked to another user")
+                self._deny_link_conflict(user, now)
             return existing_link
 
         link = IdentityLink(
@@ -152,7 +157,18 @@ class IdentityService:
             created_at=now,
             last_login_at=now,
         )
-        self._repository.add_identity_link(link)
+        if not self._repository.try_add_identity_link(link):
+            # The uniqueness constraint detected a concurrent claimant. A separate
+            # statement re-resolves the winner at READ COMMITTED without aborting
+            # this transaction. Same-user retries are harmless; all other outcomes
+            # are denied without transferring or exposing an existing identity.
+            existing = self._repository.find_by_external_identity(
+                issuer=claims.issuer,
+                subject=claims.subject,
+            )
+            if existing is not None and existing[0].id == user_id:
+                return existing[1]
+            self._deny_link_conflict(user, now)
         self._audit_repository.append(
             AuditEvent(
                 id=uuid4(),
@@ -169,6 +185,26 @@ class IdentityService:
             )
         )
         return link
+
+    def _deny_link_conflict(self, user: User, now: datetime) -> NoReturn:
+        # Do not record the other user, foreign link ID, issuer/subject, email,
+        # or credentials. The initiating actor and fixed reason are sufficient.
+        self._audit_repository.append(
+            AuditEvent(
+                id=uuid4(),
+                organization_id=None,
+                actor_type=ActorType.HUMAN,
+                actor_id=user.id,
+                actor_display_snapshot=user.display_name,
+                action="identity.link",
+                resource_type="identity_link",
+                resource_id=None,
+                outcome=AuditOutcome.DENIED,
+                metadata={"reason": "identity_conflict"},
+                created_at=now,
+            )
+        )
+        raise IdentityLinkConflictError("external identity cannot be linked")
 
     def unlink_identity(
         self,

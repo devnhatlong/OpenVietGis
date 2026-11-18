@@ -105,19 +105,30 @@ class SqlIdentityRepository:
         self.add_identity_link(identity_link)
 
     def add_identity_link(self, identity_link: IdentityLink) -> None:
-        self._session.execute(
-            text(
-                """
-                INSERT INTO identity.identity_links (
-                    id, user_id, issuer, subject, email_snapshot, email_verified,
-                    display_name_snapshot, created_at, last_login_at
-                )
-                VALUES (
-                    :id, :user_id, :issuer, :subject, :email_snapshot, :email_verified,
-                    :display_name_snapshot, :created_at, :last_login_at
-                )
-                """
-            ),
+        self._insert_identity_link(identity_link, ignore_identity_conflict=False)
+
+    def try_add_identity_link(self, identity_link: IdentityLink) -> bool:
+        return self._insert_identity_link(identity_link, ignore_identity_conflict=True)
+
+    def _insert_identity_link(
+        self, identity_link: IdentityLink, *, ignore_identity_conflict: bool
+    ) -> bool:
+        statement = """
+            INSERT INTO identity.identity_links (
+                id, user_id, issuer, subject, email_snapshot, email_verified,
+                display_name_snapshot, created_at, last_login_at
+            )
+            VALUES (
+                :id, :user_id, :issuer, :subject, :email_snapshot, :email_verified,
+                :display_name_snapshot, :created_at, :last_login_at
+            )
+            """
+        if ignore_identity_conflict:
+            # Only suppress this expected unique-key conflict. Other persistence
+            # errors propagate and roll back the complete request.
+            statement += " ON CONFLICT (issuer, subject) DO NOTHING RETURNING id"
+        result = self._session.execute(
+            text(statement),
             {
                 "id": identity_link.id,
                 "user_id": identity_link.user_id,
@@ -130,6 +141,9 @@ class SqlIdentityRepository:
                 "last_login_at": identity_link.last_login_at,
             },
         )
+        if ignore_identity_conflict:
+            return result.scalar_one_or_none() is not None
+        return True
 
     def list_identity_links(self, user_id: UUID) -> list[IdentityLink]:
         rows = (

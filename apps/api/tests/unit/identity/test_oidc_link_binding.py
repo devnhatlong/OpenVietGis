@@ -12,7 +12,11 @@ from fastapi.testclient import TestClient
 from openvietgis_api.adapters.http import auth
 from openvietgis_api.adapters.http.security import AuthenticatedRequest, get_db_session
 from openvietgis_api.domains.authorization.context import Actor
-from openvietgis_api.domains.identity.service import ExternalIdentityClaims
+from openvietgis_api.domains.identity.service import (
+    ExternalIdentityClaims,
+    IdentityConflictError,
+    IdentityLinkConflictError,
+)
 from openvietgis_api.main import create_app
 
 
@@ -28,6 +32,8 @@ def oidc_client(monkeypatch: pytest.MonkeyPatch):
     linked: list[UUID] = []
     exchanged: list[str] = []
     active = [True]
+    error = [None]
+    transactions: list[str] = []
 
     class Registry:
         async def begin_login(self, request, *, provider_name, redirect_uri, state):
@@ -48,6 +54,8 @@ def oidc_client(monkeypatch: pytest.MonkeyPatch):
 
     class Service:
         def link_identity(self, *, user_id, claims):
+            if error[0] is not None:
+                raise error[0]
             linked.append(user_id)
 
         def login(self, *_args, **_kwargs):
@@ -72,7 +80,13 @@ def oidc_client(monkeypatch: pytest.MonkeyPatch):
         )
 
     def fake_session():
-        yield object()
+        try:
+            yield object()
+        except Exception:
+            transactions.append("rolled_back")
+            raise
+        else:
+            transactions.append("committed")
 
     monkeypatch.setattr(auth, "_registry", lambda _settings: Registry())
     monkeypatch.setattr(auth, "_identity_service", lambda _session: Service())
@@ -89,6 +103,8 @@ def oidc_client(monkeypatch: pytest.MonkeyPatch):
             exchanged=exchanged,
             active=active,
             sessions=sessions,
+            error=error,
+            transactions=transactions,
         )
 
 
@@ -150,3 +166,22 @@ def test_superseded_link_cannot_complete_as_login_or_link(oidc_client) -> None:
     assert _callback(oidc_client.client, old_state).status_code == 400
     assert oidc_client.exchanged == []
     assert oidc_client.linked == []
+
+
+def test_confirmed_link_conflict_returns_sanitized_denial_and_commits(oidc_client) -> None:
+    state = _begin(oidc_client.client)
+    oidc_client.error[0] = IdentityLinkConflictError("must not expose details")
+    response = _callback(oidc_client.client, state)
+    assert response.status_code == 400
+    assert response.json() == {"detail": "external identity cannot be linked"}
+    assert oidc_client.linked == []
+    assert oidc_client.transactions == ["committed", "committed"]
+
+
+def test_other_identity_conflicts_still_rollback(oidc_client) -> None:
+    state = _begin(oidc_client.client)
+    oidc_client.error[0] = IdentityConflictError("user not found")
+    response = _callback(oidc_client.client, state)
+    assert response.status_code == 400
+    assert oidc_client.linked == []
+    assert oidc_client.transactions == ["committed", "rolled_back"]

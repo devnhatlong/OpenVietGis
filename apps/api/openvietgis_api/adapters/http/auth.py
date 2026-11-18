@@ -5,7 +5,7 @@ from typing import Annotated, Literal
 
 from authlib.integrations.base_client import OAuthError  # type: ignore[import-untyped]
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
-from fastapi.responses import RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
 from openvietgis_api.adapters.http.security import (
@@ -24,6 +24,7 @@ from openvietgis_api.adapters.persistence.identity_repository import SqlIdentity
 from openvietgis_api.config import Settings, get_settings
 from openvietgis_api.domains.identity.service import (
     IdentityConflictError,
+    IdentityLinkConflictError,
     IdentityService,
 )
 from openvietgis_api.security.csrf import make_csrf_token
@@ -156,7 +157,17 @@ async def complete_login(
                 user_id=actor_id, session_id=authentication.session_id,
             ):
                 raise HTTPException(status_code=400, detail="link session no longer valid")
-            service.link_identity(user_id=actor_id, claims=claims)
+            try:
+                service.link_identity(user_id=actor_id, claims=claims)
+            except IdentityLinkConflictError:
+                # The confirmed-conflict branch made no identity mutation and
+                # appended its sanitized denial audit. Return normally so the
+                # function-scoped transaction commits only that audit; other
+                # exceptions still trigger the standard rollback.
+                return JSONResponse(
+                    status_code=400,
+                    content={"detail": "external identity cannot be linked"},
+                )
             return redirect
         result = service.login(
             claims,
