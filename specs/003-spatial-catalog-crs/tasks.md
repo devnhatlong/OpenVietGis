@@ -61,8 +61,8 @@ description: "Dependency-ordered implementation tasks for R003"
 
 **Goal / independent test**: Independent test: two Layers share one source and retiring a Layer preserves others (SC-002). Depends US1.
 
-- [ ] T027 [P] [US2] Contract tests for Layer create/list/detail, rename, retire and explicit capabilities in apps/api/tests/contract/test_spatial_layers.py.
-- [ ] T028 [P] [US2] Real PostgreSQL integration tests for two-layer shared rows, duplicate names, cross-project link even dual-authorized, stale and concurrent source retire/create in apps/api/tests/integration/spatial/test_layers.py.
+- [X] T027 [P] [US2] Contract tests for Layer create/list/detail, rename, retire and explicit capabilities in apps/api/tests/contract/test_spatial_layers.py.
+- [X] T028 [P] [US2] Real PostgreSQL integration tests for two-layer shared rows, duplicate names, cross-project link even dual-authorized, stale and concurrent source retire/create in apps/api/tests/integration/spatial/test_layers.py.
 - [ ] T029 [US2] Implement same-scope Layer persistence and source dependency check under source lock in apps/api/openvietgis_api/adapters/persistence/spatial_repository.py per data-model.md Layer.source_id, Layer.lifecycle, Layer.layer_revision.
 - [ ] T030 [US2] Implement lifecycle/CAS and capability support/availability/authorization distinction in apps/api/openvietgis_api/domains/spatial/service.py per data-model.md Layer.name, Layer.lifecycle, Layer.layer_revision, Layer.retired_at and CatalogChange.operation.
 - [ ] T031 [US2] Implement Layer HTTP routes and nested bounded source metadata in apps/api/openvietgis_api/adapters/http/spatial.py and SDK in packages/client-sdk/src/spatial.ts.
