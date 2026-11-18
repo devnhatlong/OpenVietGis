@@ -62,11 +62,11 @@ function IdentityDetails({ account }: { account: CurrentUser }) {
       queryClient.clear();
       await navigate("/");
     },
-    onError: async (error) => {
+    onError: async () => {
+      // Even an ambiguous network failure may follow a committed logout.
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: linksKey }),
-        ...(error instanceof ApiError && isAuthorizationLossStatus(error.status)
-          ? [queryClient.invalidateQueries({ queryKey: ["me"] })] : [])
+        queryClient.invalidateQueries({ queryKey: ["me"] }),
+        queryClient.invalidateQueries({ queryKey: linksKey })
       ]);
     }
   });
