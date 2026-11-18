@@ -6,7 +6,8 @@ export * from "./auth";
 export * from "./organizations";
 export * from "./invitations";
 export * from "./health";
-export * from "./http";export type {
+export * from "./http";
+export type {
   paths as AuthSessionPaths,
   components as AuthSessionComponents
 } from "./generated/auth-session";
@@ -18,3 +19,8 @@ export type {
   paths as ServiceAdminPaths,
   components as ServiceAdminComponents
 } from "./generated/service-admin";
+export type {
+  paths as SpatialCatalogPaths,
+  components as SpatialCatalogComponents
+} from "./generated/spatial-catalog";
+export * from "./spatial";
