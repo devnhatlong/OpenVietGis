@@ -27,3 +27,8 @@ export function currentProtectedData<T>(result: ProtectedQueryResult<T>): T | un
 export function identityLinksKey(accountId: string) {
   return ["identity-links", accountId] as const;
 }
+
+/** A protected mutation denial can invalidate the current authorization context. */
+export function isAuthorizationLossStatus(status: number): boolean {
+  return status === 401 || status === 403 || status === 404;
+}

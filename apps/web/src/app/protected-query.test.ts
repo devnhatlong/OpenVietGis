@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { currentProtectedData, identityLinksKey, protectedQueryOptions } from "./protected-query";
+import { currentProtectedData, identityLinksKey, isAuthorizationLossStatus, protectedQueryOptions } from "./protected-query";
 
 describe("protected query visibility", () => {
   const completed = {
@@ -34,6 +34,14 @@ describe("protected query visibility", () => {
   it("isolates identity link caches between signed-in actors", () => {
     expect(identityLinksKey("actor-a")).toEqual(["identity-links", "actor-a"]);
     expect(identityLinksKey("actor-a")).not.toEqual(identityLinksKey("actor-b"));
+  });
+
+  it.each([401, 403, 404])("revalidates authorization after mutation denial %s", (status) => {
+    expect(isAuthorizationLossStatus(status)).toBe(true);
+  });
+
+  it.each([400, 409, 422])("keeps ordinary mutation errors %s local to the form", (status) => {
+    expect(isAuthorizationLossStatus(status)).toBe(false);
   });
 
   it("always revalidates protected data on remount, focus and reconnect", () => {

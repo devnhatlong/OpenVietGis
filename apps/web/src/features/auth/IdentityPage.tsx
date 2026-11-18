@@ -11,7 +11,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router-dom";
 
 import { apiClient } from "../../app/api";
-import { currentProtectedData, identityLinksKey, protectedQueryOptions } from "../../app/protected-query";
+import { currentProtectedData, identityLinksKey, isAuthorizationLossStatus, protectedQueryOptions } from "../../app/protected-query";
 import { FreshAccount } from "./FreshAccount";
 
 function IdentityDetails({ account }: { account: CurrentUser }) {
@@ -38,12 +38,16 @@ function IdentityDetails({ account }: { account: CurrentUser }) {
       await unlinkIdentity(apiClient, identityLinkId);
     },
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: linksKey });
+      // Unlinking the active identity also invalidates its server session.
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["me"] }),
+        queryClient.invalidateQueries({ queryKey: linksKey })
+      ]);
     },
     onError: async (error) => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: linksKey }),
-        ...(error instanceof ApiError && (error.status === 401 || error.status === 403)
+        ...(error instanceof ApiError && isAuthorizationLossStatus(error.status)
           ? [queryClient.invalidateQueries({ queryKey: ["me"] })] : [])
       ]);
     }
@@ -58,10 +62,11 @@ function IdentityDetails({ account }: { account: CurrentUser }) {
       queryClient.clear();
       await navigate("/");
     },
-    onError: async () => {
+    onError: async (error) => {
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["me"] }),
-        queryClient.invalidateQueries({ queryKey: linksKey })
+        queryClient.invalidateQueries({ queryKey: linksKey }),
+        ...(error instanceof ApiError && isAuthorizationLossStatus(error.status)
+          ? [queryClient.invalidateQueries({ queryKey: ["me"] })] : [])
       ]);
     }
   });

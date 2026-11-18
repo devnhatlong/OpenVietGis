@@ -10,7 +10,7 @@ import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
 import { apiClient } from "../../app/api";
-import { currentProtectedData, protectedQueryOptions } from "../../app/protected-query";
+import { currentProtectedData, isAuthorizationLossStatus, protectedQueryOptions } from "../../app/protected-query";
 import { FreshAccount } from "../auth/FreshAccount";
 import { InvitationIssuePanel } from "../invitations/InvitationIssuePanel";
 import { initialScope, ResourceScopeFields, selectedGrant } from "./ResourceScopeFields";
@@ -62,23 +62,34 @@ function MemberAdministration({ organizationId, userId, permissions }: {
   const canSubmitGrant = currentGrants !== undefined && availableMembers.some((member) => member.id === membershipId && member.status === "active") &&
     !!selectedGrant(scope, availableWorkspaces, availableProjects);
 
-  async function refreshAccess() {
+  async function refreshChildren() {
     await Promise.all([
-      queryClient.invalidateQueries({ queryKey: ["my-organizations", userId] }),
       queryClient.invalidateQueries({ queryKey: ["members", organizationId, userId] }),
       queryClient.invalidateQueries({ queryKey: ["grants", organizationId, userId] }),
-      queryClient.invalidateQueries({ queryKey: ["permissions", organizationId, userId] }),
       queryClient.invalidateQueries({ queryKey: ["workspaces", organizationId, userId] }),
       queryClient.invalidateQueries({ queryKey: ["projects", organizationId, userId] })
     ]);
   }
 
-  async function refreshAfterError(error: unknown) {
+  async function refreshAccess() {
     await Promise.all([
-      refreshAccess(),
-      ...(error instanceof ApiError && (error.status === 401 || error.status === 403)
-        ? [queryClient.invalidateQueries({ queryKey: ["me"] })] : [])
+      queryClient.invalidateQueries({ queryKey: ["permissions", organizationId, userId] }),
+      queryClient.invalidateQueries({ queryKey: ["my-organizations", userId] }),
+      refreshChildren()
     ]);
+  }
+
+  async function refreshAfterError(error: unknown) {
+    if (error instanceof ApiError && isAuthorizationLossStatus(error.status)) {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["me"] }),
+        refreshAccess()
+      ]);
+    } else {
+      // Validation/conflict failures should retain the form and safe error notice.
+      // Refresh affected child choices without unmounting their authorization gate.
+      await refreshChildren();
+    }
   }
 
   const changeMember = useMutation({

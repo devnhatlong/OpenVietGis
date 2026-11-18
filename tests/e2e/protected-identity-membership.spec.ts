@@ -70,6 +70,48 @@ test("identity links never render a private cached payload during or after a den
   });
 });
 
+test("unlinking the active identity revalidates the account even when the DELETE succeeds", async ({ page }) => {
+  await signInOwner(page);
+  const linksPath = "/api/v1/me/identity-links";
+  const currentSubject = "synthetic-active-identity";
+  const matches = (url: URL) => url.pathname === linksPath;
+  let unlinked = false;
+  await page.route(matches, async (route) => {
+    if (route.request().method() === "DELETE") {
+      unlinked = true;
+      await route.fulfill({ status: 204 });
+      return;
+    }
+    const remainingLink = { id: "synthetic-other", issuer: "https://identity.example.test", subject: "synthetic-other-subject" };
+    await route.fulfill({ json: unlinked ? [remainingLink] : [
+      { id: "synthetic-active", issuer: "https://identity.example.test", subject: currentSubject },
+      remainingLink
+    ] });
+  });
+  try {
+    await page.getByRole("link", { name: "Identity & session" }).click();
+    await expect(page.getByText("Owner Alpha", { exact: false })).toBeVisible();
+    const activeLink = page.locator("li").filter({ hasText: currentSubject });
+    await expect(activeLink).toBeVisible();
+
+    // The server accepted unlink and cascaded the active identity session; the
+    // subsequent account read must be denied, not the otherwise successful links read.
+    await holdDeniedRead(page, "/api/v1/me", 401,
+      () => activeLink.getByRole("button", { name: "Unlink", exact: true }).click(),
+      async () => {
+        expect(unlinked).toBe(true);
+        await expect(page.getByText("Owner Alpha", { exact: false })).toHaveCount(0);
+        await expect(page.getByRole("heading", { name: "Identity & session" })).toHaveCount(0);
+        await expect(page.getByRole("button", { name: "Sign out" })).toHaveCount(0);
+      },
+      async () => {
+        await expect(page.getByRole("heading", { name: "Sign in to OpenVietGIS" })).toBeVisible();
+      });
+  } finally {
+    await page.unroute(matches);
+  }
+});
+
 test("membership administration is unmounted while prior permissions are revalidated", async ({ page }) => {
   await signInOwner(page);
   const suffix = Date.now().toString();
@@ -86,6 +128,32 @@ test("membership administration is unmounted while prior permissions are revalid
   await expect(page.getByTestId("member-list").locator("li").first()).toBeVisible();
   await expect(page.getByRole("heading", { name: "Resource grants" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Invitations", exact: true })).toBeVisible();
+  // A normal server-side lifecycle conflict must keep the safe error notice and
+  // administration controls mounted, while child lists may revalidate.
+  const memberMutation = (url: URL) =>
+    url.pathname.startsWith("/api/v1/organizations/" + organizationId + "/members/");
+  await page.route(memberMutation, (route) => route.fulfill({ status: 409, json: { detail: "Conflict" } }));
+  try {
+    await page.getByTestId("member-list").locator("li").first().getByRole("button", { name: "Suspend" }).click();
+    await expect(page.getByRole("alert")).toContainText("Unable to change membership.");
+    await expect(page.getByRole("heading", { name: "Invitations", exact: true })).toBeVisible();
+    await expect(page.getByTestId("member-list").locator("li").first()).toBeVisible();
+  } finally {
+    await page.unroute(memberMutation);
+  }
+
+  const invitationMutation = (url: URL) => url.pathname === "/api/v1/organizations/" + organizationId + "/invitations";
+  await page.route(invitationMutation, (route) => route.fulfill({ status: 422, json: { detail: "Unprocessable" } }));
+  try {
+    const recipientInput = page.getByLabel("Recipient email");
+    await recipientInput.fill("synthetic-recipient@example.test");
+    await page.getByRole("button", { name: "Issue invitation" }).click();
+    await expect(page.getByText("Unable to issue invitation.", { exact: true })).toBeVisible();
+    await expect(recipientInput).toHaveValue("synthetic-recipient@example.test");
+    await expect(page.getByRole("region", { name: "Issued invitation" })).toHaveCount(0);
+  } finally {
+    await page.unroute(invitationMutation);
+  }
   await page.getByRole("link", { name: "← Organization", exact: true }).click();
   await expect(membershipLink).toBeVisible();
 
