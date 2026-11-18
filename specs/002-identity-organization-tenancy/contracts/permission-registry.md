@@ -36,8 +36,8 @@ modules must request/check permission codes rather than hard-coding role names.
 | `project.edit` | Modify non-management Project metadata/content owned by later capabilities |
 | `project.manage` | Manage Project settings/lifecycle within allowed scope |
 | `project.move_workspace` | Move/un-group Project only within its owning Organization |
-| `project.archive` | Archive/restore Project |
-| `project.delete` | Enter recoverable deleted state |
+| `project.archive` | Archive/restore Project; also required for deleted Project recovery |
+| `project.delete` | Enter recoverable deleted state; also required for explicit deleted Project recovery |
 | `project.share` | Manage future-compatible scoped collaboration access; public links remain out of scope |
 
 ## Organization role bundles

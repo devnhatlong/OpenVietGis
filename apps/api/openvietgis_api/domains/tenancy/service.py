@@ -325,8 +325,12 @@ class TenancyService:
         )
         if workspace is None:
             raise WorkspaceNotFoundError("workspace not found")
-        if workspace.status == WorkspaceStatus.DELETED:
-            raise InvalidLifecycleTransitionError("deleted workspace cannot be mutated")
+        if workspace.status == WorkspaceStatus.DELETED and (
+            status != WorkspaceStatus.ACTIVE or name is not None
+        ):
+            raise InvalidLifecycleTransitionError(
+                "deleted workspace requires a status-only restore"
+            )
 
         now = now or datetime.now(UTC)
         new_status = status or workspace.status
@@ -355,7 +359,7 @@ class TenancyService:
                 if new_status == WorkspaceStatus.ACTIVE
                 else workspace.archived_at
             ),
-            deleted_at=now if new_status == WorkspaceStatus.DELETED else workspace.deleted_at,
+            deleted_at=now if new_status == WorkspaceStatus.DELETED else None,
         )
         self._repository.update_workspace(updated, context=context)
         self._audit(
@@ -364,7 +368,7 @@ class TenancyService:
             action="workspace.update",
             resource_type="workspace",
             resource_id=workspace_id,
-            metadata={"status": updated.status.value},
+            metadata={"status": updated.status.value, "previous_status": workspace.status.value},
             now=now,
         )
         return updated
@@ -444,8 +448,10 @@ class TenancyService:
         )
         if project is None:
             raise ProjectNotFoundError("project not found")
-        if project.status == ProjectStatus.DELETED:
-            raise InvalidLifecycleTransitionError("deleted project cannot be mutated")
+        if project.status == ProjectStatus.DELETED and (
+            status != ProjectStatus.ACTIVE or name is not None or workspace_supplied
+        ):
+            raise InvalidLifecycleTransitionError("deleted project requires a status-only restore")
         if project.status == ProjectStatus.ARCHIVED and (
             name is not None or (workspace_supplied and status != ProjectStatus.ACTIVE)
         ):
@@ -478,6 +484,12 @@ class TenancyService:
                 organization_id=organization_id,
                 workspace_id=target_workspace_id,
             )
+            if project.status == ProjectStatus.DELETED and (
+                target_workspace is None or target_workspace.status != WorkspaceStatus.ACTIVE
+            ):
+                raise InvalidLifecycleTransitionError(
+                    "restore the workspace before the deleted project"
+                )
             if target_workspace is None or target_workspace.status == WorkspaceStatus.DELETED:
                 raise InvalidLifecycleTransitionError(
                     "restore project with an explicit valid workspace or ungroup it"
@@ -496,7 +508,7 @@ class TenancyService:
                 if new_status == ProjectStatus.ACTIVE
                 else project.archived_at
             ),
-            deleted_at=now if new_status == ProjectStatus.DELETED else project.deleted_at,
+            deleted_at=now if new_status == ProjectStatus.DELETED else None,
         )
         self._repository.update_project(updated, context=context)
         self._audit(
@@ -507,6 +519,7 @@ class TenancyService:
             resource_id=project_id,
             metadata={
                 "status": updated.status.value,
+                "previous_status": project.status.value,
                 "workspace_id": (
                     str(updated.workspace_id) if updated.workspace_id is not None else None
                 ),

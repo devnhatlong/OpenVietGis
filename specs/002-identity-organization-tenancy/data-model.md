@@ -178,6 +178,8 @@ Optional grouping/resource scope inside one Organization.
 - UNIQUE(`organization_id`, `id`) for composite references.
 - A Workspace cannot enter deleted state while active Projects still reference it.
 - Archiving/deleting Workspace never changes Project.organization_id.
+- Recover a deleted Workspace by an authorized status-only transition to `active`; its identity,
+  organization ownership, references and audit history are retained.
 
 ---
 
@@ -215,8 +217,12 @@ Durable work container directly owned by Organization and optionally grouped by 
 ```text
 ACTIVE <-> ARCHIVED -> DELETED
   \-----------------> DELETED
+DELETED --explicit status-only restore--> ACTIVE
 ```
 
+Deleted Projects are excluded from ordinary lists and detail reads. Recovery requires the
+appropriate archive and delete permissions, keeps the current grouping unchanged, and clears
+archival/deletion timestamps; if grouped, the original Workspace must already be active.
 Physical purge is outside Spec 002.
 
 ---

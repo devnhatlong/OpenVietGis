@@ -147,6 +147,21 @@ Expected result:
 - no permanent purge occurs in Spec 002;
 - Last Owner and historical audit invariants remain intact.
 
+### 6B. Recover a soft-deleted Workspace and Project
+
+As an authorized Owner, retain the resource IDs before deletion. Archive and then soft-delete
+P1; soft-delete its original Workspace after no active Projects remain inside it. Ordinary lists
+exclude deleted resources and a direct Project read returns not found. A rename, move or mixed
+restore and edit is rejected while deleted. Send a status-only `PATCH` with body
+`{"status":"active"}` to `/api/v1/organizations/{organization_id}/workspaces/{workspace_id}`
+(requires `workspace.manage`), then to
+`/api/v1/organizations/{organization_id}/projects/{project_id}` (requires both `project.archive`
+and `project.delete`). A deleted Project cannot restore to an archived/deleted Workspace; the
+original Workspace must first be active, or the Project must already have been ungrouped before
+deletion. No ownership or grouping change is permitted as part of deleted recovery. Successful
+recovery keeps IDs and clears archived/deleted timestamps, and the tenant-scoped audit event
+records the actor and prior/current status. Unauthorized and cross-tenant recovery fail.
+
 ## 7. Prove Workspace grant inheritance
 
 1. Create/activate a Member in Organization A.

@@ -26,8 +26,11 @@ from openvietgis_api.domains.authorization.service import (
     AuthorizationService,
     TenantResourceNotFoundError,
 )
-from openvietgis_api.domains.tenancy.domain import ProjectStatus
-from openvietgis_api.domains.tenancy.service import TenancyService
+from openvietgis_api.domains.tenancy.domain import ProjectStatus, WorkspaceStatus
+from openvietgis_api.domains.tenancy.service import (
+    InvalidLifecycleTransitionError,
+    TenancyService,
+)
 
 router = APIRouter(tags=["projects"])
 ProjectName = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)]
@@ -87,16 +90,14 @@ def list_projects(
 ) -> list[dict[str, object]]:
     require_tenant_access(session, authentication, organization_id)
     repository = SqlTenancyRepository(session)
-    if (
-        workspace_id is not None
-        and repository.get_workspace(
+    if workspace_id is not None:
+        workspace = repository.get_workspace(
             context=context_for(authentication, organization_id=organization_id),
             organization_id=organization_id,
             workspace_id=workspace_id,
         )
-        is None
-    ):
-        raise TenantResourceNotFoundError("workspace not found")
+        if workspace is None or workspace.status == WorkspaceStatus.DELETED:
+            raise TenantResourceNotFoundError("workspace not found")
     provider = SqlEffectivePermissionProvider(session)
     authorization = AuthorizationService(provider)
 
@@ -174,14 +175,12 @@ def get_project(
     session: Annotated[Session, Depends(get_db_session, scope="function")],
 ) -> dict[str, object]:
     require_tenant_access(session, authentication, organization_id)
-    if (
-        SqlTenancyRepository(session).get_project(
-            context=context_for(authentication, organization_id=organization_id),
-            organization_id=organization_id,
-            project_id=project_id,
-        )
-        is None
-    ):
+    project = SqlTenancyRepository(session).get_project(
+        context=context_for(authentication, organization_id=organization_id),
+        organization_id=organization_id,
+        project_id=project_id,
+    )
+    if project is None or project.status == ProjectStatus.DELETED:
         raise TenantResourceNotFoundError("project not found")
     context = context_for(
         authentication,
@@ -194,10 +193,8 @@ def get_project(
         organization_id=organization_id,
         project_id=project_id,
     )
-    if project is None:
-        from openvietgis_api.domains.tenancy.service import ProjectNotFoundError
-
-        raise ProjectNotFoundError("project not found")
+    if project is None or project.status == ProjectStatus.DELETED:
+        raise TenantResourceNotFoundError("project not found")
     return _serialize(project)
 
 
@@ -210,14 +207,12 @@ def update_project(
     session: Annotated[Session, Depends(get_db_session, scope="function")],
 ) -> dict[str, object]:
     require_tenant_access(session, authentication, organization_id, lock=True)
-    if (
-        SqlTenancyRepository(session).get_project(
-            context=context_for(authentication, organization_id=organization_id),
-            organization_id=organization_id,
-            project_id=project_id,
-        )
-        is None
-    ):
+    existing_project = SqlTenancyRepository(session).get_project(
+        context=context_for(authentication, organization_id=organization_id),
+        organization_id=organization_id,
+        project_id=project_id,
+    )
+    if existing_project is None:
         raise TenantResourceNotFoundError("project not found")
     context = context_for(
         authentication,
@@ -242,6 +237,10 @@ def update_project(
         require_permission(session, context, Permission.PROJECT_ARCHIVE)
     if payload.status == ProjectStatus.DELETED:
         require_permission(session, context, Permission.PROJECT_DELETE)
+    if existing_project.status == ProjectStatus.DELETED and payload.status == ProjectStatus.ACTIVE:
+        require_permission(session, context, Permission.PROJECT_DELETE)
+        if payload.model_fields_set != {"status"}:
+            raise InvalidLifecycleTransitionError("deleted project requires a status-only restore")
 
     project = _service(session).update_project(
         actor=authentication.actor,

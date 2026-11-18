@@ -27,7 +27,10 @@ from openvietgis_api.domains.authorization.service import (
     TenantResourceNotFoundError,
 )
 from openvietgis_api.domains.tenancy.domain import WorkspaceStatus
-from openvietgis_api.domains.tenancy.service import TenancyService
+from openvietgis_api.domains.tenancy.service import (
+    InvalidLifecycleTransitionError,
+    TenancyService,
+)
 
 router = APIRouter(tags=["workspaces"])
 
@@ -137,14 +140,12 @@ def update_workspace(
     session: Annotated[Session, Depends(get_db_session, scope="function")],
 ) -> dict[str, object]:
     require_tenant_access(session, authentication, organization_id, lock=True)
-    if (
-        SqlTenancyRepository(session).get_workspace(
-            context=context_for(authentication, organization_id=organization_id),
-            organization_id=organization_id,
-            workspace_id=workspace_id,
-        )
-        is None
-    ):
+    existing_workspace = SqlTenancyRepository(session).get_workspace(
+        context=context_for(authentication, organization_id=organization_id),
+        organization_id=organization_id,
+        workspace_id=workspace_id,
+    )
+    if existing_workspace is None:
         raise TenantResourceNotFoundError("workspace not found")
     context = context_for(
         authentication,
@@ -152,6 +153,11 @@ def update_workspace(
         workspace_id=workspace_id,
     )
     require_permission(session, context, Permission.WORKSPACE_MANAGE)
+    if (
+        existing_workspace.status == WorkspaceStatus.DELETED
+        and payload.model_fields_set != {"status"}
+    ):
+        raise InvalidLifecycleTransitionError("deleted workspace requires a status-only restore")
     workspace = _service(session).update_workspace(
         actor=authentication.actor,
         credential_id=authentication.credential_id,
