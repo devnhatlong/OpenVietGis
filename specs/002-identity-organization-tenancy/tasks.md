@@ -139,23 +139,23 @@
 
 ### Tests first
 
-- [ ] T055 [P] [US3] Add role-bundle/additive-union/Organization-Workspace-Project inheritance unit tests in `apps/api/tests/unit/authorization/test_role_grant_union.py`
-- [ ] T056 [P] [US3] Add dynamic Workspace inheritance tests proving access appears/disappears when Project moves without grant copying in `apps/api/tests/integration/tenancy/test_workspace_grant_inheritance.py`
+- [X] T055 [P] [US3] Add role-bundle/additive-union/Organization-Workspace-Project inheritance unit tests in `apps/api/tests/unit/authorization/test_role_grant_union.py`
+- [X] T056 [P] [US3] Add dynamic Workspace inheritance tests proving access appears/disappears when Project moves without grant copying in `apps/api/tests/integration/tenancy/test_workspace_grant_inheritance.py`
 - [ ] T057 [P] [US3] Add invitation email/User/external-identity recipient-binding, expiry/revoke/reuse tests in `apps/api/tests/integration/tenancy/test_invitation_lifecycle.py`
-- [ ] T058 [P] [US3] Add concurrent double-accept invitation test proving exactly one atomic acceptance in `apps/api/tests/integration/tenancy/test_invitation_concurrency.py`
+- [X] T058 [P] [US3] Add concurrent double-accept invitation test proving exactly one atomic acceptance in `apps/api/tests/integration/tenancy/test_invitation_concurrency.py`
 - [ ] T059 [P] [US3] Add Last Owner role/status concurrency plus Owner-vs-Admin Organization suspend/restore/soft-delete lifecycle tests in `apps/api/tests/integration/tenancy/test_last_owner.py` and `test_organization_lifecycle.py`
-- [ ] T060 [P] [US3] Add next-request membership/grant revocation tests in `apps/api/tests/integration/tenancy/test_revocation.py`
-- [ ] T061 [P] [US3] Add grant/invitation client contract tests in `packages/client-sdk/tests/grants-invitations.test.ts`
+- [X] T060 [P] [US3] Add next-request membership/grant revocation tests in `apps/api/tests/integration/tenancy/test_revocation.py`
+- [X] T061 [P] [US3] Add grant/invitation client contract tests in `packages/client-sdk/tests/grants-invitations.test.ts`
 - [ ] T062 [P] [US3] Add Playwright intended-recipient invitation accept + revoke journey to `tests/e2e/invitation-revocation.spec.ts`
 
 ### Implementation
 
-- [ ] T063 [US3] Complete AuthorizationService role/grant resolution for Organization, dynamic Workspace, direct Project scope, and current Project placement in `apps/api/openvietgis_api/domains/authorization/service.py`
-- [ ] T064 [US3] Implement Last Owner invariant, atomic ownership-transfer operation, and Owner-controlled Organization active/suspended/deleted lifecycle with short locking transactions in `apps/api/openvietgis_api/domains/tenancy/service.py`
-- [ ] T065 [US3] Implement ResourceGrant create/revoke repositories and duplicate-active-grant protection in `apps/api/openvietgis_api/adapters/persistence/authorization_repository.py`
-- [ ] T066 [US3] Implement invitation issue/accept/revoke service including secret hashing, recipient matching, atomic membership activation/optional grant, and one-time state transition in `apps/api/openvietgis_api/domains/tenancy/service.py`
-- [ ] T067 [US3] Implement Organization lifecycle/ownership-transfer/member plus grant/invitation/effective-permission HTTP endpoints from `contracts/tenant-core-api.yaml` in `apps/api/openvietgis_api/adapters/http/organizations.py`, `grants.py`, and `invitations.py`
-- [ ] T068 [P] [US3] Implement grants/invitations/effective-permissions client methods in `packages/client-sdk/src/organizations.ts` and `invitations.ts`
+- [X] T063 [US3] Complete AuthorizationService role/grant resolution for Organization, dynamic Workspace, direct Project scope, and current Project placement in `apps/api/openvietgis_api/domains/authorization/service.py`
+- [X] T064 [US3] Implement Last Owner invariant, atomic ownership-transfer operation, and Owner-controlled Organization active/suspended/deleted lifecycle with short locking transactions in `apps/api/openvietgis_api/domains/tenancy/service.py`
+- [X] T065 [US3] Implement ResourceGrant create/revoke repositories and duplicate-active-grant protection in `apps/api/openvietgis_api/adapters/persistence/authorization_repository.py`
+- [X] T066 [US3] Implement invitation issue/accept/revoke service including secret hashing, recipient matching, atomic membership activation/optional grant, and one-time state transition in `apps/api/openvietgis_api/domains/tenancy/service.py`
+- [X] T067 [US3] Implement Organization lifecycle/ownership-transfer/member plus grant/invitation/effective-permission HTTP endpoints from `contracts/tenant-core-api.yaml` in `apps/api/openvietgis_api/adapters/http/organizations.py`, `grants.py`, and `invitations.py`
+- [X] T068 [P] [US3] Implement grants/invitations/effective-permissions client methods in `packages/client-sdk/src/organizations.ts` and `invitations.ts`
 - [ ] T069 [P] [US3] Implement minimal membership/invite/grant UI including suspend/revoke and invitation accept handoff in `apps/web/src/features/membership/` and `apps/web/src/features/invitations/`
 - [ ] T070 [US3] Ensure Organization creation/lifecycle/ownership, membership, grant, and invitation mutations append foundational AuditEvent records through the T018 audit port before the P1 gate, without requiring the P2 audit-read UI, in `apps/api/openvietgis_api/domains/tenancy/service.py`
 
@@ -171,16 +171,16 @@
 
 ### Tests first
 
-- [ ] T071 [P] [US4] Add cross-tenant API/repository matrix for Organization metadata, Membership, Workspace, Project, Grant, Invitation, and protected list/detail paths in `apps/api/tests/integration/rls/test_cross_tenant_api.py`
-- [ ] T072 [P] [US4] Add direct repository/RLS matrix using the real runtime role for every P1 RLS-protected table listed in `data-model.md`, explicitly including `audit.audit_events`, in `apps/api/tests/integration/rls/test_cross_tenant_repository.py`
+- [X] T071 [P] [US4] Add cross-tenant API/repository matrix for Organization metadata, Membership, Workspace, Project, Grant, Invitation, and protected list/detail paths in `apps/api/tests/integration/rls/test_cross_tenant_api.py`
+- [X] T072 [P] [US4] Add direct repository/RLS matrix using the real runtime role for every P1 RLS-protected table listed in `data-model.md`, explicitly including `audit.audit_events`, in `apps/api/tests/integration/rls/test_cross_tenant_repository.py`
 - [ ] T073 [P] [US4] Add connection-pool A→B→no-context leakage regression tests under repeated pooled reuse in `apps/api/tests/integration/rls/test_pool_tenant_leak.py`
 - [ ] T074 [P] [US4] Add cross-tenant existence non-disclosure tests distinguishing 404 other-tenant from 403 same-tenant insufficient permission in `apps/api/tests/integration/tenancy/test_tenant_error_semantics.py`
-- [ ] T075 [P] [US4] Add direct cross-tenant FK/ownership insert/update rejection tests for Project/Workspace/Grant/Invitation records in `apps/api/tests/integration/rls/test_cross_tenant_constraints.py`
+- [X] T075 [P] [US4] Add direct cross-tenant FK/ownership insert/update rejection tests for Project/Workspace/Grant/Invitation records in `apps/api/tests/integration/rls/test_cross_tenant_constraints.py`
 
 ### Implementation / hardening
 
 - [ ] T076 [US4] Apply explicit AuthorizationContext + transaction-local RLS context to every P1 protected repository transaction in `apps/api/openvietgis_api/adapters/persistence/db.py` and `rls.py`
-- [ ] T077 [US4] Enforce non-disclosing cross-tenant lookup/error semantics across Organization/Workspace/Project/Grant/Invitation HTTP adapters in `apps/api/openvietgis_api/adapters/http/errors.py` and tenant adapters
+- [X] T077 [US4] Enforce non-disclosing cross-tenant lookup/error semantics across Organization/Workspace/Project/Grant/Invitation HTTP adapters in `apps/api/openvietgis_api/adapters/http/errors.py` and tenant adapters
 - [ ] T078 [US4] Add authorization-required repository interfaces so protected repositories cannot be called without explicit tenant/actor context in `apps/api/openvietgis_api/domains/tenancy/ports.py` and `domains/authorization/ports.py`
 - [ ] T079 [US4] Add P1 security E2E with direct URL manipulation across Organizations to `tests/e2e/tenant-core.spec.ts`
 - [ ] T080 [US4] Run and record the P1 Tenant Core checkpoint from quickstart sections 2-10, including foundational AuditEvent/RLS and RequestedActorContext round-trip evidence, in `specs/002-identity-organization-tenancy/quickstart.md` before enabling P2 work
@@ -421,3 +421,14 @@ After P1:
 - Keep tests red before implementing their corresponding behavior.
 - Do not mark a security-sensitive task complete solely from mocked-unit coverage when a real PostgreSQL/OIDC/browser acceptance path is specified.
 - P1 and P2 boundaries are implementation sequencing, not separate product authorization models.
+
+## Takeover implementation checkpoint — 2026-11-18
+
+**Status: P1 implementation in progress, NOT P1 accepted; R002 NOT converged or integrated into main.** 69/115 implementation tasks checked, including the 54 carried forward from the original owner. This count is not acceptance or product completion.
+
+- Preserved all 14 dirty files from original HEAD 31c180e in d6f10df; merged verified main ea6db79 in 654a01b. Original worktree unchanged.
+- Integrated independent HTTP, client, security and invariants work: 550a05f, a4ea6e2, af55581, 8f8aced, 3bdee36, 9a76c05. Coordinator commits 17e6251, 52fc609, a54e004, 9ab2561, 3a74fa7 add restricted-role safety, cross-tenant denial, authenticated invitation binding, real concurrent races and durable FR-052 conflict audit.
+- On code HEAD 3a74fa7: 104 unit/contract/tool/architecture tests passed; 39 backend integration tests passed against the dedicated local PostgreSQL test DB, with application connections using verified openvietgis_runtime (admin only for fixture setup/assertions and migrations). Ruff and mypy (60 source files) passed. Client agent independently ran 12 grant/invitation SDK tests and strict TypeScript compilation; E2E files typechecked only. See quickstart for scope and limits.
+- T057 remains open for complete external-identity recipient integration coverage; T059 for full owner status/role race and lifecycle coverage; T070 for exhaustive audit evidence. T073/T074 have regression coverage combined in cross-tenant repository/API tests, but retain their unchecked status pending exact task scope/path reconciliation. T076/T078 require explicit context enforcement across protected repository interfaces and transactions.
+- T062/T069/T079 browser journeys/UI implemented but execution not accepted. T080 remains blocked: Node 26 baseline unavailable on host (Node 24 detected), frozen pnpm install was denied by minimumReleaseAge policy for @tanstack dependencies, and real browser OIDC P1 suite is not yet run. Do not bypass policy. Do not implement P2 or retire FoundationSampleRecord before T080.
+- Next: close remaining P1 task coverage, run reference-provider E2E on the supported runtime and dependency policy, independent review and T080 evidence; only then unlock P2. Do not promote to main before full T115 convergence.

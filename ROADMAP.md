@@ -31,7 +31,7 @@ Mốc phát hành được đánh giá bằng kịch bản, không bằng số �
 | ID / nhãn dự kiến | Năng lực và đầu ra | Ranh giới phạm vi | Phụ thuộc | Trạng thái | Spec / bằng chứng |
 | --- | --- | --- | --- | --- | --- |
 | **R001 / 001** | Platform Foundation: khung chạy được, luồng persistence và quality gates | Dữ liệu mẫu dùng một lần; không GIS/tenant/business semantics | — | done | [Spec](specs/001-platform-foundation/spec.md) · [Kết quả](specs/001-platform-foundation/tasks.md#implementation-validation-results) · [Roadmap link](specs/001-platform-foundation/roadmap-reference.md) |
-| **R002 / 002** | Identity, Organization & Tenancy: user/org, Workspace/Project, quyền, invite, service actor và bootstrap | GIS, public share, billing và triển khai enterprise thực tế nằm ngoài 002 | R001 | in-progress — spec/plan; chưa nghiệm thu implementation | [Spec](specs/002-identity-organization-tenancy/spec.md) · [Roadmap link](specs/002-identity-organization-tenancy/roadmap-reference.md) |
+| **R002 / 002** | Identity, Organization & Tenancy: user/org, Workspace/Project, quyền, invite, service actor và bootstrap | GIS, public share, billing và triển khai enterprise thực tế nằm ngoài 002 | R001 | in-progress — P1 implementation; backend kiểm thử một phần, chưa nghiệm thu | [Spec](specs/002-identity-organization-tenancy/spec.md) · [Roadmap link](specs/002-identity-organization-tenancy/roadmap-reference.md) |
 | **R003 / 003** | Spatial Catalog & CRS: đăng ký nguồn/layer tenant-scoped, schema/extent/CRS/capability rõ, đọc được bộ dữ liệu tham chiếu | Layer khác SourceAsset/DB table; chưa làm bộ import đa định dạng hay editor hoàn chỉnh | R002 | planned | Chưa tạo |
 | **R004 / 004** | Map Workspace: mở Project, bản đồ nền, layer order/visibility, extent, chọn/xem feature và thuộc tính, lưu/mở lại cấu hình | Có đọc/query cơ bản và command/capability tối thiểu; query nâng cao ở R007, editor ở R006 | R003 | planned | Chưa tạo |
 | **R005 / 005** | Import & Export: đưa dữ liệu hỗ trợ vào Project và xuất kết quả để đối chiếu ở công cụ khác | Chốt ma trận định dạng/CRS; có provenance, change unit/revision, validation và recovery tối thiểu; CAD ở R012 | R003, R004 | planned | Chưa tạo |
@@ -127,8 +127,7 @@ Dữ liệu mẫu của 001 không trở thành Project, Layer hay mô hình ngh
 ### R002
 
 [Identity, Organization & Tenancy](specs/002-identity-organization-tenancy/spec.md).
-Đang ở giai đoạn đặc tả/lập plan tại baseline; bản plan đang được thực hiện không
-được coi là accepted implementation. Phạm vi và tiến độ chi tiết do artifacts 002 quyết định.
+Đang triển khai P1 trên nhánh takeover/002-identity-tenancy; [checkpoint](specs/002-identity-organization-tenancy/quickstart.md#18-partial-p1-takeover-validation--2026-11-18) ghi kiểm thử backend đã chạy, chưa qua P1 browser gate hoặc convergence. Chưa tích hợp vào main. Phạm vi và tiến độ chi tiết do artifacts 002 quyết định.
 
 ### R003
 

@@ -322,3 +322,22 @@ After the Spec 002 end-to-end vertical slice passes:
 
 The application must still pass the historical platform-foundation architecture/security gates after
 the disposable sample is removed.
+
+## 18. Partial P1 takeover validation — 2026-11-18
+
+Code checkpoint: 3a74fa7 on takeover/002-identity-tenancy. **This is partial evidence, not T080 or full quickstart acceptance.**
+
+| Check | Observed result |
+| --- | --- |
+| Ruff | pass |
+| mypy | pass, 60 source files |
+| Backend unit, contract, tools, architecture | 104 passed |
+| Backend integration, dedicated test database | 39 passed |
+| Client grant/invitation tests | 12 passed in isolated agent validation; TypeScript strict compilation passed |
+| Runtime-role isolation | application engine checks actual current_user; tests verify six tenant RLS tables, A/B/no-context on same connection, audit immutability, cross-tenant FK rejection |
+| Concurrency and identity | invitation double acceptance, last Owner downgrade, identity unlink and conflicting link audit persistence tested |
+| HTTP | cross-tenant non-disclosure, same-tenant 403, recipient binding, one-time accept, next-request membership revoke tested with runtime role |
+| Browser P1 | NOT run; browser test code exists/typechecks only |
+| Full quickstart, Node 26 pnpm validate, P2, convergence | NOT executed |
+
+Dedicated test database openvietgis_test on loopback port 54330; the development DB was not mutated. Migration sequence includes additive 0003a_identity_unlink_security following 0003, before future 0004. Migration/admin credential used solely for setup/migrations/assertions; protected API and dedicated runtime tests use openvietgis_runtime. Test fixtures are synthetic. OIDC provider discovery was reachable, but this is not proof of interactive login. Frozen dependency installation is blocked by minimumReleaseAge policy; no override was applied. Do not advance P2 or claim T080 until all P1 requirements, including browser, are evidenced.
