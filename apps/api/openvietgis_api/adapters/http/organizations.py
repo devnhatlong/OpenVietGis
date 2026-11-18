@@ -251,7 +251,7 @@ def transfer_organization_ownership(
                 actor_display_snapshot=authentication.actor.display_name,
                 action="organization.owner.transfer",
                 resource_type="organization",
-                resource_id=organization_id,
+                resource_id=None,
                 outcome=AuditOutcome.DENIED,
                 metadata={"reason": "insufficient_owner_authority"},
                 created_at=datetime.now(UTC),
