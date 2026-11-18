@@ -1,5 +1,5 @@
 import {
-  ApiError, getSpatialFeature, readSpatialFeatures, SpatialApiError,
+  ApiError, listSpatialCrsProfiles, getSpatialFeature, readSpatialFeatures, SpatialApiError,
   type SpatialFeature, type SpatialLayer, type SpatialSource
 } from "@openvietgis/client-sdk";
 import { useQuery } from "@tanstack/react-query";
@@ -7,6 +7,7 @@ import { useState } from "react";
 
 import { apiClient } from "../../app/api";
 import { currentProtectedData, protectedQueryOptions } from "../../app/protected-query";
+import { availableResponseCrs, crsRegistryKey, crsRegistryMatchesScope } from "./crs-profiles";
 import {
   canReadFeatures, createTraversal, FEATURE_PAGE_SIZE,
   featureDetailKey, featureDetailNeedsRevalidation, featurePageKey, featureResponseMatchesScope, formatFeatureValue,
@@ -20,6 +21,9 @@ function readError(error: unknown): string {
   }
   if (error instanceof ApiError && [401, 403, 404].includes(error.status)) {
     return "Current access does not permit this feature read.";
+  }
+  if (error instanceof SpatialApiError && error.code === "TRANSFORMATION_OUT_OF_AREA") {
+    return "This geometry is outside the validated area or trusted evidence for the selected coordinate operation. Choose the native CRS or another supported operation.";
   }
   return "Unable to load current feature data.";
 }
@@ -45,7 +49,7 @@ function FeatureDetail({
       <p>Geometry state: {feature.geometry_state}</p>
       {geometry ? (
         <details>
-          <summary>Native {geometry.type} geometry</summary>
+          <summary>{geometry.type} response geometry</summary>
           <p>
             EPSG:{geometry.coordinate_reference.code}, X {geometry.coordinate_reference.x_axis},
             {" "}Y {geometry.coordinate_reference.y_axis} ({geometry.coordinate_reference.unit}).
@@ -69,7 +73,8 @@ function CurrentFeatureInspector({
   const options = {
     content_revision: scope.contentRevision,
     schema_revision: scope.schemaRevision,
-    include_geometry: true
+    include_geometry: true,
+    ...(scope.responseCrs === undefined ? {} : { response_crs: scope.responseCrs })
   };
   const pageQuery = useQuery({
     queryKey: featurePageKey(scope, state.cursor),
@@ -125,10 +130,15 @@ function CurrentFeatureInspector({
   return (
     <>
       <p style={{ overflowWrap: "anywhere" }}>
-        Native EPSG:{crs?.code} — X {crs?.x_axis}, Y {crs?.y_axis} ({crs?.unit}).<br />
+        {page.context.transformation ? "Transformed" : "Native"} EPSG:{crs?.code} — X {crs?.x_axis}, Y {crs?.y_axis} ({crs?.unit}).<br />
         Content revision: <code>{scope.contentRevision}</code><br />
         Schema revision: <code>{scope.schemaRevision}</code>
       </p>
+      {page.context.transformation ? <p role="status">
+        Operation: {page.context.transformation.operation_id}. Evidence: {page.context.transformation.evidence_id}.
+        {" "}Tolerance: {page.context.transformation.tolerance} {page.context.transformation.tolerance_unit}.
+        {" "}{page.context.transformation.validated_area} Native storage is unchanged.
+      </p> : null}
       <p>Values use exact JSON representation: strings are quoted, null is distinct from empty text.</p>
       {page.items.length ? (
         <div style={{ overflowX: "auto" }}>
@@ -174,7 +184,7 @@ function CurrentFeatureInspector({
                     : "Checking current feature detail access…"}
             </p>}
         </section>
-      ) : <p>Select a feature ID to inspect its exact attributes and native geometry.</p>}
+      ) : <p>Select a feature ID to inspect its exact attributes and response geometry.</p>}
     </>
   );
 }
@@ -187,6 +197,12 @@ export function FeatureInspector({
 }) {
   const [traversal, setTraversal] = useState(createTraversal);
   const [reloading, setReloading] = useState(false);
+  const [targetCrs, setTargetCrs] = useState<number | undefined>();
+  const registryScope = { accountId, organizationId, projectId };
+  const registryQuery = useQuery({ queryKey: crsRegistryKey(registryScope),
+    queryFn: () => listSpatialCrsProfiles(apiClient, organizationId, projectId),
+    enabled: Boolean(layer), ...protectedQueryOptions });
+  const registry = currentProtectedData(registryQuery);
   // The inspector stays mounted while Layer metadata is revalidated so the
   // explicit selection survives stale retries, but no old data stays visible.
   if (!layer || reloading) return null;
@@ -199,11 +215,20 @@ export function FeatureInspector({
     return <p role="status">Feature inspection is not available for this Layer.</p>;
   }
 
+  if (!registry || !crsRegistryMatchesScope(registryScope, registry)) {
+    return <p role={registryQuery.error ? "alert" : "status"}>{registryQuery.error
+      ? "Unable to verify current CRS profile access." : "Checking current CRS profiles…"}</p>;
+  }
+  const nativeCrs = layer.source.stored_crs.code;
+  const responseOptions = availableResponseCrs(registry, nativeCrs);
+  const responseCrs = targetCrs !== undefined && responseOptions.includes(targetCrs) ? targetCrs : nativeCrs;
+  const transformation = responseCrs === nativeCrs ? undefined : registry.transformations.find(edge =>
+    edge.source_code === nativeCrs && edge.target_code === responseCrs);
   const scope: FeatureReadScope = {
     accountId, organizationId, projectId, layerId, sourceId: layer.source_id,
     contentRevision: layer.source.content_revision,
     schemaRevision: layer.source.schema_revision,
-    nativeCrs: layer.source.stored_crs.code
+    nativeCrs, responseCrs, ...(transformation ? { transformation } : {})
   };
   const state = reconcileTraversal(traversal, scope);
   // Reconcile before issuing a read, never sending an old cursor under a new pin.
@@ -212,7 +237,12 @@ export function FeatureInspector({
   return (
     <section aria-label="Feature inspector" style={{ borderTop: "1px solid #aaa", paddingTop: 16, marginTop: 16 }}>
       <h3>Feature inspector</h3>
-      <CurrentFeatureInspector scope={scope} fields={layer.source.schema.fields}
+      <label>Response coordinate reference{" "}
+        <select value={responseCrs} onChange={event => setTargetCrs(Number(event.target.value))}>
+          {responseOptions.map(code => <option key={code} value={code}>EPSG:{code}{code === nativeCrs ? " (native)" : " (approved operation)"}</option>)}
+        </select>
+      </label>
+      <CurrentFeatureInspector key={[scope.responseCrs, scope.contentRevision, scope.schemaRevision].join(":")} scope={scope} fields={layer.source.schema.fields}
         state={state} setTraversal={setTraversal} reloadMetadata={clearSelection => {
           const restarted = restartFeatureTraversal(state);
           setTraversal(clearSelection ? selectFeature(restarted, null) : restarted);

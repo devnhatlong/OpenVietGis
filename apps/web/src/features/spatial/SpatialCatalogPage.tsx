@@ -26,6 +26,7 @@ import { Link, useParams } from "react-router-dom";
 import { apiClient } from "../../app/api";
 import { currentProtectedData, protectedQueryOptions } from "../../app/protected-query";
 import { FreshAccount } from "../auth/FreshAccount";
+import { CrsRegistryPanel } from "./CrsRegistryPanel";
 import { FeatureInspector } from "./FeatureInspector";
 import { CatalogHistoryPanel } from "./CatalogHistoryPanel";
 import { canReadHistory, historyPrefix } from "./catalog-history";
@@ -490,6 +491,7 @@ function CatalogView({ organizationId, projectId, accountId }: {
           </> : null}
           <LayerPanel organizationId={organizationId} projectId={projectId}
             accountId={accountId} source={detail} writable={writable} />
+          <CrsRegistryPanel scope={historyScope} />
           <CatalogHistoryPanel scope={historyScope} />
         </>
       )}

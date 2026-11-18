@@ -1,4 +1,4 @@
-import { ApiError, SpatialApiError, type SpatialFeatureReadContext } from "@openvietgis/client-sdk";
+import { ApiError, SpatialApiError, type SpatialTransformationProfile, type SpatialFeatureReadContext } from "@openvietgis/client-sdk";
 
 /** All reads remain in the existing account/owner/Layer cache boundary. */
 export interface FeatureReadScope {
@@ -10,6 +10,8 @@ export interface FeatureReadScope {
   contentRevision: string;
   schemaRevision: string;
   nativeCrs: number;
+  responseCrs?: number;
+  transformation?: SpatialTransformationProfile;
 }
 
 export const FEATURE_PAGE_SIZE = 20;
@@ -18,7 +20,8 @@ function featureKey(scope: FeatureReadScope) {
   return [
     "spatial-catalog", scope.accountId, scope.organizationId, scope.projectId, "layers",
     "features", scope.layerId, scope.sourceId, scope.contentRevision, scope.schemaRevision,
-    scope.nativeCrs
+    scope.nativeCrs, ...(scope.responseCrs !== undefined && scope.responseCrs !== scope.nativeCrs
+      ? [scope.responseCrs, scope.transformation?.operation_id, scope.transformation?.evidence_id] : [])
   ] as const;
 }
 
@@ -64,13 +67,20 @@ export function canReadFeatures(layer: FeatureReadGate | undefined): boolean {
 export function featureResponseMatchesScope(
   scope: FeatureReadScope, context: SpatialFeatureReadContext
 ): boolean {
-  const geographic = [4326, 4756].includes(scope.nativeCrs);
+  const target = scope.responseCrs ?? scope.nativeCrs;
+  const geographic = [4326, 4756].includes(target);
+  const expected = scope.transformation;
+  const operation = context.transformation;
+  const transformationMatches = target === scope.nativeCrs ? operation === null : Boolean(
+    expected && operation && expected.source_code === scope.nativeCrs && expected.target_code === target &&
+    (Object.keys(expected) as (keyof SpatialTransformationProfile)[]).every(key => expected[key] === operation[key])
+  );
   return context.organization_id === scope.organizationId &&
     context.project_id === scope.projectId && context.layer_id === scope.layerId &&
     context.source_id === scope.sourceId && context.content_revision === scope.contentRevision &&
     context.schema_revision === scope.schemaRevision && context.geometry_included &&
-    context.transformation === null && context.response_crs?.authority === "EPSG" &&
-    context.response_crs.code === scope.nativeCrs && context.response_crs.coordinate_order === "xy" &&
+    transformationMatches && context.response_crs?.authority === "EPSG" &&
+    context.response_crs.code === target && context.response_crs.coordinate_order === "xy" &&
     context.response_crs.x_axis === (geographic ? "longitude" : "easting") &&
     context.response_crs.y_axis === (geographic ? "latitude" : "northing") &&
     context.response_crs.unit === (geographic ? "degree" : "metre");
@@ -102,7 +112,9 @@ export function reconcileTraversal(
     return { ...createTraversal(), scope };
   }
   if (prior.contentRevision !== scope.contentRevision || prior.schemaRevision !== scope.schemaRevision ||
-      prior.nativeCrs !== scope.nativeCrs) {
+      prior.nativeCrs !== scope.nativeCrs ||
+      (prior.responseCrs ?? prior.nativeCrs) !== (scope.responseCrs ?? scope.nativeCrs) ||
+      prior.transformation?.operation_id !== scope.transformation?.operation_id) {
     return { ...restartFeatureTraversal(state), scope };
   }
   return state;

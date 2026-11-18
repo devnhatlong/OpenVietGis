@@ -217,3 +217,15 @@ export function getSpatialFeature(
   return spatialRequest(client, layerPath(organizationId, projectId, layerId) +
     "/features/" + encodeURIComponent(featureId) + "?" + featureReadParams(options).toString());
 }
+
+export type SpatialCrsRegistry = components["schemas"]["CRSRegistry"];
+export type SpatialCrsProfile = components["schemas"]["CRSProfile"];
+export type SpatialTransformationProfile = components["schemas"]["TransformationProfile"];
+
+/** Finite scoped definitions and approved direct edges; no caller-supplied CRS. */
+export function listSpatialCrsProfiles(
+  client: ApiClient, organizationId: string, projectId: string
+): Promise<SpatialCrsRegistry> {
+  return spatialRequest(client, "/organizations/" + encodeURIComponent(organizationId) +
+    "/projects/" + encodeURIComponent(projectId) + "/spatial/crs-profiles");
+}
