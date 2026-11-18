@@ -133,6 +133,9 @@ jobs:
           docker compose -f infra/dev/compose.yaml -f infra/dev/compose.identity.yaml logs --no-color keycloak > dist/security-evidence/keycloak.log
           uv run --project apps/api python tools/check_secret_surfaces.py dist/security-evidence/playwright-p1.json dist/security-evidence/playwright-bootstrap.json dist/security-evidence/keycloak.log
 
+      - name: Verify measured tenant timing evidence
+        run: uv run --project apps/api python tools/check_tenant_timing.py dist/security-evidence/playwright-p1.json dist/security-evidence/playwright-bootstrap.json
+
   secrets:
     runs-on: ubuntu-latest
     permissions:

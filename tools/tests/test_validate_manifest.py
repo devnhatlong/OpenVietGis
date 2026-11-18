@@ -25,6 +25,7 @@ def test_root_validation_manifest_contains_all_mandatory_categories() -> None:
     ):
         assert category in scripts
         assert category in scripts["validate"]
+    assert "tools/check_tenant_timing.py" in scripts["validate"]
 
 
 def test_ci_uses_the_dedicated_database_and_reference_identity_fixture() -> None:
@@ -70,6 +71,8 @@ def test_ci_uses_the_dedicated_database_and_reference_identity_fixture() -> None
         assert f"pnpm validate:{category}" in frontend_validation
     assert "pnpm install --frozen-lockfile" in commands
     assert "uv sync --project apps/api --frozen" in commands
+    timing = next(command for command in commands if "tools/check_tenant_timing.py" in command)
+    assert commands.index(frontend_validation) < commands.index(timing)
 
 
 def test_backend_ci_is_independent_of_javascript_dependency_install() -> None:
