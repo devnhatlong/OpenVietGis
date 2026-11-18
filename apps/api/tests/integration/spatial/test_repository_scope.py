@@ -131,7 +131,7 @@ def test_repository_archived_read_allowed_mutation_denied_and_scope_cleared(
         repository = SqlSpatialRepository(session)
         repository.prepare_scope(context=ctx, permission=Permission.PROJECT_READ, mutation=False)
         assert repository.get_source(context=ctx, source_id=source) is not None
-        with pytest.raises((SpatialProjectReadOnlyError, AuthorizationDeniedError)):
+        with pytest.raises(SpatialProjectReadOnlyError):
             repository.prepare_scope(context=ctx, permission=Permission.PROJECT_EDIT, mutation=True)
         with pytest.raises(PermissionError):
             repository.get_source(context=ctx, source_id=source)
@@ -266,3 +266,28 @@ def test_read_scope_cannot_write_and_active_layer_blocks_retire(
         with pytest.raises(SpatialValidationError, match="active layer dependencies"):
             repo.update_source(retired, context=ctx, expected_revision=1)
         assert repo.get_source(context=ctx, source_id=source_id) == prior
+
+
+def test_archived_mutation_does_not_disclose_state_before_permission(
+    migrated_database: None,
+) -> None:
+    world = seed_access_world()
+    _seed(world)
+    with get_admin_engine().begin() as connection:
+        connection.execute(
+            text("""
+            UPDATE workspace.projects SET status='archived',archived_at=now(),updated_at=now()
+            WHERE organization_id=:org AND id=:project
+        """),
+            {"org": world.organization_id, "project": world.project_id},
+        )
+    ctx = AuthorizationContext(
+        Actor("human", world.member_user_id, "Member"),
+        world.organization_id,
+        project_id=world.project_id,
+    )
+    with get_session_factory()() as session:
+        bind_authenticated_actor(session, ctx.actor)
+        repo = SqlSpatialRepository(session)
+        with pytest.raises(AuthorizationDeniedError, match="missing permission"):
+            repo.prepare_scope(context=ctx, permission=Permission.PROJECT_EDIT, mutation=True)

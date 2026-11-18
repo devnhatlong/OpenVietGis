@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from openvietgis_api.adapters.persistence.audit_repository import SqlAuditRepository
 from openvietgis_api.adapters.persistence.rls import (
+    ProjectMutationNotWritableError,
     bind_verified_project_context,
     clear_project_context,
     require_project_context,
@@ -147,9 +148,10 @@ class SqlSpatialRepository:
         ).scalar_one_or_none()
         if status is None or status == ProjectStatus.DELETED.value:
             raise TenantResourceNotFoundError("project not found")
-        if mutation and status != ProjectStatus.ACTIVE.value:
-            raise SpatialProjectReadOnlyError("project is read-only")
-        bind_verified_project_context(self._session, context, permission=permission)
+        try:
+            bind_verified_project_context(self._session, context, permission=permission)
+        except ProjectMutationNotWritableError as exc:
+            raise SpatialProjectReadOnlyError("project is read-only") from exc
 
     def _scope(
         self, context: AuthorizationContext, *, permission: Permission | None = None

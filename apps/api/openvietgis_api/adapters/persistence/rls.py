@@ -361,6 +361,10 @@ def _require_authenticated_project_actor(
     return actor.actor_id
 
 
+class ProjectMutationNotWritableError(AuthorizationDeniedError):
+    """Current permission was verified, but the project is archived."""
+
+
 def bind_verified_project_context(
     session: Session, context: AuthorizationContext, *, permission: Permission
 ) -> None:
@@ -408,8 +412,6 @@ def bind_verified_project_context(
         raise AuthorizationDeniedError("organization is not active")
     if lifecycle["project_status"] not in ("active", "archived"):
         raise TenantResourceNotFoundError("resource not found")
-    if permission is not Permission.PROJECT_READ and lifecycle["project_status"] != "active":
-        raise AuthorizationDeniedError("project is not writable")
 
     # Local import avoids a module-level cycle: the R002 provider itself uses
     # require_member_context here, and resolves live grants/credential ceilings.
@@ -420,6 +422,8 @@ def bind_verified_project_context(
     granted = SqlEffectivePermissionProvider(session).resolve(context)
     if permission not in granted:
         raise AuthorizationDeniedError(f"missing permission: {permission.value}")
+    if permission is not Permission.PROJECT_READ and lifecycle["project_status"] != "active":
+        raise ProjectMutationNotWritableError("project is not writable")
     state = _state(session)
     session.execute(
         text("SELECT set_config('openvietgis.project_id', :project, true)"),
