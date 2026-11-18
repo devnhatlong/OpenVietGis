@@ -968,6 +968,26 @@ class InvitationService:
                 revoked_at=None,
             )
             self._grant_repository.create(grant)
+            self._audit_repository.append(
+                AuditEvent(
+                    id=uuid4(),
+                    organization_id=organization_id,
+                    actor_type=_actor_type(actor),
+                    actor_id=actor.actor_id,
+                    actor_display_snapshot=actor.display_name,
+                    action="authorization.grant.create",
+                    resource_type="resource_grant",
+                    resource_id=grant.id,
+                    outcome=AuditOutcome.SUCCESS,
+                    metadata={
+                        "scope_kind": grant.scope_kind.value,
+                        "role": grant.role.value,
+                        "membership_id": str(membership.id),
+                        "invitation_id": str(invitation.id),
+                    },
+                    created_at=now,
+                )
+            )
 
         accepted = replace(
             invitation,
@@ -987,7 +1007,10 @@ class InvitationService:
                 resource_type="invitation",
                 resource_id=invitation.id,
                 outcome=AuditOutcome.SUCCESS,
-                metadata={"membership_id": str(membership.id)},
+                metadata={
+                    "membership_id": str(membership.id),
+                    **({"grant_id": str(grant.id)} if grant is not None else {}),
+                },
                 created_at=now,
             )
         )
