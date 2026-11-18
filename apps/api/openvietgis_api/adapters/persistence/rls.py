@@ -187,6 +187,24 @@ def confirm_member_context(session: Session, context: AuthorizationContext) -> N
     state.invitation_id = None
 
 
+def require_service_audit_context(
+    session: Session,
+    actor: Actor,
+    organization_id: UUID,
+) -> None:
+    """Audit only a service principal bound to this transaction and tenant."""
+    state = _state(session)
+    if actor.actor_type != "service_principal" or state.authenticated_credential_id is None:
+        raise PermissionError("authenticated service credential required")
+    require_member_context(
+        session,
+        AuthorizationContext(
+            actor, organization_id, credential_id=state.authenticated_credential_id
+        ),
+        organization_id,
+    )
+
+
 def require_member_context(
     session: Session,
     context: AuthorizationContext,

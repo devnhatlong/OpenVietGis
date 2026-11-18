@@ -272,9 +272,10 @@ class TenancyService:
         organization_id: UUID,
         name: str,
         slug: str,
+        credential_id: UUID | None = None,
         now: datetime | None = None,
     ) -> Workspace:
-        context = AuthorizationContext(actor, organization_id)
+        context = AuthorizationContext(actor, organization_id, credential_id=credential_id)
         _lock_active_organization(self._repository, organization_id, context=context)
         now = now or datetime.now(UTC)
         workspace = Workspace(
@@ -310,11 +311,12 @@ class TenancyService:
         workspace_id: UUID,
         name: str | None = None,
         status: WorkspaceStatus | None = None,
+        credential_id: UUID | None = None,
         now: datetime | None = None,
     ) -> Workspace:
         if name is None and status is None:
             raise InvalidLifecycleTransitionError("at least one change is required")
-        context = AuthorizationContext(actor, organization_id)
+        context = AuthorizationContext(actor, organization_id, credential_id=credential_id)
         _lock_active_organization(self._repository, organization_id, context=context)
         workspace = self._repository.get_workspace(
             context=context,
@@ -375,9 +377,10 @@ class TenancyService:
         name: str,
         slug: str,
         workspace_id: UUID | None = None,
+        credential_id: UUID | None = None,
         now: datetime | None = None,
     ) -> Project:
-        context = AuthorizationContext(actor, organization_id)
+        context = AuthorizationContext(actor, organization_id, credential_id=credential_id)
         _lock_active_organization(self._repository, organization_id, context=context)
         if workspace_id is not None:
             workspace = self._repository.get_workspace(
@@ -427,11 +430,12 @@ class TenancyService:
         workspace_id: UUID | None = None,
         workspace_supplied: bool = False,
         status: ProjectStatus | None = None,
+        credential_id: UUID | None = None,
         now: datetime | None = None,
     ) -> Project:
         if name is None and status is None and not workspace_supplied:
             raise InvalidLifecycleTransitionError("at least one change is required")
-        context = AuthorizationContext(actor, organization_id)
+        context = AuthorizationContext(actor, organization_id, credential_id=credential_id)
         _lock_active_organization(self._repository, organization_id, context=context)
         project = self._repository.get_project(
             context=context,

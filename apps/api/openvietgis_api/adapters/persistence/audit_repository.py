@@ -7,7 +7,10 @@ from sqlalchemy import text
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.orm import Session
 
-from openvietgis_api.adapters.persistence.rls import require_member_context
+from openvietgis_api.adapters.persistence.rls import (
+    require_member_context,
+    require_service_audit_context,
+)
 from openvietgis_api.domains.audit.domain import AuditEvent, AuditOutcome
 from openvietgis_api.domains.audit.service import redact_audit_metadata
 from openvietgis_api.domains.authorization.context import Actor, AuthorizationContext
@@ -36,15 +39,20 @@ class SqlAuditRepository:
 
     def append(self, event: AuditEvent) -> None:
         if event.organization_id is not None:
-            if event.actor_type != ActorType.HUMAN:
-                raise PermissionError(
-                    "tenant audit append requires an authenticated human actor"
+            if event.actor_type == ActorType.HUMAN:
+                context = AuthorizationContext(
+                    actor=Actor("human", event.actor_id, event.actor_display_snapshot),
+                    organization_id=event.organization_id,
                 )
-            context = AuthorizationContext(
-                actor=Actor("human", event.actor_id, event.actor_display_snapshot),
-                organization_id=event.organization_id,
-            )
-            require_member_context(self._session, context, event.organization_id)
+                require_member_context(self._session, context, event.organization_id)
+            elif event.actor_type == ActorType.SERVICE_PRINCIPAL:
+                require_service_audit_context(
+                    self._session,
+                    Actor("service_principal", event.actor_id, event.actor_display_snapshot),
+                    event.organization_id,
+                )
+            else:
+                raise PermissionError("tenant audit append requires an authenticated actor")
         self._session.execute(
             text(
                 """

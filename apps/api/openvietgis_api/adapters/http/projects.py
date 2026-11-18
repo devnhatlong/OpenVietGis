@@ -156,6 +156,7 @@ def create_project(
     require_permission(session, context, Permission.PROJECT_MANAGE)
     project = _service(session).create_project(
         actor=authentication.actor,
+        credential_id=authentication.credential_id,
         organization_id=organization_id,
         name=payload.name,
         slug=payload.slug,
@@ -243,6 +244,7 @@ def update_project(
 
     project = _service(session).update_project(
         actor=authentication.actor,
+        credential_id=authentication.credential_id,
         organization_id=organization_id,
         project_id=project_id,
         name=payload.name,

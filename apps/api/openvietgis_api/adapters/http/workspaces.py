@@ -120,6 +120,7 @@ def create_workspace(
     require_permission(session, context, Permission.WORKSPACE_MANAGE)
     workspace = _service(session).create_workspace(
         actor=authentication.actor,
+        credential_id=authentication.credential_id,
         organization_id=organization_id,
         name=payload.name,
         slug=payload.slug,
@@ -153,6 +154,7 @@ def update_workspace(
     require_permission(session, context, Permission.WORKSPACE_MANAGE)
     workspace = _service(session).update_workspace(
         actor=authentication.actor,
+        credential_id=authentication.credential_id,
         organization_id=organization_id,
         workspace_id=workspace_id,
         name=payload.name,
