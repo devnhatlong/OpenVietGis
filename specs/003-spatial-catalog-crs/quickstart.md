@@ -1,12 +1,12 @@
 # R003 quickstart and acceptance protocol
 
-This is the planned reproducible protocol, not executed R003 evidence yet. Use a fresh checkout of the exact R003 candidate and the isolated test database only. Never use a production database or overwrite an existing dev/review database.
+This document contains the reproducible protocol and executed R003 evidence. The final acceptance section supersedes historical partial checkpoints. Use a fresh checkout of the exact R003 candidate and the isolated test database only. Never use a production database or overwrite an existing dev/review database.
 
 ## Setup
 
 1. From repository root, use Node 26 and the existing Python/uv toolchain. Run `pnpm install --frozen-lockfile`, `uv sync --project apps/api --locked`, and `pnpm exec playwright install chromium`.
 2. Start the isolated PostgreSQL test service using the existing Compose/test database guard. Use `pnpm validate:integration` and `pnpm validate:e2e` (both invoke tools.run_with_test_database). Verify migrations upgrade from 0005 and downgrade safely in disposable test DB, restricted runtime role, forced RLS. Capture PostgreSQL, PostGIS, PROJ and container digest; network grids off.
-3. Use the test fixture provisioner (implementation task) to create two synthetic organizations and distinct projects, authorized human and narrowly scoped service actors, and frozen reference registry entries. Do not import external data. A separate scenario provisions an archived/deleted Project, suspended Organization and revoked credential.
+3. Use the test fixture provisioner to create two synthetic organizations and distinct projects, authorized human and narrowly scoped service actors, and frozen reference registry entries. Do not import external data. A separate scenario provisions an archived/deleted Project, suspended Organization and revoked credential.
 4. Build SDK from the committed OpenAPI document via `pnpm contracts:generate`; verify generated output clean and contract consumer uses public IDs only.
 
 ## Setup checkpoint — 2026-11-18
@@ -60,3 +60,163 @@ SC-005 **PASS**: `apps/api/tests/integration/spatial/test_authorization.py`, `te
 SC-006 **PASS**: `apps/api/tests/integration/spatial/test_change_evidence.py` proves seven committed catalog mutation types with exact safe old/new/revision/actor/time and linked success audit, project-scoped UUID continuation and retirement visibility; independently injected failures after real evidence append roll back Layer rename and CRS correction atomically; actual lock-wait concurrent CAS commits exactly one mutation/audit, stale/denied/no-op/dependency conflict append nothing, and runtime UPDATE/DELETE/TRUNCATE on evidence is denied. All eight tests run on actual PostGIS. Restart/registration interruption convergence remains SC-009; final benchmark and browser acceptance remain later gates.
 
 Full CI for exact runtime `d1019b5` completed SUCCESS (3/3 jobs). The Node 26 validate job independently passed 407 static Python and 198 real integration/performance cases (one existing skip), 37 SDK and 31 web, production build, deterministic contract regeneration, architecture/scope/docs, 8 Playwright cases and one bootstrap case, and security/timing checks. Independent read-only review of the exact candidate found no acceptance/production blocker (scope/order/count defenses, safe immutable revision decode and wire, current authentication/CSRF permission gates, all current route and lifecycle negative matrices, real audit/rollback/lock/CAS/RLS protections, scoped history UI and detail-404 revalidation). Preserve the tested runtime in the docs-only acceptance commit. Verified integration branch only, no main promotion or deployment.
+
+
+## Final runtime acceptance — 2026-11-18
+
+Exact runtime candidate `ea18f13722beeaa17e9c53b9a83a3df7c12db595` passed
+[CI 44336830562](https://github.com/nguyentrieu210/OpenVietGis/actions/runs/44336830562)
+(all three jobs). [Backend job](https://github.com/nguyentrieu210/OpenVietGis/actions/runs/44336830562/job/134915715763)
+passed 446 static unit/contract/tools/architecture tests, 233 actual restricted-role
+integration/performance cases and one pre-existing opt-in skip; the separate live
+OIDC invocation passed 2/2. The Node 26 validate job independently passed the full
+root workflow: 40 SDK tests, 35 web tests, lint/typecheck/build, the same 446 static
+and 233 integration/performance cases, 11 browser journeys plus one bootstrap
+journey, deterministic contract regeneration, migration cycle, scope/architecture/
+docs, secret-surface and tenant-timing gates. Gitleaks passed. Three new browser
+journeys exercise real OIDC/catalog/Layer/native and transformed inspection,
+history/CAS, explicit stale-pin handling and wrong/deleted-project access; the
+stale 409 UI injection is labeled test-only, while real pin refresh/concurrency is
+independently covered by the restricted SQL suite.
+
+T051–T058 freeze independent controls and verify the immutable six-definition/
+eight-directed-edge registry, current scoped discovery, exact pipeline function
+and explicit output SRID. Each operation joins original scoped/pinned native WKB,
+validates all input/output/intermediate vertices and trusted regional manifest
+provenance, changes only a bounded response copy, and rejects unsupported edges,
+definition-only CRS, dimensions/families and out-of-area inputs. Source EWKB,
+attributes, metadata/pins and history remain unchanged. Registry/wire contract
+tests proved missing-route/unavailable-runtime RED before implementation.
+
+### SC-004 measured independent controls
+
+PostgreSQL 18.7, PostGIS 3.7.0, PROJ 9.9.0 with NETWORK_ENABLED=OFF. Both CI jobs
+record the actual observed image, not just a requested tag:
+`postgis/postgis@sha256:fe440a27c6567aefa932e988962e5827bb2c29e4b97dac2ca5268f5eafe10262`.
+All 44 directed independent controls and 16 additional LineString/Polygon vertex
+comparisons passed (60 observations). Analytic Web Mercator targets and published
+DMS/projected VN-2000 targets are independent of the runtime transform. Inverse
+checks start from published targets; these are not roundtrip-only claims.
+
+| Directed edge | Operation | Maximum measured residual | Tolerance | Unit |
+| --- | --- | ---: | ---: | --- |
+| 4326 -> 3857 | epsg-1024-forward | 7.45058059692e-09 | 0.001 | metre |
+| 3857 -> 4326 | epsg-1024-inverse | 2.84217094304e-14 | 1e-08 | degree |
+| 4756 -> 4326 | epsg-6960-forward | 1.55598435 | 3 | metre |
+| 4326 -> 4756 | epsg-6960-inverse | 1.55628658 | 3 | metre |
+| 5899 -> 4756 | epsg-5899-inverse-tm3 | 0.18943416 | 1 | metre |
+| 4756 -> 5899 | epsg-5899-forward-tm3 | 0.189424228172 | 1 | metre |
+| 5899 -> 4326 | epsg-5899-to-4326-via-6960 | 0.12948302 | 1 | metre |
+| 4326 -> 5899 | epsg-4326-to-5899-via-6960 | 0.128818984165 | 1 | metre |
+
+All 30 real CRS integration cases passed, including strict boundaries, every
+agreed native-invalid fixture, trusted provenance, native storage equality,
+page/detail/continuation metadata, explicit operation identity and scoped
+discovery lifecycle. VN-2000 applicability remains restricted to the documented
+Quang Ninh control-fixture rectangles; this is not survey-grade certification or
+a claim over all Vietnam positions. UTM48N/49N remain definition-only.
+
+### SC-007 measured reference benchmark
+
+The owner explicitly directed testing on GitHub. The accepted
+[reference profile](reference-fixture-profile.md#benchmark-environment) makes CI
+authoritative for regression; no Windows hardware was prescribed. Observed
+runner `GitHub Actions 1000023393`, Linux x86_64, Python 3.13.18,
+with the exact pinned PostgreSQL/PostGIS/PROJ runtime above. The report records
+all three fixture manifests and both revision pins (4,000 Point + 3,000 LineString
++ 3,000 Polygon = 10,000). Each of 20 scenarios uses five warmups and 100 measured
+complete in-process ASGI HTTP responses against the real restricted
+`openvietgis_runtime` role with RLS active, no profiler and no catalog writes.
+
+This claim covers warmed sequential application/serialization/job-local database
+execution. It excludes browser/WAN/socket/TLS latency, concurrent production load
+and the user's Windows workstation. Budgets are unchanged: catalog/detail p95
+<=1,000 ms; page100 p95 <=2,000 ms.
+
+| Scenario | p50 ms | p95 ms | max ms | p95 budget ms |
+| --- | ---: | ---: | ---: | ---: |
+| LineString_feature_detail_3857 | 10.284934 | 12.195155 | 15.100894 | 1000 |
+| LineString_feature_detail_4326 | 9.073028 | 10.154609 | 10.545159 | 1000 |
+| LineString_layer_detail | 7.807111 | 8.438721 | 10.056590 | 1000 |
+| LineString_page100_3857 | 21.811972 | 23.387397 | 24.952883 | 2000 |
+| LineString_page100_4326 | 12.606911 | 14.366297 | 16.471738 | 2000 |
+| LineString_source_detail | 6.215383 | 7.805020 | 8.459215 | 1000 |
+| Point_feature_detail_3857 | 10.806529 | 12.926743 | 14.739312 | 1000 |
+| Point_feature_detail_4326 | 9.282279 | 11.264104 | 13.704317 | 1000 |
+| Point_layer_detail | 6.922408 | 8.870443 | 11.595054 | 1000 |
+| Point_page100_3857 | 20.136812 | 22.253421 | 25.661839 | 2000 |
+| Point_page100_4326 | 11.961391 | 14.420376 | 16.208004 | 2000 |
+| Point_source_detail | 6.307119 | 7.129948 | 7.545807 | 1000 |
+| Polygon_feature_detail_3857 | 10.255249 | 12.716665 | 13.708363 | 1000 |
+| Polygon_feature_detail_4326 | 9.142284 | 10.913697 | 13.024626 | 1000 |
+| Polygon_layer_detail | 7.904134 | 9.252098 | 10.711760 | 1000 |
+| Polygon_page100_3857 | 26.475905 | 28.681498 | 106.795299 | 2000 |
+| Polygon_page100_4326 | 13.646131 | 15.370115 | 16.144933 | 2000 |
+| Polygon_source_detail | 5.766386 | 6.681415 | 6.813484 | 1000 |
+| layer_list | 8.621550 | 9.826318 | 11.688107 | 1000 |
+| source_list | 6.582464 | 7.763107 | 8.937654 | 1000 |
+
+All 20 budgets passed. Raw exact-run observations and immutable fixture/version/
+pin details are in [the measured report](evidence/ci-44336830562.json), also
+printed as R003_SPATIAL_BENCHMARK and R003_CRS_CONTROLS in the backend job log.
+
+### SC-009 interrupted registration and restart
+
+All four tests in `apps/api/tests/integration/spatial/test_restart.py` passed.
+Fresh app/pool recreation twice preserves committed source/Layer metadata, exact
+native rows, page/detail results, pins and immutable history. Three independent
+interruption cases terminate only the observed restricted backend in guarded
+`openvietgis_test`, after an actual source, feature or change INSERT. The failed
+transaction commits no ready partial source, fields, features or success audit;
+previously committed data stays exact. A new app retries registration to a
+complete 3,000-feature source once; duplicate retries conflict safely and another
+app recreation preserves the successful retry. No shared DB server was restarted.
+
+### Per-criterion acceptance
+
+| SC | Verdict | Current evidence |
+| --- | --- | --- |
+| SC-001 | PASS | `test_sources.py`: all supported/invalid manifests, exact metadata and native storage, correction/rollback. |
+| SC-002 | PASS | `test_layers.py`: two Layers share exact rows/pins; independent retirement, dependency and cross-link races. |
+| SC-003 | PASS | `test_features.py`, `test_pinned_reads.py`: complete 10k IDs once, exact typed page/detail, both stale domains/concurrency. |
+| SC-004 | PASS | `test_crs_controls.py`, independent `spatial_controls.py`: every approved edge/control and negative matrix; measured above. |
+| SC-005 | PASS | `test_authorization.py`, `test_lifecycle_security.py`, `test_migration_rls.py`: human/service/current scope/credential/RLS. |
+| SC-006 | PASS | `test_change_evidence.py`: atomic exact safe old/new/revisions, audit/actor/time, immutable runtime grants, real CAS/rollback. |
+| SC-007 | PASS | `test_spatial_benchmark.py`: full 10k, 20 scenarios, 100 measured each; exact environment and results above. |
+| SC-008 | PASS | Independent ASGI and restricted SQL API-only consumers `test_spatial_consumer.py` / `test_consumer.py`; no R004 dependency or physical details. |
+| SC-009 | PASS | `test_restart.py`: four actual recovery/interruption cases; no partial commits, exact committed state/retry preservation. |
+
+### Functional requirement and convergence trace
+
+Paths below are repository-root relative under the spatial domain/adapters/test
+packages unless stated; the accepted contracts remain
+`contracts/spatial-catalog-api.yaml` and `contracts/catalog-semantics.md`.
+
+| Requirements | Implementation | Evidence |
+| --- | --- | --- |
+| FR-001, FR-002, FR-003, FR-004 | DataSource/Layer domain IDs, project ownership, safe catalog/schema/count/extent service and SQL | domain/source/migration/RLS contracts and integration |
+| FR-005, FR-006, FR-007, FR-008 | Private trusted fixture registry, native SQL validation, atomic materialization and explicit ready/reason state | fixture/domain/source tests and unsupported-registration contract |
+| FR-009, FR-010, FR-011 | Layer independent identity/revision/CAS, shared source lock and retirement guard | Layer contracts, same-source row equality, both source-retire/create race outcomes |
+| FR-012, FR-013, FR-014, FR-015, FR-016, FR-017, FR-018, FR-019, FR-020 | Native geometry/CRS domain, finite definitions/direct profiles, approved response pipelines, all-vertex/provenance validation and no native mutation | CRS/domain/source native fixtures, all independent directed controls and negative matrix |
+| FR-021, FR-022, FR-023 | Explicit technical support, lifecycle availability and current permission-separated Layer capabilities | capability/domain/Layer/service actor tests |
+| FR-024, FR-025, FR-026, FR-027, FR-028 | Exact typed serializer, bounded C keyset, both pins, explicit page/detail scope and safe response envelope | full 10k traversal, independent consumer, stale/empty/cursor/detail, protected SDK/web/browser |
+| FR-029, FR-030, FR-031, FR-032 | Current R002 tenant/actor/credential/grant checks, project proof, FORCE RLS and composite ownership | real human/service authorization, lifecycle and revocation races; no disclosure/writes |
+| FR-033, FR-034, FR-035, FR-036, FR-037 | Transactional safe immutable history/audit, revisions/CAS, safe errors, durable registration/retry | change-evidence, race, interrupted-registration/restart and browser history/conflict tests |
+| FR-038 | Domain/port/adapter boundary; public logical source/Layer/read contract; no renderer/importer/editor/module coupling | architecture/scope guards and independent public-contract consumer |
+
+Independent read-only final review approved runtime exact `ea18f13`, then parsed
+the actual backend raw logs to independently verify measured controls, image and
+all 20 performance budgets. Convergence assessed 38 FRs, nine SCs, 22 acceptance
+scenarios across five stories, ten edge cases, all 64 tasks, seven implementation
+decisions plus seven technical-context categories, eight constitutional principles,
+eight architectural boundaries and nine quality gates. Additional build findings:
+missing 0, partial 0, contradicts 0, unrequested 0; no new convergence tasks or empty
+phase were appended. Correct feature prerequisites resolved with authorized
+process-only RemoteSigned; no extension hooks exist. Graphify updated 375 files,
+3,815 nodes/12,837 edges/164 communities; local Gitleaks scanned 14 commits with no
+leaks, and exact CI secret scan passed.
+
+R003 is converged for internal integration. The final documentation/evidence
+closure commit retains this tested runtime and requires its own exact full CI
+before fast-forward verified-main promotion. No deployment is performed; R002's
+external unfamiliar-human timing gate remains mandatory before external release.

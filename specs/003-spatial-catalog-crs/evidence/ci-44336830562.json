@@ -1,0 +1,238 @@
+{
+  "backend_job": 134915715763,
+  "benchmarks": {
+    "environment": {
+      "architecture": "x86_64",
+      "commit": "ea18f13722beeaa17e9c53b9a83a3df7c12db595",
+      "database_role": "openvietgis_runtime",
+      "declared_database_images": [
+        "postgis/postgis:18-3.7",
+        "postgis/postgis@sha256:fe440a27c6567aefa932e988962e5827bb2c29e4b97dac2ca5268f5eafe10262"
+      ],
+      "measurement": "complete in-process HTTP response, real restricted PostgreSQL, no profiler",
+      "observed_database_image_digest": "postgis/postgis@sha256:fe440a27c6567aefa932e988962e5827bb2c29e4b97dac2ca5268f5eafe10262",
+      "postgis": "3.7.0",
+      "postgis_full": "POSTGIS=\"3.7.0 1fdbb1c\" [EXTENSION] PGSQL=\"180\" GEOS=\"3.15.0-CAPI-1.21.0\" PROJ=\"9.9.0 NETWORK_ENABLED=OFF URL_ENDPOINT=https://cdn.proj.org USER_WRITABLE_DIRECTORY=/var/lib/postgresql/.local/share/proj DATABASE_PATH=/usr/share/proj/proj.db\" (compiled against PROJ 9.9.0) LIBXML=\"2.9.14\" LIBJSON=\"0.18\" LIBPROTOBUF=\"1.5.1\" WAGYU=\"0.5.0 (Internal)\" TOPOLOGY",
+      "postgres": "18.7 (Debian 18.7-1.pgdg13+2)",
+      "proj": "9.9.0 NETWORK_ENABLED=OFF URL_ENDPOINT=https://cdn.proj.org USER_WRITABLE_DIRECTORY=/var/lib/postgresql/.local/share/proj DATABASE_PATH=/usr/share/proj/proj.db",
+      "python": "3.13.18",
+      "runner_name": "GitHub Actions 1000023393",
+      "runner_os": "Linux",
+      "samples_per_scenario": 100,
+      "warmups_per_scenario": 5
+    },
+    "fixtures": [
+      {
+        "content_revision": "8cc727a8541890a4d42c5aad802a166c23e5da7d0763c1da1d96e80fa3f17e11",
+        "count": 4000,
+        "family": "Point",
+        "fixture_version": "r003-reference-v1",
+        "key": "reference_points_4326",
+        "manifest_digest": "c97ee6b2a350695aa0a8b7834eb854c0da45c42d16050bc886668644931d08e8",
+        "schema_revision": "e431628de1c897d4a8e8675c6cfc02bd541435fac44506ce79c02651db3ee106"
+      },
+      {
+        "content_revision": "7ee21a43eab3f047b2b360ceaedf0a88080e3cc68a0394a4c5fd827cd1c14b7d",
+        "count": 3000,
+        "family": "LineString",
+        "fixture_version": "r003-reference-v1",
+        "key": "reference_lines_4326",
+        "manifest_digest": "15c390320ef9a24295cb0f0df8a356d75fe1249cd972663fde32965ffd374e43",
+        "schema_revision": "34bdc80d6b578817b9e042906735e6ac17c6d871081fc501d79b9907dff6f70c"
+      },
+      {
+        "content_revision": "c94a8a652cc4d0739b08c9963396d48b39fee90906273145a0e0170cf78923a5",
+        "count": 3000,
+        "family": "Polygon",
+        "fixture_version": "r003-reference-v1",
+        "key": "reference_polygons_4326",
+        "manifest_digest": "dbe99bc603c3572dfc34b62da0057217f59bfed7cef2da4e964bb1872f8d4a81",
+        "schema_revision": "2d230da19ec8f536fe2ecb4114ee42f289ddfe5e161c0fe5c065f66027d26090"
+      }
+    ],
+    "results": {
+      "LineString_feature_detail_3857": {
+        "budget_p95_ms": 1000,
+        "max_ms": 15.100894,
+        "p50_ms": 10.284933500000001,
+        "p95_ms": 12.195155,
+        "samples": 100,
+        "warmups": 5
+      },
+      "LineString_feature_detail_4326": {
+        "budget_p95_ms": 1000,
+        "max_ms": 10.545159,
+        "p50_ms": 9.0730285,
+        "p95_ms": 10.154609,
+        "samples": 100,
+        "warmups": 5
+      },
+      "LineString_layer_detail": {
+        "budget_p95_ms": 1000,
+        "max_ms": 10.05659,
+        "p50_ms": 7.8071105,
+        "p95_ms": 8.438721,
+        "samples": 100,
+        "warmups": 5
+      },
+      "LineString_page100_3857": {
+        "budget_p95_ms": 2000,
+        "max_ms": 24.952883,
+        "p50_ms": 21.811971999999997,
+        "p95_ms": 23.387397,
+        "samples": 100,
+        "warmups": 5
+      },
+      "LineString_page100_4326": {
+        "budget_p95_ms": 2000,
+        "max_ms": 16.471738,
+        "p50_ms": 12.606911499999999,
+        "p95_ms": 14.366297,
+        "samples": 100,
+        "warmups": 5
+      },
+      "LineString_source_detail": {
+        "budget_p95_ms": 1000,
+        "max_ms": 8.459215,
+        "p50_ms": 6.2153835,
+        "p95_ms": 7.80502,
+        "samples": 100,
+        "warmups": 5
+      },
+      "Point_feature_detail_3857": {
+        "budget_p95_ms": 1000,
+        "max_ms": 14.739312,
+        "p50_ms": 10.806529000000001,
+        "p95_ms": 12.926743,
+        "samples": 100,
+        "warmups": 5
+      },
+      "Point_feature_detail_4326": {
+        "budget_p95_ms": 1000,
+        "max_ms": 13.704317,
+        "p50_ms": 9.282278999999999,
+        "p95_ms": 11.264104,
+        "samples": 100,
+        "warmups": 5
+      },
+      "Point_layer_detail": {
+        "budget_p95_ms": 1000,
+        "max_ms": 11.595054,
+        "p50_ms": 6.922408,
+        "p95_ms": 8.870443,
+        "samples": 100,
+        "warmups": 5
+      },
+      "Point_page100_3857": {
+        "budget_p95_ms": 2000,
+        "max_ms": 25.661839,
+        "p50_ms": 20.136812499999998,
+        "p95_ms": 22.253421,
+        "samples": 100,
+        "warmups": 5
+      },
+      "Point_page100_4326": {
+        "budget_p95_ms": 2000,
+        "max_ms": 16.208004,
+        "p50_ms": 11.961390999999999,
+        "p95_ms": 14.420376,
+        "samples": 100,
+        "warmups": 5
+      },
+      "Point_source_detail": {
+        "budget_p95_ms": 1000,
+        "max_ms": 7.545807,
+        "p50_ms": 6.307119,
+        "p95_ms": 7.129948,
+        "samples": 100,
+        "warmups": 5
+      },
+      "Polygon_feature_detail_3857": {
+        "budget_p95_ms": 1000,
+        "max_ms": 13.708363,
+        "p50_ms": 10.255249,
+        "p95_ms": 12.716665,
+        "samples": 100,
+        "warmups": 5
+      },
+      "Polygon_feature_detail_4326": {
+        "budget_p95_ms": 1000,
+        "max_ms": 13.024626,
+        "p50_ms": 9.142283500000001,
+        "p95_ms": 10.913697,
+        "samples": 100,
+        "warmups": 5
+      },
+      "Polygon_layer_detail": {
+        "budget_p95_ms": 1000,
+        "max_ms": 10.71176,
+        "p50_ms": 7.904134,
+        "p95_ms": 9.252098,
+        "samples": 100,
+        "warmups": 5
+      },
+      "Polygon_page100_3857": {
+        "budget_p95_ms": 2000,
+        "max_ms": 106.795299,
+        "p50_ms": 26.475905,
+        "p95_ms": 28.681498,
+        "samples": 100,
+        "warmups": 5
+      },
+      "Polygon_page100_4326": {
+        "budget_p95_ms": 2000,
+        "max_ms": 16.144933,
+        "p50_ms": 13.646130500000002,
+        "p95_ms": 15.370115,
+        "samples": 100,
+        "warmups": 5
+      },
+      "Polygon_source_detail": {
+        "budget_p95_ms": 1000,
+        "max_ms": 6.813484,
+        "p50_ms": 5.766386,
+        "p95_ms": 6.681415,
+        "samples": 100,
+        "warmups": 5
+      },
+      "layer_list": {
+        "budget_p95_ms": 1000,
+        "max_ms": 11.688107,
+        "p50_ms": 8.6215505,
+        "p95_ms": 9.826318,
+        "samples": 100,
+        "warmups": 5
+      },
+      "source_list": {
+        "budget_p95_ms": 1000,
+        "max_ms": 8.937654,
+        "p50_ms": 6.582464,
+        "p95_ms": 7.763107,
+        "samples": 100,
+        "warmups": 5
+      }
+    }
+  },
+  "candidate": "ea18f13722beeaa17e9c53b9a83a3df7c12db595",
+  "controls": {
+    "control_observations": 60,
+    "max_residual_by_operation": {
+      "epsg-1024-forward": 7.450580596923828e-09,
+      "epsg-1024-inverse": 2.842170943040401e-14,
+      "epsg-4326-to-5899-via-6960": 0.12881898416456636,
+      "epsg-5899-forward-tm3": 0.18942422817165894,
+      "epsg-5899-inverse-tm3": 0.18943416,
+      "epsg-5899-to-4326-via-6960": 0.12948302,
+      "epsg-6960-forward": 1.55598435,
+      "epsg-6960-inverse": 1.55628658
+    },
+    "observed_image_digest": "postgis/postgis@sha256:fe440a27c6567aefa932e988962e5827bb2c29e4b97dac2ca5268f5eafe10262",
+    "runtime": [
+      "PostgreSQL 18.7 (Debian 18.7-1.pgdg13+2) on x86_64-pc-linux-gnu, compiled by gcc (Debian 14.2.0-19) 14.2.0, 64-bit",
+      "POSTGIS=\"3.7.0 1fdbb1c\" [EXTENSION] PGSQL=\"180\" GEOS=\"3.15.0-CAPI-1.21.0\" PROJ=\"9.9.0 NETWORK_ENABLED=OFF URL_ENDPOINT=https://cdn.proj.org USER_WRITABLE_DIRECTORY=/var/lib/postgresql/.local/share/proj DATABASE_PATH=/usr/share/proj/proj.db\" (compiled against PROJ 9.9.0) LIBXML=\"2.9.14\" LIBJSON=\"0.18\" LIBPROTOBUF=\"1.5.1\" WAGYU=\"0.5.0 (Internal)\" TOPOLOGY"
+    ]
+  },
+  "full_runtime_ci_success": true,
+  "run_id": 44336830562,
+  "validate_job": 134915715256
+}

@@ -106,14 +106,14 @@ description: "Dependency-ordered implementation tasks for R003"
 
 **Goal / independent test**: Independent test: explicit profile discovery and every supported edge vs independent control; reject all unsupported (SC-004). Depends US1–3.
 
-- [ ] T051 [P] [US5] Freeze independent DMS/projected numbers and analytic formula fixtures from vn2000-control-evidence.md and research.md in apps/api/tests/fixtures/spatial_controls.py (no transform-derived targets).
-- [ ] T052 [P] [US5] Unit tests for registry profiles, eight exact directed edges, definition-only UTM, XY conventions, finite/bounds/zone/provenance/geometry validation in apps/api/tests/unit/spatial/test_crs.py.
-- [ ] T053 [P] [US5] Integration tests for explicit pipeline operation identity and forward/inverse independent control tolerances, domain boundary/WGS out-of-region, mixed/unsupported family, Z/M/empty geometry and unsupported requests, native storage unchanged in apps/api/tests/integration/spatial/test_crs_controls.py.
-- [ ] T054 [US5] Implement immutable CRS Definition/Transformation Profile registry in apps/api/openvietgis_api/domains/spatial/crs.py according to data-model.md CRS Definition / Transformation Profile; authority/code, native/application axes, units, parameters, applicability, disposition, direct source/target, operation/tolerance/evidence; no arbitrary/custom CRS.
-- [ ] T055 [US5] Implement approved PostGIS pipelines only with explicit output SRID in apps/api/openvietgis_api/adapters/persistence/spatial_repository.py per research.md; validate domain and all vertices before/after, reject unsupported requests, no fallback; native geometry unchanged.
-- [ ] T056 [US5] Reuse positive native 3857/4756/5899 and independent axis/domain fixtures from T016 in apps/api/tests/integration/spatial/test_crs_controls.py; verify ready/stored/source CRS and optional transformed geometry response, including rejected direct edges/out-of-area.
-- [ ] T057 [US5] Implement CRS registry endpoint, supported response_crs on page/detail, transformation evidence and error semantics in apps/api/openvietgis_api/adapters/http/spatial.py; SDK and inspector display in packages/client-sdk/src/spatial.ts and apps/web/src/features/spatial/SpatialCatalogPage.tsx.
-- [ ] T058 [US5] Execute all eight directed control tests and explicit unsupported matrix, record runtime versions/digest and tolerances with measured errors in specs/003-spatial-catalog-crs/quickstart.md; no survey-grade accuracy claim.
+- [X] T051 [P] [US5] Freeze independent DMS/projected numbers and analytic formula fixtures from vn2000-control-evidence.md and research.md in apps/api/tests/fixtures/spatial_controls.py (no transform-derived targets).
+- [X] T052 [P] [US5] Unit tests for registry profiles, eight exact directed edges, definition-only UTM, XY conventions, finite/bounds/zone/provenance/geometry validation in apps/api/tests/unit/spatial/test_crs.py.
+- [X] T053 [P] [US5] Integration tests for explicit pipeline operation identity and forward/inverse independent control tolerances, domain boundary/WGS out-of-region, mixed/unsupported family, Z/M/empty geometry and unsupported requests, native storage unchanged in apps/api/tests/integration/spatial/test_crs_controls.py.
+- [X] T054 [US5] Implement immutable CRS Definition/Transformation Profile registry in apps/api/openvietgis_api/domains/spatial/crs.py according to data-model.md CRS Definition / Transformation Profile; authority/code, native/application axes, units, parameters, applicability, disposition, direct source/target, operation/tolerance/evidence; no arbitrary/custom CRS.
+- [X] T055 [US5] Implement approved PostGIS pipelines only with explicit output SRID in apps/api/openvietgis_api/adapters/persistence/spatial_repository.py per research.md; validate domain and all vertices before/after, reject unsupported requests, no fallback; native geometry unchanged.
+- [X] T056 [US5] Reuse positive native 3857/4756/5899 and independent axis/domain fixtures from T016 in apps/api/tests/integration/spatial/test_crs_controls.py; verify ready/stored/source CRS and optional transformed geometry response, including rejected direct edges/out-of-area.
+- [X] T057 [US5] Implement CRS registry endpoint, supported response_crs on page/detail, transformation evidence and error semantics in apps/api/openvietgis_api/adapters/http/spatial.py; SDK and inspector display in packages/client-sdk/src/spatial.ts and apps/web/src/features/spatial/SpatialCatalogPage.tsx.
+- [X] T058 [US5] Execute all eight directed control tests and explicit unsupported matrix, record runtime versions/digest and tolerances with measured errors in specs/003-spatial-catalog-crs/quickstart.md; no survey-grade accuracy claim.
 
 ---
 
@@ -121,12 +121,12 @@ description: "Dependency-ordered implementation tasks for R003"
 
 **Goal / independent test**: Cross-cutting acceptance, independently reviewed exact CI.
 
-- [ ] T059 [P] Implement restart/interrupted registration atomic retry integration tests in apps/api/tests/integration/spatial/test_restart.py (SC-009).
-- [ ] T060 [P] Implement restricted-role warmed ≥100-sample benchmark list/detail/page100 (native and supported transformed), 10k rows and recorded p50/p95/max/runtime/image/revisions in apps/api/tests/performance/test_spatial_benchmark.py (SC-007).
-- [ ] T061 [P] Add Playwright catalog workflow/permission/stale and safe surfaces tests in tests/e2e/spatial-catalog.spec.ts; extend protected query and security-surface checks without weakening R002.
-- [ ] T062 Validate API SDK generated contract exactness, all unit/contract/integration/E2E/benchmarks, migration cycle, architecture/docs/scope, secret scanning via package.json pnpm validate; update Graphify for actual code changes.
-- [ ] T063 Record per-FR/SC evidence and measured thresholds in specs/003-spatial-catalog-crs/quickstart.md and ROADMAP.md; independent reviewer inspects security, CRS, lifecycle, contracts and exact candidate; fix findings before approval.
-- [ ] T064 Run exact final-commit CI and full Spec Kit convergence; document all tasks and gate verdict in specs/003-spatial-catalog-crs/tasks.md and ROADMAP.md; promote verified main only with independent review and full green CI. Do not assert R002 SC-013 measured or ship externally.
+- [X] T059 [P] Implement restart/interrupted registration atomic retry integration tests in apps/api/tests/integration/spatial/test_restart.py (SC-009).
+- [X] T060 [P] Implement restricted-role warmed ≥100-sample benchmark list/detail/page100 (native and supported transformed), 10k rows and recorded p50/p95/max/runtime/image/revisions in apps/api/tests/performance/test_spatial_benchmark.py (SC-007).
+- [X] T061 [P] Add Playwright catalog workflow/permission/stale and safe surfaces tests in tests/e2e/spatial-catalog.spec.ts; extend protected query and security-surface checks without weakening R002.
+- [X] T062 Validate API SDK generated contract exactness, all unit/contract/integration/E2E/benchmarks, migration cycle, architecture/docs/scope, secret scanning via package.json pnpm validate; update Graphify for actual code changes.
+- [X] T063 Record per-FR/SC evidence and measured thresholds in specs/003-spatial-catalog-crs/quickstart.md and ROADMAP.md; independent reviewer inspects security, CRS, lifecycle, contracts and exact candidate; fix findings before approval.
+- [X] T064 Run exact final-commit CI and full Spec Kit convergence; document all tasks and gate verdict in specs/003-spatial-catalog-crs/tasks.md and ROADMAP.md; promote verified main only with independent review and full green CI. Do not assert R002 SC-013 measured or ship externally.
 
 ---
 
@@ -166,3 +166,21 @@ MVP is US1 after all foundations: source registration, trusted metadata and expl
 | SC-009 | Phase 8 restart/failure/retry suite |
 
 FR-001–038 trace: US1 (001–008, 012–013, 017, 019–020), US2 (009–011, 021–023, 038), US3 (024–028), US4 + Foundation (029–037, 001–002), US5 (012–018, 020). See validation scenarios in quickstart.md.
+
+
+## Implementation validation and convergence verdict
+
+All 64 implementation tasks are closed for the accepted R003 scope. Runtime candidate
+`ea18f13722beeaa17e9c53b9a83a3df7c12db595` passed all three jobs in
+[CI 44336830562](https://github.com/nguyentrieu210/OpenVietGis/actions/runs/44336830562).
+All nine SCs have actual evidence in [quickstart](quickstart.md#final-runtime-acceptance--2026-11-18)
+and [measured report](evidence/ci-44336830562.json). Independent code review and
+convergence found no additional build gaps against 38 FRs, 22 story scenarios,
+10 edge cases, all 64 tasks, plan constraints and the Constitution; no T065 was
+needed. The convergence assessment itself left the task inventory unchanged.
+
+Gate verdict: R003 converged for internal integration. The documentation/evidence
+closure commit must pass its own exact full CI before verified-main promotion;
+the coordinator verifies that gate before fast-forwarding. R002 SC-013 external
+human timing remains deferred to before any external acceptance/release. This
+feature does not authorize deployment or claim production performance.
