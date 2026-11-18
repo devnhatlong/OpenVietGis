@@ -165,6 +165,8 @@ def feature_http(monkeypatch: pytest.MonkeyPatch) -> Iterator[FeatureHTTP]:
         "get_source",
         "get_fields",
         "append_change",
+        "list_sources",
+        "list_layers",
         "get_layer",
         "insert_layer",
         "read_features",
