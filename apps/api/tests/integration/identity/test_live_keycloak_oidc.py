@@ -5,20 +5,26 @@ exchange are real; only the application HTTP transport is in-process TestClient.
 """
 from __future__ import annotations
 
+import io
 import json
 import logging
 import os
 import re
+from collections.abc import Iterator, Mapping
+from contextlib import contextmanager
 from html.parser import HTMLParser
 from http.cookiejar import DefaultCookiePolicy
 from http.cookies import SimpleCookie
 from pathlib import Path
 from types import SimpleNamespace
-from urllib.parse import parse_qs, urljoin, urlsplit
+from urllib.parse import parse_qs, quote, quote_plus, urljoin, urlsplit
 from urllib.request import Request
 
 import httpx
 import pytest
+from authlib.integrations.starlette_client.apps import (  # type: ignore[import-untyped]
+    StarletteOAuth2App,
+)
 from fastapi.testclient import TestClient
 from sqlalchemy import text
 from tools.test_database import assert_safe_test_target
@@ -28,7 +34,7 @@ from openvietgis_api.main import create_app
 from openvietgis_api.security.sessions import parse_session_token, verify_session_token
 from tests.fixtures.db_admin import get_admin_session_factory
 
-pytestmark = pytest.mark.skipif(
+live_oidc = pytest.mark.skipif(
     os.environ.get("OPENVIETGIS_LIVE_OIDC") != "1",
     reason="opt-in loopback Keycloak acceptance; set OPENVIETGIS_LIVE_OIDC=1",
 )
@@ -49,6 +55,105 @@ def _require(condition: bool, reason: str) -> None:
     # response bodies, cookie values, codes or token exchange data.
     if not condition:
         pytest.fail(reason, pytrace=False)
+
+
+class _SecretEvidence:
+    """Store real synthetic credentials only in memory; report fixed failure labels."""
+
+    def __init__(self) -> None:
+        self._canaries: dict[str, set[str]] = {}
+        self._surfaces: list[tuple[str, frozenset[str]]] = []
+        self.exchanges = 0
+
+    def record(self, kind: str, value: object) -> None:
+        _require(isinstance(value, str) and len(value) >= 16, "credential capture failed")
+        if isinstance(value, str):
+            self._canaries.setdefault(kind, set()).update(
+                (value, quote(value, safe=""), quote_plus(value, safe=""))
+            )
+
+    def surfaces(self, value: str, *, allowed: tuple[str, ...] = ()) -> None:
+        self._surfaces.append((value, frozenset(allowed)))
+
+    def response(self, response: httpx.Response, *, stage: str = "") -> None:
+        # Only the intentional protocol channels may carry their own credential
+        # kinds; check every other response header and the complete response body.
+        self.surfaces(response.text, allowed=("csrf",) if stage == "csrf" else ())
+        for name, value in response.headers.multi_items():
+            allowed: tuple[str, ...] = ()
+            if stage == "begin" and name == "location":
+                allowed = ("state", "nonce")
+            elif name == "set-cookie":
+                if stage == "begin" and value.startswith("ovg_oidc_state="):
+                    allowed = ("oidc-cookie",)
+                elif stage == "callback" and value.startswith(
+                    get_settings().session_cookie_name + "="
+                ):
+                    allowed = ("session-cookie", "session-secret")
+            self.surfaces(value, allowed=allowed)
+
+    def has_leak(self) -> bool:
+        return any(
+            canary in surface
+            for surface, allowed in self._surfaces
+            for kind, canaries in self._canaries.items()
+            if kind not in allowed
+            for canary in canaries
+        )
+
+
+@contextmanager
+def _private_runtime_logs() -> Iterator[io.StringIO]:
+    # Never forward a possible secret-bearing log to pytest or its CI report.
+    root = logging.getLogger()
+    previous_handlers, previous_level = root.handlers, root.level
+    stream = io.StringIO()
+    handler = logging.StreamHandler(stream)
+    root.handlers = [handler]
+    root.setLevel(logging.INFO)
+    try:
+        yield stream
+    finally:
+        root.handlers = previous_handlers
+        root.setLevel(previous_level)
+        handler.close()
+        stream.close()
+
+
+def _observe_real_exchange(
+    monkeypatch: pytest.MonkeyPatch, evidence: _SecretEvidence,
+) -> None:
+    # This is a transparent observer, not a token endpoint mock. Authlib's real
+    # HTTP token fetch runs unmodified, and its caller still performs ID-token
+    # validation (including nonce). Record credentials before returning them.
+    original = StarletteOAuth2App.fetch_access_token
+
+    async def observed(client, *args, **kwargs):  # type: ignore[no-untyped-def]
+        evidence.record("code", kwargs.get("code"))
+        evidence.record("pkce-verifier", kwargs.get("code_verifier"))
+        token = await original(client, *args, **kwargs)
+        _require(isinstance(token, Mapping), "real exchange did not return a token mapping")
+        for kind in ("access_token", "id_token", "refresh_token"):
+            evidence.record(kind, token.get(kind))
+        evidence.exchanges += 1
+        return token
+
+    monkeypatch.setattr(StarletteOAuth2App, "fetch_access_token", observed)
+
+
+def test_live_oidc_secret_monitor_is_private_and_nonvacuous(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    evidence = _SecretEvidence()
+    marker = "synthetic-fixture-marker-not-a-real-secret"
+    evidence.record("code", marker)
+    evidence.surfaces(marker, allowed=("code",))
+    assert not evidence.has_leak()
+    with _private_runtime_logs() as captured:
+        logging.getLogger("openvietgis.synthetic").warning("%s", marker)
+        evidence.surfaces(captured.getvalue())
+        assert evidence.has_leak()
+    assert marker not in caplog.text
 
 
 def _provider_url(value: str) -> bool:
@@ -234,12 +339,15 @@ def _provider_callback(client: httpx.Client, authorization_url: str) -> str:
     pytest.fail("post-login provider redirect limit exceeded", pytrace=False)
 
 
-def _login_once(app: TestClient, provider: httpx.Client) -> tuple[str, str]:
+def _login_once(
+    app: TestClient, provider: httpx.Client, evidence: _SecretEvidence,
+) -> tuple[str, str]:
     begin = app.get(
         "/api/v1/auth/login/keycloak",
         params={"return_to": "/organizations"},
         follow_redirects=False,
     )
+    evidence.response(begin, stage="begin")
     _require(begin.status_code == 302, "application did not start authorization")
     authorization_url = begin.headers.get("location", "")
     _require(_provider_url(authorization_url), "unexpected authorization URL")
@@ -259,6 +367,9 @@ def _login_once(app: TestClient, provider: httpx.Client) -> tuple[str, str]:
         )),
         "authorization code, state, nonce or PKCE contract is invalid",
     )
+    evidence.record("state", authorization["state"][0])
+    evidence.record("nonce", authorization["nonce"][0])
+    evidence.record("oidc-cookie", app.cookies.get("ovg_oidc_state"))
     callback_url = _provider_callback(provider, authorization_url)
     callback = urlsplit(callback_url)
     query = parse_qs(callback.query)
@@ -269,9 +380,12 @@ def _login_once(app: TestClient, provider: httpx.Client) -> tuple[str, str]:
         "provider callback did not carry the expected authorization code and state",
     )
 
+    evidence.record("code", query["code"][0])
+
     # Do not connect to a real app server: route Keycloak's actual callback via
     # TestClient, preserving the app's original signed OIDC transaction cookie.
     result = app.get(callback.path + "?" + callback.query, follow_redirects=False)
+    evidence.response(result, stage="callback")
     _require(result.status_code == 302, "real authorization code exchange failed")
     _require(
         result.headers.get("location") == WEB_ORIGIN + "/organizations"
@@ -298,7 +412,10 @@ def _login_once(app: TestClient, provider: httpx.Client) -> tuple[str, str]:
         and set(app.cookies.keys()) == {cookie_name},
         "expected only an opaque application session cookie after OIDC callback",
     )
+    evidence.record("session-cookie", token)
+    evidence.record("session-secret", parse_session_token(token).secret)
     me = app.get("/api/v1/me")
+    evidence.response(me)
     _require(me.status_code == 200, "first-party session could not resolve /me")
     user = me.json()
     _require(
@@ -344,25 +461,31 @@ def _login_once(app: TestClient, provider: httpx.Client) -> tuple[str, str]:
     return user["id"], token
 
 
-def _logout(app: TestClient, token: str) -> None:
+def _logout(app: TestClient, token: str, evidence: _SecretEvidence) -> None:
     csrf = app.get("/api/v1/auth/csrf")
+    evidence.response(csrf, stage="csrf")
     _require(csrf.status_code == 200, "session did not provide CSRF token")
-    csrf_token = csrf.json().get("token")
+    csrf_body = csrf.json()
+    _require(isinstance(csrf_body, dict) and set(csrf_body) == {"token"}, "unexpected CSRF body")
+    csrf_token = csrf_body.get("token")
     _require(isinstance(csrf_token, str) and bool(csrf_token), "missing CSRF token")
+    evidence.record("csrf", csrf_token)
     response = app.post(
         "/api/v1/auth/logout",
         headers={"X-OpenVietGIS-CSRF": csrf_token},
     )
+    evidence.response(response)
     cookie_name = get_settings().session_cookie_name
     _require(
         response.status_code == 204 and not app.cookies.get(cookie_name),
         "logout did not clear the first-party session",
     )
-    _require(app.get("/api/v1/me").status_code == 401, "logout left /me authenticated")
-    _require(
-        app.get("/api/v1/me", headers={"Cookie": f"{cookie_name}={token}"}).status_code == 401,
-        "revoked session cookie was still usable",
-    )
+    logged_out = app.get("/api/v1/me")
+    evidence.response(logged_out)
+    _require(logged_out.status_code == 401, "logout left /me authenticated")
+    replay = app.get("/api/v1/me", headers={"Cookie": f"{cookie_name}={token}"})
+    evidence.response(replay)
+    _require(replay.status_code == 401, "revoked session cookie was still usable")
     with get_admin_session_factory()() as admin:
         revoked = admin.execute(
             text("SELECT revoked_at FROM identity.web_sessions WHERE id = :id"),
@@ -371,8 +494,29 @@ def _logout(app: TestClient, token: str) -> None:
         _require(revoked is not None, "logout revocation was not durable")
 
 
+@live_oidc
 def test_live_keycloak_code_pkce_login_logout_and_stable_identity(
-    migrated_database: None, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture,
+    migrated_database: None,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    capfd: pytest.CaptureFixture[str],
+) -> None:
+    evidence = _SecretEvidence()
+    with _private_runtime_logs() as captured:
+        try:
+            _exercise_live_oidc(monkeypatch, caplog, evidence)
+        finally:
+            # Drain on failures too: no diagnostic surface can enter test reports.
+            output = capfd.readouterr()
+            for surface in (captured.getvalue(), output.out, output.err):
+                evidence.surfaces(surface)
+            _require(not evidence.has_leak(), "live OIDC credential leaked to a captured surface")
+
+
+def _exercise_live_oidc(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    evidence: _SecretEvidence,
 ) -> None:
     stage = "local-only configuration"
     try:
@@ -395,8 +539,13 @@ def test_live_keycloak_code_pkce_login_logout_and_stable_identity(
         # Prevent environment proxy settings from redirecting the loopback IdP calls.
         monkeypatch.setenv("NO_PROXY", "127.0.0.1,localhost")
         monkeypatch.setenv("no_proxy", "127.0.0.1,localhost")
+        # Preserve the previous test's suppression of credential-bearing third
+        # party transport/SQL diagnostics. Capture normal application runtime
+        # output here, not provider server logs or browser/Playwright artifacts.
         for logger in ("httpx", "httpcore", "authlib", "sqlalchemy.engine"):
             caplog.set_level(logging.CRITICAL, logger=logger)
+        evidence.record("fixture-password", _fixture_password())
+        _observe_real_exchange(monkeypatch, evidence)
         with TestClient(
             create_app(), base_url=APP_ORIGIN, raise_server_exceptions=False,
         ) as app:
@@ -404,15 +553,15 @@ def test_live_keycloak_code_pkce_login_logout_and_stable_identity(
             with httpx.Client(follow_redirects=False, trust_env=False, timeout=20) as provider_http:
                 provider_http.cookies.jar.set_policy(_LoopbackProviderCookiePolicy())
                 _check_discovery(provider_http)
-                first_id, first_token = _login_once(app, provider_http)
+                first_id, first_token = _login_once(app, provider_http, evidence)
             stage = "first application logout"
-            _logout(app, first_token)
+            _logout(app, first_token, evidence)
 
             stage = "second real Keycloak login"
             # Fresh provider cookies force another real login form and code exchange.
             with httpx.Client(follow_redirects=False, trust_env=False, timeout=20) as provider_http:
                 provider_http.cookies.jar.set_policy(_LoopbackProviderCookiePolicy())
-                second_id, second_token = _login_once(app, provider_http)
+                second_id, second_token = _login_once(app, provider_http, evidence)
             _require(
                 first_id == second_id
                 and parse_session_token(first_token).session_id
@@ -420,7 +569,14 @@ def test_live_keycloak_code_pkce_login_logout_and_stable_identity(
                 "repeat authentication did not preserve the stable internal user",
             )
             stage = "second application logout"
-            _logout(app, second_token)
+            _logout(app, second_token, evidence)
+        stage = "credential non-disclosure evidence"
+        _require(evidence.exchanges == 2, "expected two observed real token exchanges")
+        # Login/logout do not require audit rows. Scan complete persisted audit
+        # records in this guarded synthetic DB, regardless of actor or event type.
+        with get_admin_session_factory()() as admin:
+            audit_rows = admin.execute(text("SELECT * FROM audit.audit_events")).mappings().all()
+            evidence.surfaces(json.dumps([dict(row) for row in audit_rows], default=str))
     except Exception:
         # Provider URLs/HTML, authorization codes, raw tokens and exception details
         # must never escape into test output. Stage names are fixed and safe.
