@@ -125,8 +125,12 @@ def test_repository_denies_ungranted_member_and_action_mismatch(
         bind_authenticated_actor(session, ctx.actor)
         repository = SqlSpatialRepository(session)
         with pytest.raises(AuthorizationDeniedError):
-            repository.prepare_scope(context=ctx, permission=Permission.PROJECT_READ, mutation=False)
+            repository.prepare_scope(
+                context=ctx, permission=Permission.PROJECT_READ, mutation=False
+            )
         with pytest.raises(PermissionError):
             repository.get_source(context=ctx, source_id=source)
         with pytest.raises(PermissionError):
-            repository.prepare_scope(context=ctx, permission=Permission.PROJECT_EDIT, mutation=False)
+            repository.prepare_scope(
+                context=ctx, permission=Permission.PROJECT_EDIT, mutation=False
+            )
