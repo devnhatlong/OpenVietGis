@@ -37,6 +37,7 @@ from openvietgis_api.domains.spatial.crs import (
 )
 from openvietgis_api.domains.spatial.domain import (
     MAX_REVISION,
+    CatalogChange,
     Extent,
     SourceField,
 )
@@ -47,6 +48,7 @@ from openvietgis_api.domains.spatial.service import (
     SourceMutationResult,
     SpatialCatalogService,
     SpatialFeatureService,
+    SpatialHistoryService,
     SpatialLayerService,
 )
 
@@ -537,3 +539,48 @@ def get_feature(
             response_crs=response_crs,
         )
     )
+
+
+_CHANGE_PATH = "/organizations/{organization_id}/projects/{project_id}/spatial/changes"
+
+
+def _catalog_change(change: CatalogChange) -> dict[str, object]:
+    # Internal scoped FKs, raw attributes, native geometry and storage locators
+    # are not part of this public history wire contract.
+    return {
+        "id": change.id,
+        "organization_id": change.organization_id,
+        "project_id": change.project_id,
+        "resource_type": change.resource_type.value,
+        "resource_id": change.resource_id,
+        "actor_type": change.actor_type.value,
+        "actor_id": change.actor_id,
+        "actor_display_snapshot": change.actor_display_snapshot,
+        "operation": change.operation.value,
+        "created_at": _timestamp(change.created_at),
+        "audit_event_id": change.audit_event_id,
+        "prior_revision": change.prior_revision.to_wire() if change.prior_revision else None,
+        "new_revision": change.new_revision.to_wire(),
+        "changes": [value.to_wire() for value in change.changes],
+    }
+
+
+@router.get(_CHANGE_PATH, operation_id="listSpatialCatalogChanges")
+def list_changes(
+    organization_id: UUID,
+    project_id: UUID,
+    authentication: Annotated[AuthenticatedRequest, Depends(authenticate_request)],
+    session: Annotated[Session, Depends(get_db_session, scope="function")],
+    limit: Annotated[int, Query(ge=1, le=100)] = 100,
+    after_id: UUID | None = None,
+) -> dict[str, object]:
+    context = context_for(authentication, organization_id=organization_id, project_id=project_id)
+    page = SpatialHistoryService(SqlSpatialRepository(session)).list_changes(
+        context=context, after_id=after_id, limit=limit
+    )
+    return {
+        "organization_id": organization_id,
+        "project_id": project_id,
+        "items": [_catalog_change(change) for change in page.items],
+        "next_after_id": page.next_after_id,
+    }

@@ -43,6 +43,7 @@ from openvietgis_api.domains.authorization.service import (
 from openvietgis_api.domains.spatial.domain import (
     CatalogChange,
     CatalogOperation,
+    ChangedValue,
     DataSource,
     Extent,
     ExtentState,
@@ -52,6 +53,7 @@ from openvietgis_api.domains.spatial.domain import (
     GeometryFamily,
     GeometryState,
     Layer,
+    LayerRevision,
     Lifecycle,
     NativeGeometry,
     ReferenceFeature,
@@ -59,6 +61,7 @@ from openvietgis_api.domains.spatial.domain import (
     SchemaState,
     SourceField,
     SourceKind,
+    SourceRevision,
     SpatialValidationError,
     ValidationReason,
     ValidationReasonCode,
@@ -82,7 +85,52 @@ from openvietgis_api.domains.spatial.service import (
     validate_feature_id,
     verify_source_pins,
 )
-from openvietgis_api.domains.tenancy.domain import OrganizationStatus, ProjectStatus
+from openvietgis_api.domains.tenancy.domain import ActorType, OrganizationStatus, ProjectStatus
+
+
+def _change_revision(value: object, kind: ResourceType) -> SourceRevision | LayerRevision:
+    if not isinstance(value, dict):
+        raise SpatialValidationError("invalid stored catalog revision")
+    if kind == ResourceType.DATA_SOURCE:
+        if set(value) != {"catalog_revision", "content_revision", "schema_revision"}:
+            raise SpatialValidationError("invalid stored source revision")
+        return SourceRevision(
+            value["catalog_revision"], value["content_revision"], value["schema_revision"]
+        )
+    if set(value) != {"layer_revision"}:
+        raise SpatialValidationError("invalid stored Layer revision")
+    return LayerRevision(value["layer_revision"])
+
+
+def _change_from_row(row: RowMapping) -> CatalogChange:
+    kind = ResourceType(row["resource_type"])
+    prior = row["prior_revision"]
+    values = row["changes"]
+    if not isinstance(values, list) or not 1 <= len(values) <= 100:
+        raise SpatialValidationError("invalid stored change evidence")
+    changes = []
+    for value in values:
+        if not isinstance(value, dict) or set(value) != {"field", "old_value", "new_value"}:
+            raise SpatialValidationError("invalid stored changed value")
+        changes.append(ChangedValue(value["field"], value["old_value"], value["new_value"]))
+    return CatalogChange(
+        id=row["id"],
+        organization_id=row["organization_id"],
+        project_id=row["project_id"],
+        resource_type=kind,
+        resource_id=row["resource_id"],
+        source_id=row["source_id"],
+        layer_id=row["layer_id"],
+        actor_type=ActorType(row["actor_type"]),
+        actor_id=row["actor_id"],
+        actor_display_snapshot=row["actor_display_snapshot"],
+        operation=CatalogOperation(row["operation"]),
+        created_at=row["created_at"],
+        audit_event_id=row["audit_event_id"],
+        prior_revision=_change_revision(prior, kind) if prior is not None else None,
+        new_revision=_change_revision(row["new_revision"], kind),
+        changes=tuple(changes),
+    )
 
 
 def _read_native_wkb(value: bytes, srid: int) -> NativeGeometry:
@@ -1018,6 +1066,30 @@ class SqlSpatialRepository:
         ):
             raise SpatialValidationError("controlled fixture snapshot disagrees")
         return refreshed.source
+
+    def list_changes(
+        self, *, context: AuthorizationContext, after_id: UUID | None, limit: int
+    ) -> list[CatalogChange]:
+        if type(limit) is not int or not 1 <= limit <= 101:
+            raise SpatialValidationError("catalog query limit out of bounds")
+        params = self._scope(context, permission=Permission.PROJECT_READ)
+        rows = (
+            self._session.execute(
+                text("""
+                SELECT id, organization_id, project_id, resource_type, resource_id,
+                    source_id, layer_id, actor_type, actor_id, actor_display_snapshot,
+                    operation, created_at, audit_event_id, prior_revision, new_revision, changes
+                FROM spatial.catalog_changes
+                WHERE organization_id=:organization AND project_id=:project
+                    AND (CAST(:after_id AS uuid) IS NULL OR id > CAST(:after_id AS uuid))
+                ORDER BY id LIMIT :limit
+            """),
+                params | {"after_id": after_id, "limit": limit},
+            )
+            .mappings()
+            .all()
+        )
+        return [_change_from_row(row) for row in rows]
 
     def append_change(
         self, change: CatalogChange, audit: AuditEvent, *, context: AuthorizationContext

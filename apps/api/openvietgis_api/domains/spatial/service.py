@@ -49,6 +49,7 @@ from openvietgis_api.domains.spatial.ports import (
     SpatialLayerRepository,
     SpatialLayerRevisionConflictError,
     SpatialNoChangesError,
+    SpatialRepository,
     SpatialRevisionConflictError,
     SpatialScopeError,
     SpatialSourceAlreadyRegisteredError,
@@ -1021,3 +1022,40 @@ class SpatialFeatureService:
         )
         self.repository.append_change(evidence.change, evidence.audit, context=context)
         return SourceMutationResult(current, evidence.change)
+
+
+@dataclass(frozen=True, slots=True)
+class CatalogChangePage:
+    items: tuple[CatalogChange, ...]
+    next_after_id: UUID | None
+
+
+@dataclass(slots=True)
+class SpatialHistoryService:
+    """Current authorized, bounded, append-only catalog history."""
+
+    repository: SpatialRepository
+
+    def list_changes(
+        self, *, context: AuthorizationContext, after_id: UUID | None, limit: int
+    ) -> CatalogChangePage:
+        self.repository.prepare_scope(
+            context=context, permission=Permission.PROJECT_READ, mutation=False
+        )
+        if type(limit) is not int or not 1 <= limit <= 100:
+            raise SpatialValidationError("catalog limit out of bounds")
+        changes = self.repository.list_changes(context=context, after_id=after_id, limit=limit + 1)
+        if len(changes) > limit + 1:
+            raise SpatialValidationError("unbounded catalog evidence")
+        previous = after_id
+        for change in changes:
+            if (change.organization_id, change.project_id) != (
+                context.organization_id,
+                context.project_id,
+            ):
+                raise SpatialValidationError("catalog evidence scope disagrees")
+            if previous is not None and change.id <= previous:
+                raise SpatialValidationError("catalog evidence is not strictly ordered")
+            previous = change.id
+        visible = tuple(changes[:limit])
+        return CatalogChangePage(visible, visible[-1].id if len(changes) > limit else None)
