@@ -38,12 +38,54 @@ async function setup(page: Page, suffix: string) {
   await expect(page.getByRole("heading", { name: "Spatial source catalog" })).toBeVisible();
   await page.getByLabel("Logical reference key").fill("reference_points_4326");
   await page.getByLabel("Source name", { exact: true }).fill("Trusted points " + suffix);
+  const registration = page.waitForResponse(response =>
+    new URL(response.url()).pathname === "/api/v1" + root + "/spatial/sources" &&
+    response.request().method() === "POST", { timeout: 30_000 });
   await page.getByRole("button", { name: "Register", exact: true }).click();
+  const registered = await registration;
+  expect(registered.status()).toBe(201);
+  const sourceCreated = await registered.json();
+  expect(sourceCreated).toMatchObject({
+    organization_id: organization, project_id: project, resource_type: "data_source",
+    lifecycle: "active", validation_state: "ready", prior_revision: null,
+    new_revision: { catalog_revision: 1 }
+  });
+  expect(sourceCreated.resource_id).toMatch(/^[0-9a-f-]{36}$/);
+  expect(sourceCreated.new_revision.content_revision).toMatch(/^[0-9a-f]{64}$/);
+  expect(sourceCreated.new_revision.schema_revision).toMatch(/^[0-9a-f]{64}$/);
+  const sourceDetail = await page.request.get("/api/v1" + root + "/spatial/sources/" + sourceCreated.resource_id);
+  expect(sourceDetail.status()).toBe(200);
+  expect(await sourceDetail.json()).toMatchObject({
+    id: sourceCreated.resource_id, organization_id: organization, project_id: project,
+    name: "Trusted points " + suffix, validation_state: "ready", feature_count: 4000,
+    stored_crs: { code: 4326 }, source_crs: { code: 4326 },
+    content_revision: sourceCreated.new_revision.content_revision,
+    schema_revision: sourceCreated.new_revision.schema_revision
+  });
   const sourceButton = page.getByRole("list", { name: "Registered sources" }).getByRole("button", { name: "Trusted points " + suffix + " — ready" });
   await expect(sourceButton).toBeVisible();
   await sourceButton.click();
   await page.getByLabel("Layer name", { exact: true }).fill("Reference Layer " + suffix);
+  const layerCreation = page.waitForResponse(response =>
+    new URL(response.url()).pathname === "/api/v1" + root + "/layers" &&
+    response.request().method() === "POST", { timeout: 30_000 });
   await page.getByRole("button", { name: "Create Layer", exact: true }).click();
+  const createdLayerResponse = await layerCreation;
+  expect(createdLayerResponse.status()).toBe(201);
+  const layerCreated = await createdLayerResponse.json();
+  expect(layerCreated).toMatchObject({
+    organization_id: organization, project_id: project, resource_type: "layer",
+    lifecycle: "active", prior_revision: null, new_revision: { layer_revision: 1 }
+  });
+  expect(layerCreated.resource_id).toMatch(/^[0-9a-f-]{36}$/);
+  const layerDetail = await page.request.get("/api/v1" + root + "/layers/" + layerCreated.resource_id);
+  expect(layerDetail.status()).toBe(200);
+  expect(await layerDetail.json()).toMatchObject({
+    id: layerCreated.resource_id, source_id: sourceCreated.resource_id,
+    source: { id: sourceCreated.resource_id, feature_count: 4000, validation_state: "ready",
+      content_revision: sourceCreated.new_revision.content_revision,
+      schema_revision: sourceCreated.new_revision.schema_revision }
+  });
   const layerButton = page.getByRole("list", { name: "Registered Layers" }).getByRole("button").filter({ hasText: "Reference Layer " + suffix });
   await expect(layerButton).toBeVisible();
   await layerButton.click();
