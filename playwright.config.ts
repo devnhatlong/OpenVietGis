@@ -20,7 +20,7 @@ export default defineConfig({
       command:
         "uv run --project apps/api python -m tools.seed_identity_e2e && " +
         "uv run --project apps/api uvicorn openvietgis_api.main:app " +
-        "--app-dir apps/api --host 127.0.0.1 --port 8000",
+        "--app-dir apps/api --host 127.0.0.1 --port 8000 --no-access-log",
       url: "http://127.0.0.1:8000/api/v1/health/live",
       reuseExistingServer: false,
       timeout: 60_000,

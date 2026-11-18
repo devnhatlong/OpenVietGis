@@ -9,7 +9,7 @@
   "scripts": {
     "bootstrap": "pnpm install && uv sync --project apps/api && docker compose -f infra/dev/compose.yaml up -d postgres postgres-test && pnpm exec playwright install chromium",
     "dev:db": "docker compose -f infra/dev/compose.yaml up -d postgres postgres-test",
-    "dev:api": "uv run --project apps/api uvicorn openvietgis_api.main:app --reload --app-dir apps/api",
+    "dev:api": "uv run --project apps/api uvicorn openvietgis_api.main:app --reload --no-access-log --app-dir apps/api",
     "dev:web": "pnpm --filter @openvietgis/web dev",
     "db:migrate": "uv run --project apps/api alembic -c apps/api/alembic.ini upgrade head",
     "dev:reset": "uv run --project apps/api python tools/reset_dev.py",
