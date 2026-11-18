@@ -47,7 +47,7 @@ not implemented in this feature.
 - Authlib 1.9.8 line for OIDC client integration
 - PostgreSQL 18 + PostGIS 3.7
 - React Router 7.18.5 line
-- TanStack Query 5.108.0 line
+- TanStack Query 5.107.1 line
 - openapi-typescript 7.13.0 line for generated client contract types
 - existing pnpm/Vite/Playwright/pytest/Ruff/mypy foundation
 

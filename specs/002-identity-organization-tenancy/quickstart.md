@@ -419,3 +419,9 @@ Code HEAD **61bacc6**, authoritative takeover branch. **77/115 checked, 38 open*
 - Graphify refreshed (2243 nodes, 6078 edges); independent review findings addressed, except verification of the loopback migration repeat is pending.
 
 Continue using only eligible signed Node26 dependencies per §19. CI or local browser suite must not bypass dependency age policy: verify eligible release window before frozen install. T062/T069/T079/T080 remain open; P2 and R003 are gated, T107/T108/T111/T112 stay open until their complete acceptance. No main promotion, production deploy, or public publication.
+
+## 22. Supply-chain-compatible frontend dependency pin — 2026-11-18
+
+The active P1 frontend dependency was changed from `@tanstack/react-query` 5.108.0 to the compatible 5.107.1 line because the newer release was still inside the enforced pnpm `minimumReleaseAge` window. This is not a policy bypass: 5.107.1 was already outside the age cutoff, its matching `@tanstack/query-core` dependency is pinned to 5.107.1, and registry integrity metadata was used for both lockfile entries. The product research decision requires TanStack Query 5.x, not 5.108.0 specifically.
+
+On official Node 26.13.1 with pnpm 12.21.0, `pnpm install --frozen-lockfile` passed the supply-chain policy check for all 204 lockfile entries. Local `validate:runtime`, `validate:ts`, and `validate:contracts` passed: SDK 12 tests, web helper 15 tests, strict TypeScript/lint, production Vite build, and generated OpenAPI freshness. This removes the dependency-age blocker only; real Playwright browser acceptance, T062/T079/T080 and full CI remain open until executed on the exact committed head.
