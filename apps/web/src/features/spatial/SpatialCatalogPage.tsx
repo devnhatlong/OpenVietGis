@@ -171,13 +171,17 @@ function LayerPanel({ organizationId, projectId, accountId, source, writable }: 
       setRename(""); setConfirmRetire(false);
       await queryClient.invalidateQueries({ queryKey: prefix });
     },
-    onError: async () => {
+    onError: async (error) => {
       setConfirmRetire(false);
       await queryClient.invalidateQueries({ queryKey: prefix });
-      // Auth/project denial needs a fresh check of the parent gate too.
-      await queryClient.invalidateQueries({
-        queryKey: ["spatial-project", accountId, organizationId, projectId]
-      });
+      // Preserve an actionable stale/no-op error across a local re-read;
+      // current-access failures also revalidate the parent gate.
+      if ((error instanceof ApiError && [401, 403, 404].includes(error.status)) ||
+          (error instanceof SpatialApiError && error.code === "PROJECT_NOT_WRITABLE")) {
+        await queryClient.invalidateQueries({
+          queryKey: ["spatial-project", accountId, organizationId, projectId]
+        });
+      }
     }
   });
   const editable = writable && !command.isPending && layers !== undefined;
