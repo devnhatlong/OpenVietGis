@@ -86,3 +86,72 @@ test("logs in, creates organizations, and switches explicit organization context
   expect(storage.local).toEqual([]);
   expect(storage.session).toEqual([]);
 });
+
+test("direct tenant URL substitution cannot resolve another organization's project", async ({ page }) => {
+  test.setTimeout(90_000);
+  await signIn(page);
+  const suffix = Date.now().toString();
+  const orgNames = ["Isolation A " + suffix, "Isolation B " + suffix];
+  const organizations: string[] = [];
+
+  for (const [index, name] of orgNames.entries()) {
+    await page.goto("/");
+    await page.getByLabel("Organization name").fill(name);
+    await page.getByLabel("Organization slug").fill("isolation-" + suffix + "-" + index);
+    await page.getByRole("button", { name: "Create organization" }).click();
+    const link = page.getByRole("link", { name, exact: true });
+    await expect(link).toBeVisible();
+    await link.click();
+    await expect(page).toHaveURL(/\/organizations\/[0-9a-f-]{36}$/);
+    organizations.push(new URL(page.url()).pathname.split("/").at(-1) ?? "");
+  }
+
+  const [orgA, orgB] = organizations;
+  expect(orgA).toMatch(/^[0-9a-f-]{36}$/);
+  expect(orgB).toMatch(/^[0-9a-f-]{36}$/);
+  expect(orgA).not.toBe(orgB);
+  // Both Organizations legitimately belong to the same authenticated Owner.
+  // Replacing only the explicit tenant ID must still not resolve the other tenant's Project.
+  const projectAName = "Private isolation project A " + suffix;
+  const projectBName = "Private isolation project B " + suffix;
+  const projectAIds: string[] = [];
+  for (const [orgId, name] of [[orgA, projectAName], [orgB, projectBName]] as const) {
+    await page.goto("/organizations/" + orgId + "/projects");
+    await page.getByLabel("Project name").fill(name);
+    await page.getByLabel("Project slug").fill("isolation-project-" + suffix);
+    await page.getByRole("button", { name: "Create project" }).click();
+    const row = page.locator('li[data-testid^="project-"]').filter({ hasText: name });
+    await expect(row).toBeVisible();
+    const id = (await row.getAttribute("data-testid"))?.slice("project-".length) ?? "";
+    expect(id).toMatch(/^[0-9a-f-]{36}$/);
+    projectAIds.push(id);
+  }
+
+  const [projectAId, projectBId] = projectAIds;
+  await page.goto("/organizations/" + orgB + "/projects");
+  await expect(page.getByText(projectBName, { exact: true })).toBeVisible();
+  await expect(page.getByText(projectAName, { exact: true })).toHaveCount(0);
+
+  // Direct browser navigation, not a UI-only disabled button or hidden route.
+  const detailA = await page.goto("/api/v1/organizations/" + orgA + "/projects/" + projectAId);
+  expect(detailA?.status()).toBe(200);
+  expect((await detailA?.json() as { id: string; organization_id: string })).toMatchObject({
+    id: projectAId, organization_id: orgA
+  });
+
+  const mismatched = await page.goto("/api/v1/organizations/" + orgB + "/projects/" + projectAId);
+  expect(mismatched?.status()).toBe(404);
+  const mismatchBody = await mismatched?.text() ?? "";
+  expect(mismatchBody).not.toContain(projectAName);
+  expect(mismatchBody).not.toContain("isolation-project-" + suffix);
+
+  const reverseMismatch = await page.goto("/api/v1/organizations/" + orgA + "/projects/" + projectBId);
+  expect(reverseMismatch?.status()).toBe(404);
+  expect(await reverseMismatch?.text()).not.toContain(projectBName);
+
+  const detailB = await page.goto("/api/v1/organizations/" + orgB + "/projects/" + projectBId);
+  expect(detailB?.status()).toBe(200);
+  expect((await detailB?.json() as { id: string; organization_id: string })).toMatchObject({
+    id: projectBId, organization_id: orgB
+  });
+});
