@@ -152,6 +152,16 @@ test("recipient-bound invitation grants one project and revocation stops the nex
     await submitInvitation(recipient, handoff, 400);
     await expect(recipient.getByRole("alert")).toContainText("Unable to accept invitation");
 
+    // Populate the SPA cache, then leave the project page using in-app navigation.
+    // Do not reload the recipient's browser after revocation: stale query data must
+    // remain possible so the test can detect the protected-display regression.
+    await recipient.getByRole("link", { name: "← Organizations", exact: true }).click();
+    await recipient.getByRole("link", { name: "Invitation team " + suffix, exact: true }).click();
+    await recipient.getByRole("link", { name: "Projects", exact: true }).click();
+    await expect(recipient.getByText(projectName, { exact: true })).toBeVisible();
+    await recipient.getByRole("link", { name: "← Organization", exact: true }).click();
+    await expect(recipient.getByTestId("active-organization")).toBeVisible();
+
     // Revoke without logging the recipient out or replacing their browser context.
     await owner.reload();
     const memberList = owner.getByTestId("member-list");
@@ -162,6 +172,37 @@ test("recipient-bound invitation grants one project and revocation stops the nex
     await memberRow.getByRole("button", { name: "Revoke", exact: true }).click();
     await expect(memberRow).toContainText("revoked");
     expect((await recipient.request.get(projectPath)).status()).toBe(404);
+
+    // Hold the real refetch in flight once. The previously authorized project
+    // must disappear before the denied response arrives, and stay hidden after.
+    const projectListPath = "/api/v1/organizations/" + orgId + "/projects";
+    let releaseRefetch = () => {};
+    const refetchGate = new Promise<void>((resolve) => { releaseRefetch = resolve; });
+    const listRoute = (url: URL) => url.pathname === projectListPath;
+    await recipient.route(listRoute, async (route) => {
+      await refetchGate;
+      await route.continue();
+    });
+    try {
+      const requested = recipient.waitForRequest((request) =>
+        listRoute(new URL(request.url())) && request.method() === "GET");
+      const denied = recipient.waitForResponse((response) =>
+        listRoute(new URL(response.url())) && response.request().method() === "GET");
+      try {
+        // Browser history restores the SPA route and uses the same QueryClient.
+        await recipient.evaluate(() => window.history.back());
+        await requested;
+        await expect(recipient.getByText(projectName, { exact: true })).toHaveCount(0);
+      } finally {
+        releaseRefetch();
+      }
+      expect((await denied).status()).toBe(404);
+      await expect(recipient.getByRole("alert")).toContainText("Unable to load project access");
+      await expect(recipient.getByText(projectName, { exact: true })).toHaveCount(0);
+    } finally {
+      releaseRefetch();
+      await recipient.unroute(listRoute);
+    }
 
     const storage = await recipient.evaluate(() => ({
       local: Object.keys(localStorage),

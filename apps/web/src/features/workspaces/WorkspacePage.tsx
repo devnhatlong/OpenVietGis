@@ -10,6 +10,8 @@ import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
 import { apiClient } from "../../app/api";
+import { currentProtectedData, protectedQueryOptions } from "../../app/protected-query";
+import { FreshAccount } from "../auth/FreshAccount";
 
 function slugify(value: string): string {
   return value
@@ -19,18 +21,20 @@ function slugify(value: string): string {
     .replace(/^-|-$/g, "");
 }
 
-export function WorkspacePage() {
-  const { organizationId } = useParams();
+function OrganizationWorkspaces({ organizationId, userId }: { organizationId: string; userId: string }) {
   const queryClient = useQueryClient();
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
 
-  if (!organizationId) return <p role="alert">Organization context is missing.</p>;
-
   const workspaces = useQuery({
-    queryKey: ["workspaces", organizationId],
-    queryFn: () => listWorkspaces(apiClient, organizationId)
+    queryKey: ["workspaces", organizationId, userId],
+    queryFn: () => listWorkspaces(apiClient, organizationId),
+    ...protectedQueryOptions
   });
+
+  async function refreshWorkspaces() {
+    await queryClient.invalidateQueries({ queryKey: ["workspaces", organizationId, userId] });
+  }
 
   const create = useMutation({
     mutationFn: async () => {
@@ -43,8 +47,9 @@ export function WorkspacePage() {
     onSuccess: async () => {
       setName("");
       setSlug("");
-      await queryClient.invalidateQueries({ queryKey: ["workspaces", organizationId] });
-    }
+      await refreshWorkspaces();
+    },
+    onError: refreshWorkspaces
   });
 
   const changeStatus = useMutation({
@@ -59,14 +64,27 @@ export function WorkspacePage() {
       return updateWorkspace(apiClient, organizationId, workspaceId, { status });
     },
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["workspaces", organizationId] });
-    }
+      await refreshWorkspaces();
+    },
+    onError: refreshWorkspaces
   });
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!name.trim()) return;
     create.mutate();
+  }
+
+  const visibleWorkspaces = currentProtectedData(workspaces);
+  if (!visibleWorkspaces) {
+    const checking = !workspaces.error && (workspaces.isPending || workspaces.fetchStatus !== "idle");
+    return (
+      <main>
+        <Link to="/">← Organizations</Link>
+        <h1>Workspaces</h1>
+        {checking ? <p>Checking workspace access…</p> : <p role="alert">Unable to load workspace access.</p>}
+      </main>
+    );
   }
 
   return (
@@ -108,7 +126,7 @@ export function WorkspacePage() {
       {changeStatus.error ? <p role="alert">Unable to change workspace status.</p> : null}
 
       <ul data-testid="workspace-list">
-        {workspaces.data?.map((workspace) => (
+        {visibleWorkspaces.map((workspace) => (
           <li key={workspace.id} data-testid={"workspace-" + workspace.id}>
             <strong>{workspace.name}</strong> — {workspace.status}{" "}
             {workspace.status === "active" ? (
@@ -151,5 +169,22 @@ export function WorkspacePage() {
         ))}
       </ul>
     </main>
+  );
+}
+
+
+export function WorkspacePage() {
+  const { organizationId } = useParams();
+  if (!organizationId) return <p role="alert">Organization context is missing.</p>;
+  return (
+    <FreshAccount key={organizationId}>
+      {(account) => (
+        <OrganizationWorkspaces
+          key={organizationId + ":" + account.id}
+          organizationId={organizationId}
+          userId={account.id}
+        />
+      )}
+    </FreshAccount>
   );
 }

@@ -1,9 +1,9 @@
 import {
   ApiError,
   createOrganization,
-  getCurrentUser,
   listMyOrganizations,
-  loadCsrfToken
+  loadCsrfToken,
+  type CurrentUser
 } from "@openvietgis/client-sdk";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { FormEvent } from "react";
@@ -11,7 +11,8 @@ import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
 import { apiClient } from "../../app/api";
-import { LoginPanel } from "../auth/LoginPanel";
+import { currentProtectedData, protectedQueryOptions } from "../../app/protected-query";
+import { FreshAccount } from "../auth/FreshAccount";
 
 function slugify(value: string): string {
   return value
@@ -21,21 +22,20 @@ function slugify(value: string): string {
     .replace(/^-|-$/g, "");
 }
 
-export function OrganizationHome() {
-  const { organizationId } = useParams();
+function OrganizationList({ organizationId, account }: { organizationId: string | undefined; account: CurrentUser }) {
   const queryClient = useQueryClient();
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
 
-  const user = useQuery({
-    queryKey: ["me"],
-    queryFn: () => getCurrentUser(apiClient)
-  });
   const organizations = useQuery({
-    queryKey: ["my-organizations"],
+    queryKey: ["my-organizations", account.id],
     queryFn: () => listMyOrganizations(apiClient),
-    enabled: user.isSuccess
+    ...protectedQueryOptions
   });
+
+  async function refreshOrganizations() {
+    await queryClient.invalidateQueries({ queryKey: ["my-organizations", account.id] });
+  }
 
   const create = useMutation({
     mutationFn: async (input: { name: string; slug: string }) => {
@@ -45,25 +45,24 @@ export function OrganizationHome() {
     onSuccess: async () => {
       setName("");
       setSlug("");
-      await queryClient.invalidateQueries({ queryKey: ["my-organizations"] });
-    }
+      await refreshOrganizations();
+    },
+    onError: refreshOrganizations
   });
 
-  if (user.error instanceof ApiError && user.error.status === 401) {
-    return <LoginPanel />;
+  const visibleOrganizations = currentProtectedData(organizations);
+  if (!visibleOrganizations) {
+    const checking = !organizations.error &&
+      (organizations.isPending || organizations.fetchStatus !== "idle");
+    return (
+      <main>
+        <h1>Organizations</h1>
+        {checking ? <p>Checking organization access…</p> : <p role="alert">Unable to load organization access.</p>}
+      </main>
+    );
   }
 
-  if (user.isLoading) {
-    return <p>Loading your OpenVietGIS account…</p>;
-  }
-
-  if (user.error || !user.data) {
-    return <p role="alert">Unable to load your account.</p>;
-  }
-
-  const activeOrganization = organizations.data?.find(
-    (item) => item.id === organizationId
-  );
+  const activeOrganization = visibleOrganizations.find((item) => item.id === organizationId);
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -78,7 +77,7 @@ export function OrganizationHome() {
         <p style={{ textTransform: "uppercase", letterSpacing: "0.12em" }}>OpenVietGIS</p>
         <h1>{activeOrganization ? activeOrganization.name : "Organizations"}</h1>
         <p>
-          Signed in as <strong>{user.data.display_name}</strong>.{" "}
+          Signed in as <strong>{account.display_name}</strong>.{" "}
           <Link to="/identity">Identity & session</Link>{" "}
           <Link to="/invitations/accept">Accept invitation</Link>
         </p>
@@ -86,10 +85,8 @@ export function OrganizationHome() {
 
       <section aria-labelledby="organization-switcher-title">
         <h2 id="organization-switcher-title">Your organizations</h2>
-        {organizations.isLoading ? <p>Loading organizations…</p> : null}
-        {organizations.error ? <p role="alert">Unable to load organizations.</p> : null}
         <ul data-testid="organization-list">
-          {organizations.data?.map((organization) => (
+          {visibleOrganizations.map((organization) => (
             <li key={organization.id}>
               <Link
                 to={"/organizations/" + organization.id}
@@ -163,5 +160,20 @@ export function OrganizationHome() {
         </section>
       ) : null}
     </main>
+  );
+}
+
+export function OrganizationHome() {
+  const { organizationId } = useParams();
+  return (
+    <FreshAccount key={organizationId ?? "home"}>
+      {(account) => (
+        <OrganizationList
+          key={account.id}
+          organizationId={organizationId}
+          account={account}
+        />
+      )}
+    </FreshAccount>
   );
 }

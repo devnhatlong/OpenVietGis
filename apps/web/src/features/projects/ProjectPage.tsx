@@ -11,6 +11,8 @@ import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
 import { apiClient } from "../../app/api";
+import { currentProtectedData, protectedQueryOptions } from "../../app/protected-query";
+import { FreshAccount } from "../auth/FreshAccount";
 
 function slugify(value: string): string {
   return value
@@ -20,27 +22,29 @@ function slugify(value: string): string {
     .replace(/^-|-$/g, "");
 }
 
-export function ProjectPage() {
-  const { organizationId } = useParams();
+function OrganizationProjects({ organizationId, userId }: { organizationId: string; userId: string }) {
   const queryClient = useQueryClient();
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
   const [workspaceId, setWorkspaceId] = useState("");
   const [moveTargets, setMoveTargets] = useState<Record<string, string>>({});
 
-  if (!organizationId) return <p role="alert">Organization context is missing.</p>;
-
   const workspaces = useQuery({
-    queryKey: ["workspaces", organizationId],
-    queryFn: () => listWorkspaces(apiClient, organizationId)
+    queryKey: ["workspaces", organizationId, userId],
+    queryFn: () => listWorkspaces(apiClient, organizationId),
+    ...protectedQueryOptions
   });
   const projects = useQuery({
-    queryKey: ["projects", organizationId],
-    queryFn: () => listProjects(apiClient, organizationId)
+    queryKey: ["projects", organizationId, userId],
+    queryFn: () => listProjects(apiClient, organizationId),
+    ...protectedQueryOptions
   });
 
   const refreshProjects = async () => {
-    await queryClient.invalidateQueries({ queryKey: ["projects", organizationId] });
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["projects", organizationId, userId] }),
+      queryClient.invalidateQueries({ queryKey: ["workspaces", organizationId, userId] })
+    ]);
   };
 
   const create = useMutation({
@@ -57,7 +61,8 @@ export function ProjectPage() {
       setSlug("");
       setWorkspaceId("");
       await refreshProjects();
-    }
+    },
+    onError: refreshProjects
   });
 
   const update = useMutation({
@@ -74,13 +79,29 @@ export function ProjectPage() {
       await loadCsrfToken(apiClient);
       return updateProject(apiClient, organizationId, projectId, input);
     },
-    onSuccess: refreshProjects
+    onSuccess: refreshProjects,
+    onError: refreshProjects
   });
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!name.trim()) return;
     create.mutate();
+  }
+
+  const visibleProjects = currentProtectedData(projects);
+  const visibleWorkspaces = currentProtectedData(workspaces);
+  if (!visibleProjects || !visibleWorkspaces) {
+    const checking = !projects.error && !workspaces.error &&
+      (projects.isPending || projects.fetchStatus !== "idle" ||
+        workspaces.isPending || workspaces.fetchStatus !== "idle");
+    return (
+      <main>
+        <Link to="/">← Organizations</Link>
+        <h1>Projects</h1>
+        {checking ? <p>Checking project access…</p> : <p role="alert">Unable to load project access.</p>}
+      </main>
+    );
   }
 
   return (
@@ -121,7 +142,7 @@ export function ProjectPage() {
             onChange={(event) => setWorkspaceId(event.target.value)}
           >
             <option value="">Ungrouped</option>
-            {workspaces.data?.map((workspace) => (
+            {visibleWorkspaces.map((workspace) => (
               <option key={workspace.id} value={workspace.id}>
                 {workspace.name}
               </option>
@@ -137,7 +158,7 @@ export function ProjectPage() {
       {update.error ? <p role="alert">Unable to update project.</p> : null}
 
       <ul data-testid="project-list">
-        {projects.data?.map((project) => {
+        {visibleProjects.map((project) => {
           const moveTarget = moveTargets[project.id] ?? project.workspace_id ?? "";
           return (
             <li key={project.id} data-testid={"project-" + project.id}>
@@ -157,7 +178,7 @@ export function ProjectPage() {
                     }
                   >
                     <option value="">Ungrouped</option>
-                    {workspaces.data?.map((workspace) => (
+                    {visibleWorkspaces.map((workspace) => (
                       <option key={workspace.id} value={workspace.id}>
                         {workspace.name}
                       </option>
@@ -219,5 +240,21 @@ export function ProjectPage() {
         })}
       </ul>
     </main>
+  );
+}
+
+export function ProjectPage() {
+  const { organizationId } = useParams();
+  if (!organizationId) return <p role="alert">Organization context is missing.</p>;
+  return (
+    <FreshAccount key={organizationId}>
+      {(account) => (
+        <OrganizationProjects
+          key={organizationId + ":" + account.id}
+          organizationId={organizationId}
+          userId={account.id}
+        />
+      )}
+    </FreshAccount>
   );
 }
