@@ -510,4 +510,27 @@ Integrated code `87e0cd4` passed all three jobs in [GitHub CI 44237487171](https
 
 Two earlier CI attempts on `4837408` failed all browser cases by timeout while backend and secrets passed. New code moves sync callback database work off the ASGI event loop, locks verified issuer/subject claims within each transaction and tests concurrent first login against one ASGI process: one identity, one user, two sessions. The new successful CI includes the regression; serial browser fixture execution avoids state interference but does not replace concurrency testing. Root cause hypothesis is consistent with the fix and observed failure, not an independently captured deadlock trace.
 
-Measured Playwright evidence (not whole-test duration): SC-001 switches 192, 178 and 186 ms (<10,000 ms each); SC-004 acceptance 1,139 ms (<180,000 ms); SC-011 bootstrap 1,294 ms (<300,000 ms). The timing tool validates these exact successful report attachments and emits only scalar measurements. Graphify update on code 87e0cd4: 2,457 nodes, 7,207 edges. Automated timing is embedded in tenant-core, invitation-revocation and bootstrap journeys rather than duplicating those flows; T112 remains open for the dedicated timing touchpoint and actual uncoached SC-013 exercise. Full root invocation, final all-scenario evidence and convergence remain pending; no main promotion.
+Measured Playwright evidence (not whole-test duration): SC-001 switches 192, 178 and 186 ms (<10,000 ms each); SC-004 acceptance 1,139 ms (<180,000 ms); SC-011 bootstrap 1,294 ms (<300,000 ms). The timing tool validates these exact successful report attachments and emits only scalar measurements. Graphify update on code 87e0cd4: 2,457 nodes, 7,207 edges. Automated timing is embedded in tenant-core, invitation-revocation and bootstrap journeys rather than duplicating those flows; T112 remains open for the dedicated timing touchpoint and actual uncoached SC-013 exercise. Full root invocation, final all-scenario evidence and convergence remained pending at this code checkpoint; no main promotion.
+
+### Exact root validation and scenario evidence index (2026-11-18)
+
+Authoritative commit `8ec8272` passed [GitHub CI 44237932898](https://github.com/nguyentrieu210/OpenVietGis/actions/runs/44237932898), all three jobs. The validate runner executed the **exact root `pnpm validate`** on Node 26.13.1, with 202 static Python tests, 81 integration/performance tests plus one opt-in skip, 28 SDK/web tests, production build, generated contract freshness, architecture/docs/scope gates, eight P1 browser cases and one bootstrap browser case. The separate backend job repeated the required Python gates and passed two live Keycloak tests. Explicit report and provider-log secret scans were clean and Gitleaks passed. Measured second run: SC-001 189/159/156 ms, SC-004 960 ms, SC-011 1,052 ms. Each is within the original threshold; no threshold was changed.
+
+| Quickstart section | Automated evidence from the accepted code |
+|---|---|
+| 1–4 Configuration, provider, migrations, startup | CI synthetic configuration, realm discovery, dedicated migration/runtime identities, live OIDC, readiness and browser storage assertions |
+| 5, 5A Bootstrap and normal Organization creation | `test_bootstrap.py`, `test_bootstrap_concurrency.py`, `test_bootstrap_storage.py`, `test_multi_org_session.py`, separate bootstrap browser + tenant-core |
+| 6, 6A Workspace/Project and Organization lifecycle | `test_workspace_project.py`, `test_project_ownership_boundary.py`, `test_organization_lifecycle.py`, tenant-core browser |
+| 7 Dynamic scope | `test_workspace_grant_inheritance.py`, `test_p1_http_access_gate.py`, authorization benchmark |
+| 8 Invitation | `test_invitation_lifecycle.py`, `test_cross_tenant_api.py`, invitation-revocation browser |
+| 9 Tenant switching | tenant-core browser three switches and cross-tenant direct URLs |
+| 10 RLS | all `tests/integration/rls/` regressions and machine-identity table/grant RLS gates |
+| 11 Machine identity | `test_service_authorization.py`, `test_service_identity_migration.py` |
+| 12 Audit | `test_p1_audit_mutations.py`, `test_audit_actor_snapshot.py`, `test_audit_storage.py`, P2 secret surfaces |
+| 13 Last Owner | `test_last_owner.py` concurrent role/status transitions |
+| 14 Root validation | `pnpm validate` on exact CI source plus independent backend and Gitleaks |
+| 15 Performance | `test_authorization_benchmark.py` enforced p95 <= 50 ms; actual browser measurements above; **SC-013 human exercise explicitly pending** |
+| 16 Shared/isolated logical parity | `test_isolated_deployment_parity.py` |
+| 17 Retirement | tenant-foundation regressions, isolated P1/P2 migration cycle, README and architecture update |
+
+This index identifies automated scenario evidence, not a claim that a new human has manually run every workflow. SC-013 requires a genuinely unfamiliar, uncoached reviewer on a prepared synthetic instance. T112/T113/T114/T115 remain open until that evidence and final acceptance/convergence are recorded. Main and production remain unchanged.
