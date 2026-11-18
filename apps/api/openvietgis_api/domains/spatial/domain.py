@@ -32,7 +32,7 @@ _REVISION_TOKEN = re.compile(r"[a-f0-9]{64}", re.ASCII)
 _DECIMAL = re.compile(r"-?[0-9]+(?:\.[0-9]+)?", re.ASCII)
 _TIMESTAMP = re.compile(
     r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}"
-    r"(?:\.[0-9]{1,6})?(?:Z|[+-][0-9]{2}:[0-9]{2})",
+    r"(?:\.[0-9]{1,6})?(?:Z|[+-](?:[01][0-9]|2[0-3]):[0-5][0-9])",
     re.ASCII,
 )
 
@@ -1033,13 +1033,21 @@ def _ordered_fields(fields: Sequence[SourceField]) -> tuple[SourceField, ...]:
 
 
 def schema_revision_digest(
-    fields: Sequence[SourceField], geometry_family: GeometryFamily, dimensions: GeometryDimensions
+    fields: Sequence[SourceField],
+    geometry_family: GeometryFamily,
+    dimensions: GeometryDimensions,
+    *,
+    schema_state: SchemaState = SchemaState.KNOWN,
 ) -> str:
     _enum(geometry_family, GeometryFamily)
     _enum(dimensions, GeometryDimensions)
+    _enum(schema_state, SchemaState)
+    if schema_state == SchemaState.UNAVAILABLE and fields:
+        raise SpatialValidationError("unavailable schema cannot expose fields")
     return canonical_manifest_digest(
         {
             "manifest_type": "r003-schema-v1",
+            "schema_state": schema_state.value,
             "geometry_family": geometry_family.value,
             "dimensions": dimensions.value,
             "fields": [
@@ -1074,16 +1082,14 @@ def content_revision_digest(
     stored_crs: int | None,
     source_crs: int | None,
     *,
-    geometry_family: GeometryFamily | None = None,
-    dimensions: GeometryDimensions | None = None,
+    geometry_family: GeometryFamily,
+    dimensions: GeometryDimensions,
 ) -> str:
     """Content pins cover values, native geometry and schema/CRS interpretation only."""
     _known_crs(stored_crs)
     _known_crs(source_crs)
-    if geometry_family is not None:
-        _enum(geometry_family, GeometryFamily)
-    if dimensions is not None:
-        _enum(dimensions, GeometryDimensions)
+    _enum(geometry_family, GeometryFamily)
+    _enum(dimensions, GeometryDimensions)
     if len({feature.feature_id for feature in features}) != len(features):
         raise SpatialValidationError("duplicate stable feature IDs")
     return canonical_manifest_digest(
@@ -1091,8 +1097,8 @@ def content_revision_digest(
             "manifest_type": "r003-content-v1",
             "source_crs": source_crs,
             "stored_crs": stored_crs,
-            "geometry_family": geometry_family.value if geometry_family is not None else None,
-            "dimensions": dimensions.value if dimensions is not None else None,
+            "geometry_family": geometry_family.value,
+            "dimensions": dimensions.value,
             "field_interpretations": [
                 {"field_id": field.field_id, "type": field.type.value, "nullable": field.nullable}
                 for field in _ordered_fields(fields)

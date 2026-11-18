@@ -204,6 +204,14 @@ def test_typed_attribute_values_are_exact_and_canonical() -> None:
     assert canonical_attribute_value(field(FieldType.TIMESTAMP), AT) == "2026-11-18T00:00:00Z"
     local = AT.astimezone(timezone(timedelta(hours=7)))
     assert canonical_attribute_value(field(FieldType.TIMESTAMP), local) == "2026-11-18T00:00:00Z"
+    for value in (
+        "2026-11-18T07:30:00+07:30",
+        "2026-11-17T23:30:00-00:30",
+        "2026-11-18T23:59:00+23:59",
+    ):
+        assert (
+            canonical_attribute_value(field(FieldType.TIMESTAMP), value) == "2026-11-18T00:00:00Z"
+        )
 
 
 @pytest.mark.parametrize(
@@ -223,6 +231,11 @@ def test_typed_attribute_values_are_exact_and_canonical() -> None:
         (FieldType.TIMESTAMP, "2026-01-01"),
         (FieldType.TIMESTAMP, "2026-01-01T00:00:00"),
         (FieldType.TIMESTAMP, "2026-01-01T00:00:00.1234567Z"),
+        (FieldType.TIMESTAMP, "2026-01-01T00:00:00+01:99"),
+        (FieldType.TIMESTAMP, "2026-01-01T00:00:00+00:60"),
+        (FieldType.TIMESTAMP, "2026-01-01T00:00:00-01:99"),
+        (FieldType.TIMESTAMP, "2026-01-01T00:00:00+24:00"),
+        (FieldType.TIMESTAMP, "2026-01-01T00:00:00-00:00"),
     ],
 )
 def test_type_errors_are_not_silently_coerced(kind: FieldType, value: object) -> None:
@@ -301,19 +314,80 @@ def test_deterministic_manifest_tokens_separate_content_and_schema() -> None:
     assert schema_pin != schema_revision_digest(
         (replace(f1, name="Renamed"), f2), GeometryFamily.POINT, GeometryDimensions.XY
     )
-    pin = content_revision_digest((item1, item2), (f1, f2), 4326, 4326)
-    assert pin == content_revision_digest((item2, item1), (f2, f1), 4326, 4326)
-    assert pin == content_revision_digest((item1, item2), (replace(f1, name="New"), f2), 4326, 4326)
-    assert pin != content_revision_digest((item1, item2), (f1, f2), 4326, None)
+    pin = content_revision_digest(
+        (item1, item2),
+        (f1, f2),
+        4326,
+        4326,
+        geometry_family=GeometryFamily.POINT,
+        dimensions=GeometryDimensions.XY,
+    )
+    assert pin == content_revision_digest(
+        (item2, item1),
+        (f2, f1),
+        4326,
+        4326,
+        geometry_family=GeometryFamily.POINT,
+        dimensions=GeometryDimensions.XY,
+    )
+    assert pin == content_revision_digest(
+        (item1, item2),
+        (replace(f1, name="New"), f2),
+        4326,
+        4326,
+        geometry_family=GeometryFamily.POINT,
+        dimensions=GeometryDimensions.XY,
+    )
+    assert pin != content_revision_digest(
+        (item1, item2),
+        (f1, f2),
+        4326,
+        None,
+        geometry_family=GeometryFamily.POINT,
+        dimensions=GeometryDimensions.XY,
+    )
     assert pin != content_revision_digest(
         (replace(item1, attributes={"fld_name": "new", "fld_second": None}), item2),
         (f1, f2),
         4326,
         4326,
+        geometry_family=GeometryFamily.POINT,
+        dimensions=GeometryDimensions.XY,
     )
     assert canonical_manifest_digest({"a": 1, "b": 2}) == canonical_manifest_digest(
         {"b": 2, "a": 1}
     )
+
+
+def test_empty_schema_and_geometry_interpretations_are_revisioned() -> None:
+    known = schema_revision_digest(
+        (), GeometryFamily.POINT, GeometryDimensions.XY, schema_state=SchemaState.KNOWN
+    )
+    unavailable = schema_revision_digest(
+        (), GeometryFamily.POINT, GeometryDimensions.XY, schema_state=SchemaState.UNAVAILABLE
+    )
+    assert known != unavailable
+    with pytest.raises(SpatialValidationError):
+        schema_revision_digest(
+            (field(),),
+            GeometryFamily.POINT,
+            GeometryDimensions.XY,
+            schema_state=SchemaState.UNAVAILABLE,
+        )
+    with pytest.raises(TypeError):
+        content_revision_digest((), (), 4326, 4326)  # type: ignore[call-arg]
+    point_pin = content_revision_digest(
+        (), (), 4326, 4326, geometry_family=GeometryFamily.POINT, dimensions=GeometryDimensions.XY
+    )
+    line_pin = content_revision_digest(
+        (),
+        (),
+        4326,
+        4326,
+        geometry_family=GeometryFamily.LINE_STRING,
+        dimensions=GeometryDimensions.XY,
+    )
+    assert point_pin != line_pin
 
 
 def test_layer_and_change_revision_evidence_is_safe_and_immutable() -> None:
