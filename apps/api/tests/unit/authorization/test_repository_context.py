@@ -1,3 +1,4 @@
+from types import SimpleNamespace
 from unittest.mock import Mock
 from uuid import uuid4
 
@@ -23,6 +24,7 @@ from openvietgis_api.domains.authorization.context import (
     InvitationAcceptanceContext,
 )
 from openvietgis_api.domains.authorization.service import TenantResourceNotFoundError
+from openvietgis_api.domains.tenancy.domain import InvitationStatus
 
 
 @pytest.fixture
@@ -138,3 +140,13 @@ def test_explicit_project_ungroup_is_valid():
         "workspace_id"
         in UpdateProjectRequest.model_validate({"workspace_id": None}).model_fields_set
     )
+
+
+def test_unverified_invite_cannot_mutate_even_expired_status(session, context):
+    invite = SimpleNamespace(
+        id=uuid4(), organization_id=context.organization_id, status=InvitationStatus.EXPIRED
+    )
+    unverified = InvitationAcceptanceContext(context.actor, context.organization_id, invite.id)
+    with pytest.raises(PermissionError):
+        SqlTenancyRepository(session).update_invitation(invite, context=unverified)
+    session.execute.assert_not_called()

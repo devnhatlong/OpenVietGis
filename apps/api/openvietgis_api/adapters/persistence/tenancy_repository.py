@@ -969,7 +969,7 @@ class SqlTenancyRepository:
                 context,
                 invitation.organization_id,
                 invitation_id=invitation.id,
-                require_verified=invitation.status != InvitationStatus.EXPIRED,
+                require_verified=True,
             )
         else:
             require_member_context(self._session, context, invitation.organization_id)
