@@ -53,7 +53,7 @@ description: "Dependency-ordered implementation tasks for R003"
 - [X] T023 [US1] Implement source endpoints in apps/api/openvietgis_api/adapters/http/spatial.py; current project.read/edit/manage, R002 error semantics and explicit validation; wire router into apps/api/openvietgis_api/main.py.
 - [X] T024 [US1] Implement SDK methods and scoped typed request handling in packages/client-sdk/src/spatial.ts, export from packages/client-sdk/src/index.ts and regenerate packages/client-sdk/src/generated/spatial-catalog.ts.
 - [X] T025 [US1] Implement source catalog inspection and registration/metadata controls in apps/web/src/features/spatial/SpatialCatalogPage.tsx and existing apps/web/src/app/router.tsx; no map, source connections or file upload.
-- [ ] T026 [US1] Verify US1 fixture provenance/count/extent/schema/CRS and rollback tests in apps/api/tests/integration/spatial/test_sources.py; record SC-001 evidence location.
+- [X] T026 [US1] Verify US1 fixture provenance/count/extent/schema/CRS and rollback tests in apps/api/tests/integration/spatial/test_sources.py; record SC-001 evidence location.
 
 ---
 
