@@ -533,4 +533,8 @@ Authoritative commit `8ec8272` passed [GitHub CI 44237932898](https://github.com
 | 16 Shared/isolated logical parity | `test_isolated_deployment_parity.py` |
 | 17 Retirement | tenant-foundation regressions, isolated P1/P2 migration cycle, README and architecture update |
 
-This index identifies automated scenario evidence, not a claim that a new human has manually run every workflow. SC-013 requires a genuinely unfamiliar, uncoached reviewer on a prepared synthetic instance. T112/T113/T114/T115 remain open until that evidence and final acceptance/convergence are recorded. Main and production remain unchanged.
+This index identifies automated scenario evidence, not a claim that a new human has manually run every workflow. SC-013 requires a genuinely unfamiliar, uncoached reviewer on a prepared synthetic instance. At that checkpoint T112/T113/T114/T115 remained open. Main and production remained unchanged.
+
+### Product-owner internal acceptance decision (2026-11-18)
+
+The product owner explicitly approved proceeding past the R002 acceptance gate. The automated scenario index above and green CI 44238336464 for 9010a79 support internal functional acceptance. SC-013 is an explicit exception: the actual unfamiliar-human exercise is deferred until before external acceptance/release and is not reported as passed. Preserve the original five-minute threshold and reviewer protocol. No security, functional, migration, browser, performance or other technical requirement is waived. T112 uses the existing measured journey attachments rather than a duplicate timing-only test; T113 accepts the scenario index with the documented SC-013 exception. T114/T115 and code review remain required before main promotion.

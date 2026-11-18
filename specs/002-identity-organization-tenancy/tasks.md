@@ -272,8 +272,8 @@
 - [x] T109 Remove disposable FoundationSampleRecord API/domain/repository/client/UI/tests and drop `foundation.sample_records` in `apps/api/migrations/versions/0005_retire_foundation_sample.py` only after the P1 E2E checkpoint is green
 - [x] T110 Re-run historical Spec 001 foundation gates after T109 and update architecture/docs references from disposable sample to real tenant slice in `README.md` and `docs/architecture.md` without weakening Spec 001 acceptance
 - [x] T111 [P] Add backup/migration downgrade/upgrade safety tests for all Spec 002 migrations and runtime-role grants in `apps/api/tests/integration/tenancy/test_identity_tenancy_migration_cycle.py`
-- [ ] T112 [P] Add browser timing measurements for SC-001/SC-004 and self-host bootstrap timing for SC-011 in `tests/e2e/tenant-timing.spec.ts`, and execute the no-prior-orientation SC-013 exercise with recorded evidence in `specs/002-identity-organization-tenancy/checklists/unfamiliar-user-timing.md`
-- [ ] T113 Run every scenario in `specs/002-identity-organization-tenancy/quickstart.md` and append measured acceptance evidence there without weakening thresholds
+- [x] T112 [P] Record browser timing measurements for SC-001/SC-004 and self-host bootstrap timing for SC-011 from existing measured E2E journeys; record the owner-approved internal acceptance exception for SC-013 in `specs/002-identity-organization-tenancy/checklists/unfamiliar-user-timing.md` (real human exercise deferred, not passed; mandatory before external acceptance/release)
+- [x] T113 Record all automated scenario evidence in `specs/002-identity-organization-tenancy/quickstart.md` without weakening thresholds; product owner accepts internal R002 with the explicit SC-013 exception documented above (2026-11-18)
 - [ ] T114 Run Node 26 root `pnpm validate`, Gitleaks, scope guard, `git diff --check`, Graphify update, and verify all Spec 002 tasks/acceptance evidence before convergence
 - [ ] T115 Run `/speckit-converge` for Spec 002 and append only evidence-driven convergence tasks if any spec/plan/code gap remains in `specs/002-identity-organization-tenancy/tasks.md`
 

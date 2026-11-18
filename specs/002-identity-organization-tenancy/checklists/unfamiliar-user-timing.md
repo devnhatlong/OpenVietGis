@@ -41,5 +41,7 @@ All four actions complete in under 5 minutes.
 | Started at | Pending |
 | Completed at | Pending |
 | Elapsed time | Pending |
-| Result | Pending |
-| Product/navigation blockers | Pending |
+| Result | DEFERRED — not measured; owner approved internal acceptance on 2026-11-18 |
+| Product/navigation blockers | Not assessed |
+
+Owner decision: proceed past the internal R002 acceptance gate; retain the unchanged SC-013 exercise as a pre-external-release usability verification. No reviewer, timings, or pass result are claimed. Record genuine measured evidence here before external acceptance.

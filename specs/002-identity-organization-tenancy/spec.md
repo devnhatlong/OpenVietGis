@@ -499,6 +499,10 @@ Workspace inheritance, and direct Project grants are additive; no row creates an
 - **SC-014**: The feature introduces zero public/anonymous sharing flows, zero custom-role builder,
   and zero GIS/Layer/Map/Editing/Processing/Field/vertical-module behavior.
 
+## Owner acceptance exception (2026-11-18)
+
+The product owner explicitly approved proceeding past the R002 acceptance gate on 2026-11-18. SC-013's five-minute unfamiliar-user exercise remains an unverified usability target; its real human measurement is deferred until before external user acceptance/release. This exception permits internal integration and dependent development after normal technical validation, convergence and review; it does not assert a passing SC-013 result, change the threshold, or waive any security, migration, functional, browser or other technical gate.
+
 ## Assumptions
 
 - The platform foundation from Spec 001 is already available and remains the base development and
