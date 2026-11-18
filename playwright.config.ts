@@ -1,4 +1,5 @@
 import { defineConfig } from "@playwright/test";
+import { execPath } from "node:process";
 
 export default defineConfig({
   testDir: "./tests/e2e",
@@ -24,12 +25,23 @@ export default defineConfig({
       reuseExistingServer: false,
       timeout: 60_000,
       env: {
-        OPENVIETGIS_WEB_BASE_URL: "http://127.0.0.1:5178"
+        OPENVIETGIS_WEB_BASE_URL: "http://127.0.0.1:5178",
+        OPENVIETGIS_API_PUBLIC_BASE_URL: "http://127.0.0.1:8000",
+        OPENVIETGIS_SESSION_COOKIE_SECURE: "false",
+        OPENVIETGIS_OIDC_PROVIDERS: JSON.stringify({
+          keycloak: {
+            issuer: "http://127.0.0.1:18080/realms/openvietgis",
+            client_id: "openvietgis-web",
+            display_name: "OpenVietGIS Development"
+          }
+        })
       }
     },
     {
-      command:
-        "corepack pnpm --filter @openvietgis/web exec vite --host 127.0.0.1 --port 5178",
+      // Reuse the exact Node runtime already running Playwright. Corepack is not
+      // bundled with Node 26 and an old global shim can select a different Node.
+      command: `"${execPath}" node_modules/vite/bin/vite.js --host 127.0.0.1 --port 5178`,
+      cwd: "./apps/web",
       url: "http://127.0.0.1:5178",
       reuseExistingServer: false,
       timeout: 60_000
