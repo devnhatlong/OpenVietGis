@@ -104,3 +104,62 @@ export function retireSpatialSource(
     method: "POST", body: JSON.stringify(input)
   });
 }
+
+export type SpatialLayer = components["schemas"]["Layer"];
+export type SpatialLayerList = components["schemas"]["LayerList"];
+export type SpatialLayerMutation = components["schemas"]["LayerMutation"];
+export type CreateSpatialLayerInput = components["schemas"]["CreateLayer"];
+export type RenameSpatialLayerInput = components["schemas"]["RenameLayer"];
+
+function layerRoot(organizationId: string, projectId: string): string {
+  return "/organizations/" + encodeURIComponent(organizationId) +
+    "/projects/" + encodeURIComponent(projectId) + "/layers";
+}
+
+function layerPath(organizationId: string, projectId: string, layerId: string): string {
+  return layerRoot(organizationId, projectId) + "/" + encodeURIComponent(layerId);
+}
+
+export function listSpatialLayers(
+  client: ApiClient, organizationId: string, projectId: string,
+  options: { limit?: number; after_id?: string } = {}
+): Promise<SpatialLayerList> {
+  const params = new URLSearchParams();
+  if (options.limit !== undefined) params.set("limit", String(options.limit));
+  if (options.after_id !== undefined) params.set("after_id", options.after_id);
+  const query = params.toString();
+  return spatialRequest(client, layerRoot(organizationId, projectId) + (query ? "?" + query : ""));
+}
+
+export function getSpatialLayer(
+  client: ApiClient, organizationId: string, projectId: string, layerId: string
+): Promise<SpatialLayer> {
+  return spatialRequest(client, layerPath(organizationId, projectId, layerId));
+}
+
+export function createSpatialLayer(
+  client: ApiClient, organizationId: string, projectId: string,
+  input: CreateSpatialLayerInput
+): Promise<SpatialLayerMutation> {
+  return spatialRequest(client, layerRoot(organizationId, projectId), {
+    method: "POST", body: JSON.stringify(input)
+  });
+}
+
+export function renameSpatialLayer(
+  client: ApiClient, organizationId: string, projectId: string, layerId: string,
+  input: RenameSpatialLayerInput
+): Promise<SpatialLayerMutation> {
+  return spatialRequest(client, layerPath(organizationId, projectId, layerId), {
+    method: "PATCH", body: JSON.stringify(input)
+  });
+}
+
+export function retireSpatialLayer(
+  client: ApiClient, organizationId: string, projectId: string, layerId: string,
+  input: RetireSpatialSourceInput
+): Promise<SpatialLayerMutation> {
+  return spatialRequest(client, layerPath(organizationId, projectId, layerId) + "/retire", {
+    method: "POST", body: JSON.stringify(input)
+  });
+}

@@ -41,9 +41,12 @@ from openvietgis_api.domains.spatial.domain import (
     SourceField,
 )
 from openvietgis_api.domains.spatial.service import (
+    LayerDetail,
+    LayerMutationResult,
     SourceDetail,
     SourceMutationResult,
     SpatialCatalogService,
+    SpatialLayerService,
 )
 
 router = APIRouter(tags=["spatial"])
@@ -303,5 +306,168 @@ def retire_source(
     return _mutation(
         _service(session).retire_source(
             context=context, source_id=source_id, expected_revision=payload.expected_revision
+        )
+    )
+
+
+_LAYER_PATH = "/organizations/{organization_id}/projects/{project_id}/layers"
+
+
+class CreateLayerRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    source_id: Annotated[UUID, Field(strict=False)]
+    name: SourceName
+
+    @field_validator("source_id", mode="before")
+    @classmethod
+    def validate_source_id(cls, value: object) -> object:
+        if not isinstance(value, str):
+            raise ValueError("source identifier must be text")
+        return value
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, value: str) -> str:
+        return _safe_name(value)
+
+
+class RenameLayerRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    expected_revision: ExpectedRevision
+    name: SourceName
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, value: str) -> str:
+        return _safe_name(value)
+
+
+def _layer_service(session: Session) -> SpatialLayerService:
+    return SpatialLayerService(SqlSpatialRepository(session))
+
+
+def _layer(detail: LayerDetail) -> dict[str, object]:
+    layer = detail.layer
+    return {
+        "id": layer.id,
+        "organization_id": layer.organization_id,
+        "project_id": layer.project_id,
+        "name": layer.name,
+        "source_id": layer.source_id,
+        "lifecycle": layer.lifecycle.value,
+        "layer_revision": layer.layer_revision,
+        "source": _source(detail.source),
+        "capabilities": [
+            {
+                "name": capability.name,
+                "technical_supported": capability.technical_supported,
+                "available": capability.available,
+                "required_permission": capability.required_permission,
+                "actor_authorized": capability.actor_authorized,
+            }
+            for capability in detail.capabilities
+        ],
+        "created_at": _timestamp(layer.created_at),
+        "updated_at": _timestamp(layer.updated_at),
+        "retired_at": _timestamp(layer.retired_at),
+    }
+
+
+def _layer_mutation(result: LayerMutationResult) -> dict[str, object]:
+    layer, change = result.layer, result.change
+    return {
+        "organization_id": layer.organization_id,
+        "project_id": layer.project_id,
+        "resource_type": "layer",
+        "resource_id": layer.id,
+        "change_id": change.id,
+        "prior_revision": change.prior_revision.to_wire() if change.prior_revision else None,
+        "new_revision": change.new_revision.to_wire(),
+        "lifecycle": layer.lifecycle.value,
+    }
+
+
+@router.get(_LAYER_PATH, operation_id="listSpatialLayers")
+def list_layers(
+    organization_id: UUID,
+    project_id: UUID,
+    authentication: Annotated[AuthenticatedRequest, Depends(authenticate_request)],
+    session: Annotated[Session, Depends(get_db_session, scope="function")],
+    limit: Annotated[int, Query(ge=1, le=100)] = 100,
+    after_id: UUID | None = None,
+) -> dict[str, object]:
+    context = context_for(authentication, organization_id=organization_id, project_id=project_id)
+    page = _layer_service(session).list_layers(context=context, after_id=after_id, limit=limit)
+    return {
+        "organization_id": organization_id,
+        "project_id": project_id,
+        "items": [_layer(detail) for detail in page.items],
+        "next_after_id": page.next_after_id,
+    }
+
+
+@router.post(_LAYER_PATH, operation_id="createSpatialLayer", status_code=201)
+def create_layer(
+    organization_id: UUID,
+    project_id: UUID,
+    payload: CreateLayerRequest,
+    authentication: Annotated[AuthenticatedRequest, Depends(require_csrf)],
+    session: Annotated[Session, Depends(get_db_session, scope="function")],
+) -> dict[str, object]:
+    context = context_for(authentication, organization_id=organization_id, project_id=project_id)
+    return _layer_mutation(
+        _layer_service(session).create_layer(
+            context=context, source_id=payload.source_id, name=payload.name
+        )
+    )
+
+
+@router.get(_LAYER_PATH + "/{layer_id}", operation_id="getSpatialLayer")
+def get_layer(
+    organization_id: UUID,
+    project_id: UUID,
+    layer_id: UUID,
+    authentication: Annotated[AuthenticatedRequest, Depends(authenticate_request)],
+    session: Annotated[Session, Depends(get_db_session, scope="function")],
+) -> dict[str, object]:
+    context = context_for(authentication, organization_id=organization_id, project_id=project_id)
+    return _layer(_layer_service(session).get_layer(context=context, layer_id=layer_id))
+
+
+@router.patch(_LAYER_PATH + "/{layer_id}", operation_id="renameSpatialLayer")
+def rename_layer(
+    organization_id: UUID,
+    project_id: UUID,
+    layer_id: UUID,
+    payload: RenameLayerRequest,
+    authentication: Annotated[AuthenticatedRequest, Depends(require_csrf)],
+    session: Annotated[Session, Depends(get_db_session, scope="function")],
+) -> dict[str, object]:
+    context = context_for(authentication, organization_id=organization_id, project_id=project_id)
+    return _layer_mutation(
+        _layer_service(session).rename_layer(
+            context=context,
+            layer_id=layer_id,
+            expected_revision=payload.expected_revision,
+            name=payload.name,
+        )
+    )
+
+
+@router.post(_LAYER_PATH + "/{layer_id}/retire", operation_id="retireSpatialLayer")
+def retire_layer(
+    organization_id: UUID,
+    project_id: UUID,
+    layer_id: UUID,
+    payload: RetireSourceRequest,
+    authentication: Annotated[AuthenticatedRequest, Depends(require_csrf)],
+    session: Annotated[Session, Depends(get_db_session, scope="function")],
+) -> dict[str, object]:
+    context = context_for(authentication, organization_id=organization_id, project_id=project_id)
+    return _layer_mutation(
+        _layer_service(session).retire_layer(
+            context=context, layer_id=layer_id, expected_revision=payload.expected_revision
         )
     )

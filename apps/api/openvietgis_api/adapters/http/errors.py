@@ -15,11 +15,13 @@ from openvietgis_api.domains.authorization.service import (
 from openvietgis_api.domains.spatial.ports import (
     SpatialActiveLayerDependenciesError,
     SpatialCrsCorrectionUnverifiedError,
+    SpatialLayerRevisionConflictError,
     SpatialNoChangesError,
     SpatialProjectReadOnlyError,
     SpatialRevisionConflictError,
     SpatialScopeError,
     SpatialSourceAlreadyRegisteredError,
+    SpatialSourceNotReadyError,
     SpatialUnknownReferenceKeyError,
 )
 from openvietgis_api.domains.tenancy.service import (
@@ -44,6 +46,12 @@ _SPATIAL_ERRORS: dict[type[Exception], tuple[int, str, str]] = {
         "STALE_CATALOG_REVISION",
         "Source revision changed; read current metadata and retry.",
     ),
+    SpatialLayerRevisionConflictError: (
+        409,
+        "STALE_LAYER_REVISION",
+        "Layer revision changed; read current metadata and retry.",
+    ),
+    SpatialSourceNotReadyError: (409, "SOURCE_NOT_READY", "The source is not ready."),
     SpatialProjectReadOnlyError: (409, "PROJECT_NOT_WRITABLE", "The project is read-only."),
     SpatialSourceAlreadyRegisteredError: (
         409,
@@ -55,7 +63,7 @@ _SPATIAL_ERRORS: dict[type[Exception], tuple[int, str, str]] = {
         "ACTIVE_LAYER_DEPENDENCIES",
         "Retire active Layers before retiring the source.",
     ),
-    SpatialNoChangesError: (422, "NO_CHANGES", "The request does not change source metadata."),
+    SpatialNoChangesError: (422, "NO_CHANGES", "The request does not change metadata."),
     SpatialUnknownReferenceKeyError: (
         422,
         "UNKNOWN_REFERENCE_KEY",

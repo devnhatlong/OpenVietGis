@@ -65,7 +65,7 @@ description: "Dependency-ordered implementation tasks for R003"
 - [X] T028 [P] [US2] Real PostgreSQL integration tests for two-layer shared rows, duplicate names, cross-project link even dual-authorized, stale and concurrent source retire/create in apps/api/tests/integration/spatial/test_layers.py.
 - [X] T029 [US2] Implement same-scope Layer persistence and source dependency check under source lock in apps/api/openvietgis_api/adapters/persistence/spatial_repository.py per data-model.md Layer.source_id, Layer.lifecycle, Layer.layer_revision.
 - [X] T030 [US2] Implement lifecycle/CAS and capability support/availability/authorization distinction in apps/api/openvietgis_api/domains/spatial/service.py per data-model.md Layer.name, Layer.lifecycle, Layer.layer_revision, Layer.retired_at and CatalogChange.operation.
-- [ ] T031 [US2] Implement Layer HTTP routes and nested bounded source metadata in apps/api/openvietgis_api/adapters/http/spatial.py and SDK in packages/client-sdk/src/spatial.ts.
+- [X] T031 [US2] Implement Layer HTTP routes and nested bounded source metadata in apps/api/openvietgis_api/adapters/http/spatial.py and SDK in packages/client-sdk/src/spatial.ts.
 - [ ] T032 [US2] Implement Layer listing/detail and create/rename/retire controls in apps/web/src/features/spatial/SpatialCatalogPage.tsx; unsupported operations not actionable.
 - [ ] T033 [US2] Verify US2 multi-Layer storage, capability, source retirement and no cross-link tests in apps/api/tests/integration/spatial/test_layers.py; record SC-002.
 
