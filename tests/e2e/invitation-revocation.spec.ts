@@ -108,9 +108,12 @@ test("recipient-bound invitation grants one project and revocation stops the nex
     await owner.getByLabel("Organization role").selectOption("member");
     await owner.getByLabel("Include resource grant").check();
     const grantFields = owner.getByRole("group", { name: "Invitation resource access" });
-    await grantFields.getByLabel("Scope", { exact: true }).selectOption("project");
-    await grantFields.getByLabel("Resource", { exact: true }).selectOption({ label: projectName });
-    await grantFields.getByLabel("Resource role").selectOption("viewer");
+    await grantFields.getByRole("combobox", { name: "Scope", exact: true }).selectOption("project");
+    const resourceSelect = grantFields.getByRole("combobox", { name: "Resource", exact: true });
+    await expect(resourceSelect).toBeAttached();
+    await expect(resourceSelect.locator('option[value="' + projectId + '"]')).toHaveCount(1);
+    await resourceSelect.selectOption(projectId);
+    await grantFields.getByRole("combobox", { name: "Resource role", exact: true }).selectOption("viewer");
     await owner.getByRole("button", { name: "Issue invitation" }).click();
     const issued = owner.getByRole("region", { name: "Issued invitation" });
     await expect(issued).toBeVisible();

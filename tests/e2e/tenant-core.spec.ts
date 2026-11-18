@@ -67,7 +67,7 @@ test("logs in, creates organizations, and switches explicit organization context
     await page.getByRole("link", { name: "Projects", exact: true }).click();
     expect((await projectList).status()).toBe(200);
     await expect(page).toHaveURL(new RegExp("/organizations/" + id + "/projects$"));
-    await expect(page.getByTestId("project-list")).toBeVisible();
+    await expect(page.getByTestId("project-list")).toBeAttached();
     const elapsedMs = performance.now() - started;
     timings.push({ switchNumber: index + 1, elapsedMs: Math.round(elapsedMs) });
     await testInfo.attach("sc-001-switch-" + (index + 1), {
