@@ -28,6 +28,23 @@ class AuthorizationContext:
 
 
 @dataclass(frozen=True, slots=True)
+class InvitationAcceptanceContext:
+    """Narrow pre-membership scope; only the invitation service creates it."""
+
+    actor: Actor
+    organization_id: UUID
+    invitation_id: UUID
+    verified: bool = False
+
+    def __post_init__(self) -> None:
+        if self.actor.actor_type != "human" or self.actor.actor_id is None:
+            raise ValueError("invitation acceptance requires a human actor")
+
+
+TenantContext = AuthorizationContext | InvitationAcceptanceContext
+
+
+@dataclass(frozen=True, slots=True)
 class RequestedActorContext:
     actor_type: ActorTypeLiteral
     actor_id: UUID | None

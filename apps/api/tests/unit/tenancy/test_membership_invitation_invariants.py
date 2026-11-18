@@ -8,7 +8,7 @@ from uuid import UUID, uuid4
 import pytest
 
 from openvietgis_api.domains.audit.ports import AuditRepository
-from openvietgis_api.domains.authorization.context import Actor
+from openvietgis_api.domains.authorization.context import Actor, AuthorizationContext
 from openvietgis_api.domains.authorization.ports import ResourceGrantRepository
 from openvietgis_api.domains.identity.domain import IdentityLink, User, UserStatus
 from openvietgis_api.domains.identity.ports import IdentityRepository
@@ -73,22 +73,18 @@ class World:
         self.repo.get_organization.return_value = self.organization
         members = {m.user_id: m for m in (self.owner, self.admin, self.member)}
         self.repo.get_membership_for_user.side_effect = (
-            lambda *, organization_id, user_id, for_update: members.get(user_id)
+            lambda *, organization_id, user_id, for_update, context: members.get(user_id)
         )
         self.repo.get_membership.side_effect = (
-            lambda *, organization_id, membership_id, for_update: next(
+            lambda *, organization_id, membership_id, for_update, context: next(
                 (m for m in members.values() if m.id == membership_id), None
             )
         )
         self.audit = Mock(spec=AuditRepository)
         self.identity = Mock(spec=IdentityRepository)
         self.grants = Mock(spec=ResourceGrantRepository)
-        self.tenancy = TenancyService(
-            self.repo, Mock(spec=InstallationStateReader), self.audit
-        )
-        self.invites = InvitationService(
-            self.repo, self.identity, self.grants, self.audit
-        )
+        self.tenancy = TenancyService(self.repo, Mock(spec=InstallationStateReader), self.audit)
+        self.invites = InvitationService(self.repo, self.identity, self.grants, self.audit)
         self.secret = generate_secret("inv", bytes_of_entropy=32)
         self.now = now
 
@@ -96,7 +92,9 @@ class World:
         return Actor(actor_type="human", actor_id=membership.user_id, display_name="User")
 
     def invite(
-        self, target: OrganizationMembership, role: MembershipRole,
+        self,
+        target: OrganizationMembership,
+        role: MembershipRole,
     ) -> Invitation:
         return Invitation(
             id=uuid4(),
@@ -135,8 +133,11 @@ class World:
         )
 
     def accept(
-        self, target: OrganizationMembership, invitation: Invitation,
-        *, identity_link_id: UUID | None = None,
+        self,
+        target: OrganizationMembership,
+        invitation: Invitation,
+        *,
+        identity_link_id: UUID | None = None,
     ):
         return self.invites.accept(
             actor=self.actor(target),
@@ -188,7 +189,10 @@ def test_last_owner_downgrade_rejected_while_holding_organization_lock() -> None
             role=MembershipRole.ADMIN,
         )
     assert world.repo.method_calls[0].args == (world.org_id,)
-    assert world.repo.method_calls[0].kwargs == {"for_update": True}
+    assert world.repo.method_calls[0].kwargs == {
+        "for_update": True,
+        "context": AuthorizationContext(world.actor(world.owner), world.org_id),
+    }
     world.assert_no_writes()
 
 
@@ -203,7 +207,8 @@ def test_owner_transfer_promotes_before_demoting_and_audits_once() -> None:
     assert demoted.role == MembershipRole.ADMIN
     assert promoted.role == MembershipRole.OWNER
     assert [call.args[0].role for call in world.repo.update_membership.call_args_list] == [
-        MembershipRole.OWNER, MembershipRole.ADMIN,
+        MembershipRole.OWNER,
+        MembershipRole.ADMIN,
     ]
     world.audit.append.assert_called_once()
     event = world.audit.append.call_args.args[0]
@@ -315,8 +320,12 @@ def test_acceptance_requires_same_authenticated_human_as_target_user() -> None:
     ):
         with pytest.raises(InvitationTargetMismatchError):
             world.invites.accept(
-                actor=actor, user_id=world.member.user_id, organization_id=world.org_id,
-                invitation_id=invitation.id, secret=world.secret, now=world.now,
+                actor=actor,
+                user_id=world.member.user_id,
+                organization_id=world.org_id,
+                invitation_id=invitation.id,
+                secret=world.secret,
+                now=world.now,
             )
     world.repo.get_invitation.assert_not_called()
     world.assert_no_writes()
@@ -324,9 +333,15 @@ def test_acceptance_requires_same_authenticated_human_as_target_user() -> None:
 
 def _identity_link(world: World, user_id: UUID, *, email: str, verified: bool) -> IdentityLink:
     return IdentityLink(
-        id=uuid4(), user_id=user_id, issuer="https://issuer.example",
-        subject="subject", email_snapshot=email, email_verified=verified,
-        display_name_snapshot="User", created_at=world.now, last_login_at=world.now,
+        id=uuid4(),
+        user_id=user_id,
+        issuer="https://issuer.example",
+        subject="subject",
+        email_snapshot=email,
+        email_verified=verified,
+        display_name_snapshot="User",
+        created_at=world.now,
+        last_login_at=world.now,
     )
 
 

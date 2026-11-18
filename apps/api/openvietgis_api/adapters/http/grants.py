@@ -8,13 +8,14 @@ from pydantic import BaseModel, ConfigDict
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from openvietgis_api.adapters.http.authorization import context_for
 from openvietgis_api.adapters.http.security import (
     AuthenticatedRequest,
     authenticate_request,
     get_db_session,
     require_csrf,
 )
-from openvietgis_api.adapters.http.tenant_access import require_human_permission
+from openvietgis_api.adapters.http.tenant_access import human_tenant, require_human_permission
 from openvietgis_api.adapters.http.tenant_serialization import serialize_grant
 from openvietgis_api.adapters.persistence.audit_repository import SqlAuditRepository
 from openvietgis_api.adapters.persistence.authorization_repository import (
@@ -22,7 +23,7 @@ from openvietgis_api.adapters.persistence.authorization_repository import (
 )
 from openvietgis_api.adapters.persistence.tenancy_repository import SqlTenancyRepository
 from openvietgis_api.domains.authorization.permissions import Permission
-from openvietgis_api.domains.authorization.service import GrantService
+from openvietgis_api.domains.authorization.service import GrantNotFoundError, GrantService
 from openvietgis_api.domains.tenancy.domain import ResourceRole, ResourceScopeKind
 
 router = APIRouter(tags=["grants"])
@@ -59,7 +60,7 @@ def list_resource_grants(
     return [
         serialize_grant(grant)
         for grant in SqlResourceGrantRepository(session).list_for_organization(
-            organization_id
+            organization_id, context=context_for(authentication, organization_id=organization_id)
         )
     ]
 
@@ -103,12 +104,20 @@ def revoke_resource_grant(
     authentication: Annotated[AuthenticatedRequest, Depends(require_csrf)],
     session: Annotated[Session, Depends(get_db_session, scope="function")],
 ) -> Response:
+    human_tenant(session, authentication, organization_id, lock=True)
+    context = context_for(authentication, organization_id=organization_id)
+    if (
+        SqlResourceGrantRepository(session).get(
+            organization_id=organization_id, grant_id=grant_id, context=context
+        )
+        is None
+    ):
+        raise GrantNotFoundError("grant not found")
     require_human_permission(
         session,
         authentication,
         organization_id,
         Permission.AUTHORIZATION_MANAGE_GRANTS,
-        lock=True,
     )
     _service(session).revoke(
         actor=authentication.actor, organization_id=organization_id, grant_id=grant_id

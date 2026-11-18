@@ -8,12 +8,17 @@ from fastapi.responses import JSONResponse
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
+from openvietgis_api.adapters.http.authorization import context_for
 from openvietgis_api.adapters.http.security import (
     AuthenticatedRequest,
     get_db_session,
     require_csrf,
 )
-from openvietgis_api.adapters.http.tenant_access import human_actor_id, require_human_permission
+from openvietgis_api.adapters.http.tenant_access import (
+    human_actor_id,
+    human_tenant,
+    require_human_permission,
+)
 from openvietgis_api.adapters.http.tenant_serialization import (
     serialize_grant,
     serialize_membership,
@@ -23,7 +28,6 @@ from openvietgis_api.adapters.persistence.authorization_repository import (
     SqlResourceGrantRepository,
 )
 from openvietgis_api.adapters.persistence.identity_repository import SqlIdentityRepository
-from openvietgis_api.adapters.persistence.rls import set_request_context
 from openvietgis_api.adapters.persistence.tenancy_repository import SqlTenancyRepository
 from openvietgis_api.domains.authorization.permissions import Permission
 from openvietgis_api.domains.authorization.roles import ORGANIZATION_ROLE_PERMISSIONS
@@ -31,8 +35,6 @@ from openvietgis_api.domains.authorization.service import AuthorizationDeniedErr
 from openvietgis_api.domains.tenancy.domain import (
     InvitationTargetKind,
     MembershipRole,
-    MembershipStatus,
-    OrganizationStatus,
     ResourceRole,
     ResourceScopeKind,
 )
@@ -118,9 +120,7 @@ def create_invitation(
     )
     if (
         payload.organization_role == MembershipRole.OWNER
-        and Permission.ORGANIZATION_OWNER_TRANSFER not in ORGANIZATION_ROLE_PERMISSIONS[
-            member.role
-        ]
+        and Permission.ORGANIZATION_OWNER_TRANSFER not in ORGANIZATION_ROLE_PERMISSIONS[member.role]
     ):
         raise AuthorizationDeniedError("Owner authority is required to invite an Owner")
     target = payload.target
@@ -148,18 +148,23 @@ def create_invitation(
     }
 
 
-@router.post(
-    "/organizations/{organization_id}/invitations/{invitation_id}/revoke", status_code=204
-)
+@router.post("/organizations/{organization_id}/invitations/{invitation_id}/revoke", status_code=204)
 def revoke_invitation(
     organization_id: UUID,
     invitation_id: UUID,
     authentication: Annotated[AuthenticatedRequest, Depends(require_csrf)],
     session: Annotated[Session, Depends(get_db_session, scope="function")],
 ) -> Response:
-    require_human_permission(
-        session, authentication, organization_id, Permission.INVITATION_MANAGE, lock=True
-    )
+    human_tenant(session, authentication, organization_id, lock=True)
+    context = context_for(authentication, organization_id=organization_id)
+    if (
+        SqlTenancyRepository(session).get_invitation(
+            organization_id=organization_id, invitation_id=invitation_id, context=context
+        )
+        is None
+    ):
+        raise InvitationNotFoundError("invitation not found")
+    require_human_permission(session, authentication, organization_id, Permission.INVITATION_MANAGE)
     _service(session).revoke(
         actor=authentication.actor,
         organization_id=organization_id,
@@ -175,20 +180,8 @@ def accept_invitation(
     session: Annotated[Session, Depends(get_db_session, scope="function")],
 ) -> dict[str, object] | JSONResponse:
     user_id = human_actor_id(authentication)
-    # This is the intentional pre-membership exception. The domain service must verify the
-    # one-time secret AND the intended identity before granting any membership.
-    set_request_context(
-        session, organization_id=payload.organization_id, actor_user_id=user_id
-    )
-    repository = SqlTenancyRepository(session)
-    organization = repository.get_organization(payload.organization_id, for_update=True)
-    if organization is None or organization.status != OrganizationStatus.ACTIVE:
-        raise HTTPException(status_code=400, detail="invalid invitation")
-    existing = repository.get_membership_for_user(
-        organization_id=payload.organization_id,
-        user_id=user_id,
-        for_update=True,
-    )
+    # The invitation service owns the exact-ID pre-membership context and verifies
+    # the one-time secret and target identity before granting membership.
     try:
         membership, grant = _service(session).accept(
             actor=authentication.actor,
@@ -198,15 +191,6 @@ def accept_invitation(
             secret=payload.secret,
             identity_link_id=authentication.identity_link_id,
         )
-        if (
-            existing is not None
-            and existing.role == MembershipRole.OWNER
-            and existing.status == MembershipStatus.ACTIVE
-            and membership.role != MembershipRole.OWNER
-        ):
-            # No invitation can demote an active Owner. Raising rolls back the
-            # invitation/membership/grant/audit transaction as a single unit.
-            raise InvalidInvitationError("invitation cannot change existing Owner authority")
     except ExpiredInvitationError:
         # Only verified expired invitations reach this path; commit terminal state.
         return JSONResponse(status_code=400, content={"detail": "invalid invitation"})

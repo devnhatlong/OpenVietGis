@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, Self
 from uuid import UUID
 
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from sqlalchemy.orm import Session
 
 from openvietgis_api.adapters.http.authorization import context_for, require_permission
@@ -45,6 +45,12 @@ class UpdateWorkspaceRequest(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=200)
     status: WorkspaceStatus | None = None
 
+    @model_validator(mode="after")
+    def require_changes(self) -> Self:
+        if self.name is None and self.status is None:
+            raise ValueError("at least one change is required")
+        return self
+
 
 def _service(session: Session) -> TenancyService:
     return TenancyService(
@@ -80,10 +86,18 @@ def list_workspaces(
         organization_id=organization_id,
     )
     if authorization.is_allowed(organization_context, Permission.WORKSPACE_READ):
-        return [_serialize(item) for item in repository.list_workspaces(organization_id)]
+        return [
+            _serialize(item)
+            for item in repository.list_workspaces(
+                organization_id,
+                context=context_for(authentication, organization_id=organization_id),
+            )
+        ]
 
     visible = []
-    for workspace in repository.list_workspaces(organization_id):
+    for workspace in repository.list_workspaces(
+        organization_id, context=context_for(authentication, organization_id=organization_id)
+    ):
         workspace_context = context_for(
             authentication,
             organization_id=organization_id,
@@ -122,9 +136,14 @@ def update_workspace(
     session: Annotated[Session, Depends(get_db_session, scope="function")],
 ) -> dict[str, object]:
     human_tenant(session, authentication, organization_id, lock=True)
-    if SqlTenancyRepository(session).get_workspace(
-        organization_id=organization_id, workspace_id=workspace_id,
-    ) is None:
+    if (
+        SqlTenancyRepository(session).get_workspace(
+            context=context_for(authentication, organization_id=organization_id),
+            organization_id=organization_id,
+            workspace_id=workspace_id,
+        )
+        is None
+    ):
         raise TenantResourceNotFoundError("workspace not found")
     context = context_for(
         authentication,

@@ -11,7 +11,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from openvietgis_api.adapters.persistence.db import session_scope
-from openvietgis_api.adapters.persistence.rls import set_request_context
+from openvietgis_api.adapters.persistence.rls import bind_authenticated_actor
 from openvietgis_api.config import Settings, get_settings
 from openvietgis_api.domains.authorization.context import Actor
 from openvietgis_api.security.csrf import verify_csrf_token
@@ -104,11 +104,7 @@ def authenticate_request(
         actor_id=row["user_id"],
         display_name=row["display_name"],
     )
-    set_request_context(
-        session,
-        organization_id=None,
-        actor_user_id=actor.actor_id,
-    )
+    bind_authenticated_actor(session, actor)
     return AuthenticatedRequest(
         actor=actor,
         session_id=row["id"],

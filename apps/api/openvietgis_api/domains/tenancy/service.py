@@ -7,7 +7,12 @@ from uuid import UUID, uuid4
 
 from openvietgis_api.domains.audit.domain import AuditEvent, AuditOutcome
 from openvietgis_api.domains.audit.ports import AuditRepository
-from openvietgis_api.domains.authorization.context import Actor
+from openvietgis_api.domains.authorization.context import (
+    Actor,
+    AuthorizationContext,
+    InvitationAcceptanceContext,
+    TenantContext,
+)
 from openvietgis_api.domains.authorization.domain import ResourceGrant
 from openvietgis_api.domains.authorization.permissions import Permission
 from openvietgis_api.domains.authorization.ports import ResourceGrantRepository
@@ -127,10 +132,13 @@ def _clean_slug(value: str) -> str:
 
 
 def _lock_active_organization(
-    repository: TenancyRepository, organization_id: UUID,
+    repository: TenancyRepository,
+    organization_id: UUID,
+    *,
+    context: TenantContext,
 ) -> Organization:
     """Serialize tenant lifecycle and membership/invitation mutations on one row."""
-    organization = repository.get_organization(organization_id, for_update=True)
+    organization = repository.get_organization(organization_id, for_update=True, context=context)
     if organization is None:
         raise OrganizationNotFoundError("organization not found")
     if organization.status != OrganizationStatus.ACTIVE:
@@ -150,6 +158,7 @@ def _require_member_permission(
     if actor.actor_type != "human" or actor.actor_id is None:
         raise OwnerRequiredError("active human membership required")
     membership = repository.get_membership_for_user(
+        context=AuthorizationContext(actor, organization_id),
         organization_id=organization_id,
         user_id=actor.actor_id,
         for_update=True,
@@ -242,7 +251,9 @@ class TenancyService:
             suspended_at=None,
             revoked_at=None,
         )
-        self._repository.create_organization_with_owner(organization, membership)
+        self._repository.create_organization_with_owner(
+            organization, membership, context=AuthorizationContext(actor, organization.id)
+        )
         self._audit(
             actor=actor,
             organization_id=organization.id,
@@ -263,7 +274,8 @@ class TenancyService:
         slug: str,
         now: datetime | None = None,
     ) -> Workspace:
-        _lock_active_organization(self._repository, organization_id)
+        context = AuthorizationContext(actor, organization_id)
+        _lock_active_organization(self._repository, organization_id, context=context)
         now = now or datetime.now(UTC)
         workspace = Workspace(
             id=uuid4(),
@@ -278,7 +290,7 @@ class TenancyService:
             archived_at=None,
             deleted_at=None,
         )
-        self._repository.create_workspace(workspace)
+        self._repository.create_workspace(workspace, context=context)
         self._audit(
             actor=actor,
             organization_id=organization_id,
@@ -300,8 +312,12 @@ class TenancyService:
         status: WorkspaceStatus | None = None,
         now: datetime | None = None,
     ) -> Workspace:
-        _lock_active_organization(self._repository, organization_id)
+        if name is None and status is None:
+            raise InvalidLifecycleTransitionError("at least one change is required")
+        context = AuthorizationContext(actor, organization_id)
+        _lock_active_organization(self._repository, organization_id, context=context)
         workspace = self._repository.get_workspace(
+            context=context,
             organization_id=organization_id,
             workspace_id=workspace_id,
         )
@@ -315,6 +331,7 @@ class TenancyService:
         if new_status == WorkspaceStatus.DELETED:
             if (
                 self._repository.count_active_projects_in_workspace(
+                    context=context,
                     organization_id=organization_id,
                     workspace_id=workspace_id,
                 )
@@ -338,7 +355,7 @@ class TenancyService:
             ),
             deleted_at=now if new_status == WorkspaceStatus.DELETED else workspace.deleted_at,
         )
-        self._repository.update_workspace(updated)
+        self._repository.update_workspace(updated, context=context)
         self._audit(
             actor=actor,
             organization_id=organization_id,
@@ -360,16 +377,16 @@ class TenancyService:
         workspace_id: UUID | None = None,
         now: datetime | None = None,
     ) -> Project:
-        _lock_active_organization(self._repository, organization_id)
+        context = AuthorizationContext(actor, organization_id)
+        _lock_active_organization(self._repository, organization_id, context=context)
         if workspace_id is not None:
             workspace = self._repository.get_workspace(
+                context=context,
                 organization_id=organization_id,
                 workspace_id=workspace_id,
             )
             if workspace is None:
-                raise CrossOrganizationWorkspaceError(
-                    "workspace does not belong to organization"
-                )
+                raise CrossOrganizationWorkspaceError("workspace does not belong to organization")
             if workspace.status == WorkspaceStatus.DELETED:
                 raise InvalidLifecycleTransitionError("deleted workspace cannot receive projects")
 
@@ -388,7 +405,7 @@ class TenancyService:
             archived_at=None,
             deleted_at=None,
         )
-        self._repository.create_project(project)
+        self._repository.create_project(project, context=context)
         self._audit(
             actor=actor,
             organization_id=organization_id,
@@ -412,8 +429,12 @@ class TenancyService:
         status: ProjectStatus | None = None,
         now: datetime | None = None,
     ) -> Project:
-        _lock_active_organization(self._repository, organization_id)
+        if name is None and status is None and not workspace_supplied:
+            raise InvalidLifecycleTransitionError("at least one change is required")
+        context = AuthorizationContext(actor, organization_id)
+        _lock_active_organization(self._repository, organization_id, context=context)
         project = self._repository.get_project(
+            context=context,
             organization_id=organization_id,
             project_id=project_id,
         )
@@ -433,6 +454,7 @@ class TenancyService:
             target_workspace_id = workspace_id
             if workspace_id is not None:
                 workspace = self._repository.get_workspace(
+                    context=context,
                     organization_id=organization_id,
                     workspace_id=workspace_id,
                 )
@@ -448,6 +470,7 @@ class TenancyService:
         new_status = status or project.status
         if new_status == ProjectStatus.ACTIVE and target_workspace_id is not None:
             target_workspace = self._repository.get_workspace(
+                context=context,
                 organization_id=organization_id,
                 workspace_id=target_workspace_id,
             )
@@ -471,7 +494,7 @@ class TenancyService:
             ),
             deleted_at=now if new_status == ProjectStatus.DELETED else project.deleted_at,
         )
-        self._repository.update_project(updated)
+        self._repository.update_project(updated, context=context)
         self._audit(
             actor=actor,
             organization_id=organization_id,
@@ -497,8 +520,10 @@ class TenancyService:
         status: OrganizationStatus | None = None,
         now: datetime | None = None,
     ) -> Organization:
+        context = AuthorizationContext(actor, organization_id)
         organization = self._repository.get_organization(
             organization_id,
+            context=context,
             for_update=True,
         )
         if organization is None:
@@ -541,7 +566,7 @@ class TenancyService:
                 else organization.deleted_at
             ),
         )
-        self._repository.update_organization(updated)
+        self._repository.update_organization(updated, context=context)
         self._audit(
             actor=actor,
             organization_id=organization_id,
@@ -563,7 +588,8 @@ class TenancyService:
         status: MembershipStatus | None = None,
         now: datetime | None = None,
     ) -> OrganizationMembership:
-        _lock_active_organization(self._repository, organization_id)
+        context = AuthorizationContext(actor, organization_id)
+        _lock_active_organization(self._repository, organization_id, context=context)
         caller_membership = _require_member_permission(
             self._repository,
             actor=actor,
@@ -571,6 +597,7 @@ class TenancyService:
             permission=Permission.ORGANIZATION_MANAGE_MEMBERS,
         )
         membership = self._repository.get_membership(
+            context=context,
             organization_id=organization_id,
             membership_id=membership_id,
             for_update=True,
@@ -588,15 +615,17 @@ class TenancyService:
         stops_being_active_owner = (
             membership.role == MembershipRole.OWNER
             and membership.status == MembershipStatus.ACTIVE
-            and (
-                new_role != MembershipRole.OWNER
-                or new_status != MembershipStatus.ACTIVE
-            )
+            and (new_role != MembershipRole.OWNER or new_status != MembershipStatus.ACTIVE)
         )
-        if stops_being_active_owner and self._repository.count_other_active_owners(
-            organization_id=organization_id,
-            excluding_membership_id=membership.id,
-        ) == 0:
+        if (
+            stops_being_active_owner
+            and self._repository.count_other_active_owners(
+                context=context,
+                organization_id=organization_id,
+                excluding_membership_id=membership.id,
+            )
+            == 0
+        ):
             raise LastOwnerError("organization must retain an active Owner")
 
         now = now or datetime.now(UTC)
@@ -625,7 +654,7 @@ class TenancyService:
                 else membership.revoked_at
             ),
         )
-        self._repository.update_membership(updated)
+        self._repository.update_membership(updated, context=context)
         self._audit(
             actor=actor,
             organization_id=organization_id,
@@ -645,10 +674,12 @@ class TenancyService:
         target_membership_id: UUID,
         now: datetime | None = None,
     ) -> tuple[OrganizationMembership, OrganizationMembership]:
+        context = AuthorizationContext(actor, organization_id)
         if actor.actor_type != "human" or actor.actor_id is None:
             raise OwnerRequiredError("human Owner required")
-        _lock_active_organization(self._repository, organization_id)
+        _lock_active_organization(self._repository, organization_id, context=context)
         current = self._repository.get_membership_for_user(
+            context=context,
             organization_id=organization_id,
             user_id=actor.actor_id,
             for_update=True,
@@ -660,6 +691,7 @@ class TenancyService:
         ):
             raise OwnerRequiredError("active Owner required")
         target = self._repository.get_membership(
+            context=context,
             organization_id=organization_id,
             membership_id=target_membership_id,
             for_update=True,
@@ -669,12 +701,12 @@ class TenancyService:
 
         now = now or datetime.now(UTC)
         promoted = replace(target, role=MembershipRole.OWNER)
-        self._repository.update_membership(promoted)
+        self._repository.update_membership(promoted, context=context)
         if current.id == promoted.id:
             demoted = current
         else:
             demoted = replace(current, role=MembershipRole.ADMIN)
-            self._repository.update_membership(demoted)
+            self._repository.update_membership(demoted, context=context)
 
         self._audit(
             actor=actor,
@@ -719,7 +751,8 @@ class InvitationService:
         resource_role: ResourceRole | None = None,
         now: datetime | None = None,
     ) -> IssuedInvitation:
-        _lock_active_organization(self._tenancy_repository, organization_id)
+        context = AuthorizationContext(actor, organization_id)
+        _lock_active_organization(self._tenancy_repository, organization_id, context=context)
         inviter_membership = _require_member_permission(
             self._tenancy_repository,
             actor=actor,
@@ -744,9 +777,7 @@ class InvitationService:
                 raise InvalidInvitationError("user target requires only target_user_id")
         elif target_kind == InvitationTargetKind.EXTERNAL_IDENTITY:
             if not target_issuer or not target_subject or normalized_email or target_user_id:
-                raise InvalidInvitationError(
-                    "external identity target requires issuer and subject"
-                )
+                raise InvalidInvitationError("external identity target requires issuer and subject")
 
         if resource_scope_kind is None:
             if any(
@@ -763,18 +794,26 @@ class InvitationService:
         elif resource_scope_kind == ResourceScopeKind.WORKSPACE:
             if resource_workspace_id is None or resource_project_id is not None:
                 raise InvalidInvitationError("workspace grant requires workspace_id")
-            if self._tenancy_repository.get_workspace(
-                organization_id=organization_id,
-                workspace_id=resource_workspace_id,
-            ) is None:
+            if (
+                self._tenancy_repository.get_workspace(
+                    context=context,
+                    organization_id=organization_id,
+                    workspace_id=resource_workspace_id,
+                )
+                is None
+            ):
                 raise InvalidInvitationError("workspace does not belong to organization")
         elif resource_scope_kind == ResourceScopeKind.PROJECT:
             if resource_project_id is None or resource_workspace_id is not None:
                 raise InvalidInvitationError("project grant requires project_id")
-            if self._tenancy_repository.get_project(
-                organization_id=organization_id,
-                project_id=resource_project_id,
-            ) is None:
+            if (
+                self._tenancy_repository.get_project(
+                    context=context,
+                    organization_id=organization_id,
+                    project_id=resource_project_id,
+                )
+                is None
+            ):
                 raise InvalidInvitationError("project does not belong to organization")
         elif resource_scope_kind == ResourceScopeKind.ORGANIZATION:
             if resource_workspace_id is not None or resource_project_id is not None:
@@ -805,7 +844,7 @@ class InvitationService:
             accepted_by_user_id=None,
             revoked_at=None,
         )
-        self._tenancy_repository.create_invitation(invitation)
+        self._tenancy_repository.create_invitation(invitation, context=context)
         self._audit_repository.append(
             AuditEvent(
                 id=uuid4(),
@@ -857,10 +896,7 @@ class InvitationService:
                 and link.email_snapshot.strip().lower() == invitation.target_email_normalized
             )
 
-        return (
-            link.issuer == invitation.target_issuer
-            and link.subject == invitation.target_subject
-        )
+        return link.issuer == invitation.target_issuer and link.subject == invitation.target_subject
 
     def accept(
         self,
@@ -879,13 +915,19 @@ class InvitationService:
         if user is None or user.status != UserStatus.ACTIVE:
             raise InvitationTargetMismatchError("authenticated human identity required")
 
+        context = AuthorizationContext(actor, organization_id)
+        invitation_context = InvitationAcceptanceContext(actor, organization_id, invitation_id)
+
         # The same organization row is acquired first for invitation issue,
         # acceptance/revocation, ownership transfer, and membership changes.
         try:
-            _lock_active_organization(self._tenancy_repository, organization_id)
+            _lock_active_organization(
+                self._tenancy_repository, organization_id, context=invitation_context
+            )
         except (OrganizationNotFoundError, InvalidLifecycleTransitionError) as exc:
             raise InvalidInvitationError("invalid invitation") from exc
         invitation = self._tenancy_repository.get_invitation(
+            context=invitation_context,
             organization_id=organization_id,
             invitation_id=invitation_id,
             for_update=True,
@@ -897,13 +939,12 @@ class InvitationService:
             raise InvalidInvitationError("invitation is no longer pending")
         if not verify_secret(secret, invitation.token_hash):
             raise InvalidInvitationError("invalid invitation secret")
-        if not self._target_matches(
-            invitation, user_id=user_id, identity_link_id=identity_link_id
-        ):
+        if not self._target_matches(invitation, user_id=user_id, identity_link_id=identity_link_id):
             raise InvitationTargetMismatchError("invitation target does not match identity")
+        invitation_context = replace(invitation_context, verified=True)
         if invitation.expires_at <= now:
             expired = replace(invitation, status=InvitationStatus.EXPIRED)
-            self._tenancy_repository.update_invitation(expired)
+            self._tenancy_repository.update_invitation(expired, context=invitation_context)
             raise ExpiredInvitationError("invitation has expired")
 
         # Assigning Owner requires a currently active Owner inviter. This also
@@ -911,6 +952,7 @@ class InvitationService:
         if invitation.organization_role == MembershipRole.OWNER:
             inviter = (
                 self._tenancy_repository.get_membership_for_user(
+                    context=invitation_context,
                     organization_id=organization_id,
                     user_id=invitation.created_by_actor_id,
                     for_update=True,
@@ -927,6 +969,7 @@ class InvitationService:
                 raise InvalidInvitationError("Owner invitation authority is no longer active")
 
         membership = self._tenancy_repository.get_membership_for_user(
+            context=invitation_context,
             organization_id=organization_id,
             user_id=user_id,
             for_update=True,
@@ -943,7 +986,7 @@ class InvitationService:
                 suspended_at=None,
                 revoked_at=None,
             )
-            self._tenancy_repository.create_membership(membership)
+            self._tenancy_repository.create_membership(membership, context=invitation_context)
         else:
             # Invitation acceptance is not the ownership-transfer mechanism.
             # Never permit an invitation to downgrade an existing Owner.
@@ -960,7 +1003,7 @@ class InvitationService:
                 suspended_at=None,
                 revoked_at=None,
             )
-            self._tenancy_repository.update_membership(membership)
+            self._tenancy_repository.update_membership(membership, context=invitation_context)
 
         grant: ResourceGrant | None = None
         if invitation.resource_scope_kind is not None:
@@ -985,7 +1028,9 @@ class InvitationService:
             existing_grant = next(
                 (
                     item
-                    for item in self._grant_repository.list_for_organization(organization_id)
+                    for item in self._grant_repository.list_for_organization(
+                        organization_id, context=context
+                    )
                     if item.membership_id == membership.id
                     and item.scope_kind == grant.scope_kind
                     and item.workspace_id == grant.workspace_id
@@ -998,7 +1043,7 @@ class InvitationService:
             if existing_grant is not None:
                 grant = existing_grant
             else:
-                self._grant_repository.create(grant)
+                self._grant_repository.create(grant, context=context)
                 self._audit_repository.append(
                     AuditEvent(
                         id=uuid4(),
@@ -1026,7 +1071,7 @@ class InvitationService:
             accepted_at=now,
             accepted_by_user_id=user_id,
         )
-        self._tenancy_repository.update_invitation(accepted)
+        self._tenancy_repository.update_invitation(accepted, context=invitation_context)
         self._audit_repository.append(
             AuditEvent(
                 id=uuid4(),
@@ -1055,7 +1100,8 @@ class InvitationService:
         invitation_id: UUID,
         now: datetime | None = None,
     ) -> Invitation:
-        _lock_active_organization(self._tenancy_repository, organization_id)
+        context = AuthorizationContext(actor, organization_id)
+        _lock_active_organization(self._tenancy_repository, organization_id, context=context)
         revoker = _require_member_permission(
             self._tenancy_repository,
             actor=actor,
@@ -1063,6 +1109,7 @@ class InvitationService:
             permission=Permission.INVITATION_MANAGE,
         )
         invitation = self._tenancy_repository.get_invitation(
+            context=context,
             organization_id=organization_id,
             invitation_id=invitation_id,
             for_update=True,
@@ -1082,7 +1129,7 @@ class InvitationService:
             status=InvitationStatus.REVOKED,
             revoked_at=now,
         )
-        self._tenancy_repository.update_invitation(revoked)
+        self._tenancy_repository.update_invitation(revoked, context=context)
         self._audit_repository.append(
             AuditEvent(
                 id=uuid4(),

@@ -187,7 +187,9 @@ def list_organization_members(
     )
     return [
         serialize_membership(item)
-        for item in SqlTenancyRepository(session).list_memberships(organization_id)
+        for item in SqlTenancyRepository(session).list_memberships(
+            organization_id, context=context_for(authentication, organization_id=organization_id)
+        )
     ]
 
 
@@ -199,18 +201,17 @@ def update_organization_membership(
     authentication: Annotated[AuthenticatedRequest, Depends(require_csrf)],
     session: Annotated[Session, Depends(get_db_session, scope="function")],
 ) -> dict[str, object]:
-    acting_member = require_human_permission(
-        session,
-        authentication,
-        organization_id,
-        Permission.ORGANIZATION_MANAGE_MEMBERS,
-        lock=True,
-    )
+    _, acting_member = human_tenant(session, authentication, organization_id, lock=True)
     target = SqlTenancyRepository(session).get_membership(
-        organization_id=organization_id, membership_id=membership_id
+        context=context_for(authentication, organization_id=organization_id),
+        organization_id=organization_id,
+        membership_id=membership_id,
     )
     if target is None:
         raise MembershipNotFoundError("membership not found")
+    require_human_permission(
+        session, authentication, organization_id, Permission.ORGANIZATION_MANAGE_MEMBERS
+    )
     if (
         target.role == MembershipRole.OWNER or payload.role == MembershipRole.OWNER
     ) and Permission.ORGANIZATION_OWNER_TRANSFER not in ORGANIZATION_ROLE_PERMISSIONS[
@@ -235,8 +236,11 @@ def transfer_organization_ownership(
     session: Annotated[Session, Depends(get_db_session, scope="function")],
 ) -> dict[str, object] | JSONResponse:
     _, member = human_tenant(session, authentication, organization_id, lock=True)
+    context = context_for(authentication, organization_id=organization_id)
     target = SqlTenancyRepository(session).get_membership(
-        organization_id=organization_id, membership_id=payload.target_membership_id
+        organization_id=organization_id,
+        membership_id=payload.target_membership_id,
+        context=context,
     )
     if target is None:
         raise MembershipNotFoundError("membership not found")
@@ -280,17 +284,23 @@ def get_effective_permissions(
 ) -> dict[str, list[str]]:
     human_tenant(session, authentication, organization_id)
     repository = SqlTenancyRepository(session)
-    if workspace_id is not None and repository.get_workspace(
-        organization_id=organization_id, workspace_id=workspace_id
-    ) is None:
+    if (
+        workspace_id is not None
+        and repository.get_workspace(
+            context=context_for(authentication, organization_id=organization_id),
+            organization_id=organization_id,
+            workspace_id=workspace_id,
+        )
+        is None
+    ):
         raise TenantResourceNotFoundError("workspace not found")
     if project_id is not None:
         project = repository.get_project(
-            organization_id=organization_id, project_id=project_id
+            context=context_for(authentication, organization_id=organization_id),
+            organization_id=organization_id,
+            project_id=project_id,
         )
-        if project is None or (
-            workspace_id is not None and project.workspace_id != workspace_id
-        ):
+        if project is None or (workspace_id is not None and project.workspace_id != workspace_id):
             raise TenantResourceNotFoundError("project not found")
     context = context_for(
         authentication,

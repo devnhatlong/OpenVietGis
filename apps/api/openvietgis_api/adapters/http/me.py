@@ -60,7 +60,7 @@ def list_my_organizations(
     session: Annotated[Session, Depends(get_db_session, scope="function")],
 ) -> list[dict[str, object]]:
     items = SqlTenancyRepository(session).list_active_organizations_for_user(
-        _user_id(authentication)
+        _user_id(authentication), actor=authentication.actor
     )
     return [
         {

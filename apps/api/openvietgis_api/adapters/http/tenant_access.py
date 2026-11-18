@@ -39,18 +39,19 @@ def human_tenant(
     """Resolve current membership before accessing any organization-owned resource."""
     repository = SqlTenancyRepository(session)
     user_id = human_actor_id(authentication)
+    context = context_for(authentication, organization_id=organization_id)
     membership = repository.get_active_membership(
-        organization_id=organization_id, user_id=user_id
+        context=context, organization_id=organization_id, user_id=user_id
     )
     if membership is None:
         raise TenantResourceNotFoundError("organization not found")
-    organization = repository.get_organization(organization_id, for_update=lock)
+    organization = repository.get_organization(organization_id, for_update=lock, context=context)
     if organization is None:
         raise TenantResourceNotFoundError("organization not found")
     if lock:
         # Revalidate after the organization lock to avoid racing member removal/role changes.
         membership = repository.get_active_membership(
-            organization_id=organization_id, user_id=user_id
+            context=context, organization_id=organization_id, user_id=user_id
         )
         if membership is None:
             raise TenantResourceNotFoundError("organization not found")
@@ -69,9 +70,7 @@ def require_human_permission(
     *,
     lock: bool = False,
 ) -> OrganizationMembership:
-    _, membership = human_tenant(
-        session, authentication, organization_id, lock=lock
-    )
+    _, membership = human_tenant(session, authentication, organization_id, lock=lock)
     require_permission(
         session, context_for(authentication, organization_id=organization_id), permission
     )

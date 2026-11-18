@@ -23,7 +23,7 @@ class WorkspaceRepo:
     def __init__(self, workspace: Workspace) -> None:
         self.workspace = workspace
 
-    def get_organization(self, organization_id, *, for_update=False):
+    def get_organization(self, organization_id, *, context, for_update=False):
         assert organization_id == self.workspace.organization_id
         assert for_update
         return Organization(
@@ -38,16 +38,16 @@ class WorkspaceRepo:
             deleted_at=None,
         )
 
-    def get_workspace(self, *, organization_id, workspace_id):
+    def get_workspace(self, *, context, organization_id, workspace_id):
         assert organization_id == self.workspace.organization_id
         assert workspace_id == self.workspace.id
         return self.workspace
 
-    def count_active_projects_in_workspace(self, *, organization_id, workspace_id):
+    def count_active_projects_in_workspace(self, *, context, organization_id, workspace_id):
         del organization_id, workspace_id
         return 1
 
-    def update_workspace(self, workspace: Workspace) -> None:
+    def update_workspace(self, workspace: Workspace, *, context) -> None:
         self.workspace = workspace
 
 

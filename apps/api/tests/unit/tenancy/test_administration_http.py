@@ -31,9 +31,7 @@ def actor():
 def client(actor):
     app = create_app()
     token = "synthetic-session-token"
-    auth = AuthenticatedRequest(
-        actor=actor, session_id=uuid4(), raw_session_token=token
-    )
+    auth = AuthenticatedRequest(actor=actor, session_id=uuid4(), raw_session_token=token)
     session = Mock()
     app.dependency_overrides[authenticate_request] = lambda: auth
     app.dependency_overrides[get_db_session] = lambda: session
@@ -76,8 +74,14 @@ def test_nonmember_hides_organization_before_tenant_lookup(monkeypatch, actor):
 
 def test_admin_cannot_promote_self_to_owner(client, monkeypatch):
     monkeypatch.setattr(
-        organizations, "require_human_permission",
+        organizations,
+        "require_human_permission",
         lambda *args, **kwargs: SimpleNamespace(role=MembershipRole.ADMIN),
+    )
+    monkeypatch.setattr(
+        organizations,
+        "human_tenant",
+        lambda *args, **kwargs: (SimpleNamespace(), SimpleNamespace(role=MembershipRole.ADMIN)),
     )
     repo = Mock()
     repo.get_membership.return_value = SimpleNamespace(role=MembershipRole.ADMIN)
@@ -94,8 +98,14 @@ def test_admin_cannot_promote_self_to_owner(client, monkeypatch):
 
 def test_admin_cannot_downgrade_existing_owner(client, monkeypatch):
     monkeypatch.setattr(
-        organizations, "require_human_permission",
+        organizations,
+        "require_human_permission",
         lambda *args, **kwargs: SimpleNamespace(role=MembershipRole.ADMIN),
+    )
+    monkeypatch.setattr(
+        organizations,
+        "human_tenant",
+        lambda *args, **kwargs: (SimpleNamespace(), SimpleNamespace(role=MembershipRole.ADMIN)),
     )
     repo = Mock()
     repo.get_membership.return_value = SimpleNamespace(role=MembershipRole.OWNER)
@@ -117,7 +127,8 @@ def test_owner_can_restore_suspended_organization(client, monkeypatch, actor):
     )
     membership = SimpleNamespace(role=MembershipRole.OWNER)
     monkeypatch.setattr(
-        organizations, "human_tenant",
+        organizations,
+        "human_tenant",
         lambda *args, **kwargs: (organization, membership),
     )
     service = Mock()
@@ -125,9 +136,7 @@ def test_owner_can_restore_suspended_organization(client, monkeypatch, actor):
         id=org_id, name="Demo", slug="demo", status=OrganizationStatus.ACTIVE
     )
     monkeypatch.setattr(organizations, "_service", lambda _: service)
-    response = client.patch(
-        f"/api/v1/organizations/{org_id}", json={"status": "active"}
-    )
+    response = client.patch(f"/api/v1/organizations/{org_id}", json={"status": "active"})
     assert response.status_code == 200
     assert response.json()["status"] == "active"
     service.update_organization.assert_called_once_with(
@@ -137,11 +146,14 @@ def test_owner_can_restore_suspended_organization(client, monkeypatch, actor):
 
 def test_invitation_error_body_does_not_echo_secret(client):
     secret = "sensitive"
-    response = client.post("/api/v1/invitations/accept", json={
-        "organization_id": str(uuid4()),
-        "invitation_id": str(uuid4()),
-        "secret": secret,
-    })
+    response = client.post(
+        "/api/v1/invitations/accept",
+        json={
+            "organization_id": str(uuid4()),
+            "invitation_id": str(uuid4()),
+            "secret": secret,
+        },
+    )
     assert response.status_code == 422
     assert secret not in response.text
 
@@ -150,11 +162,14 @@ def test_invitation_accept_requires_csrf(client, monkeypatch):
     client.headers.pop("X-OpenVietGIS-CSRF")
     service = Mock()
     monkeypatch.setattr(invitations, "_service", lambda _: service)
-    response = client.post("/api/v1/invitations/accept", json={
-        "organization_id": str(uuid4()),
-        "invitation_id": str(uuid4()),
-        "secret": "synthetic-test-only-invitation-secret",
-    })
+    response = client.post(
+        "/api/v1/invitations/accept",
+        json={
+            "organization_id": str(uuid4()),
+            "invitation_id": str(uuid4()),
+            "secret": "synthetic-test-only-invitation-secret",
+        },
+    )
     assert response.status_code == 403
     service.accept.assert_not_called()
 
@@ -168,11 +183,14 @@ def test_wrong_invitation_returns_generic_error(client, monkeypatch):
     secret = "synthetic-test-only-invitation-secret"
     service.accept.side_effect = InvalidInvitationError(f"invalid {secret}")
     monkeypatch.setattr(invitations, "_service", lambda _: service)
-    response = client.post("/api/v1/invitations/accept", json={
-        "organization_id": str(uuid4()),
-        "invitation_id": str(uuid4()),
-        "secret": secret,
-    })
+    response = client.post(
+        "/api/v1/invitations/accept",
+        json={
+            "organization_id": str(uuid4()),
+            "invitation_id": str(uuid4()),
+            "secret": secret,
+        },
+    )
     assert response.status_code == 400
     assert response.json() == {"detail": "invalid invitation"}
     assert secret not in response.text

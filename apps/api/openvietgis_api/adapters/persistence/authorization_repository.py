@@ -6,7 +6,7 @@ from sqlalchemy import text
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.orm import Session
 
-from openvietgis_api.adapters.persistence.rls import set_request_context
+from openvietgis_api.adapters.persistence.rls import require_member_context
 from openvietgis_api.domains.authorization.context import AuthorizationContext
 from openvietgis_api.domains.authorization.domain import ResourceGrant
 from openvietgis_api.domains.authorization.permissions import Permission
@@ -14,6 +14,7 @@ from openvietgis_api.domains.authorization.roles import (
     ORGANIZATION_ROLE_PERMISSIONS,
     RESOURCE_ROLE_PERMISSIONS,
 )
+from openvietgis_api.domains.authorization.service import TenantResourceNotFoundError
 from openvietgis_api.domains.tenancy.domain import (
     ActorType,
     MembershipRole,
@@ -31,11 +32,10 @@ class SqlEffectivePermissionProvider:
         if actor.actor_type != "human" or actor.actor_id is None:
             return frozenset()
 
-        set_request_context(
-            self._session,
-            organization_id=context.organization_id,
-            actor_user_id=actor.actor_id,
-        )
+        try:
+            require_member_context(self._session, context, context.organization_id)
+        except TenantResourceNotFoundError:
+            return frozenset()
         membership = (
             self._session.execute(
                 text(
@@ -61,27 +61,43 @@ class SqlEffectivePermissionProvider:
         if membership is None:
             return frozenset()
 
-        permissions = set(
-            ORGANIZATION_ROLE_PERMISSIONS[MembershipRole(membership["role"])]
-        )
+        permissions = set(ORGANIZATION_ROLE_PERMISSIONS[MembershipRole(membership["role"])])
 
         workspace_id = context.workspace_id
         if context.project_id is not None:
-            project_workspace_id = self._session.execute(
-                text(
-                    """
-                    SELECT workspace_id
+            project = (
+                self._session.execute(
+                    text(
+                        """
+                    SELECT id, workspace_id
                     FROM workspace.projects
                     WHERE organization_id = :organization_id
                       AND id = :project_id
                     """
+                    ),
+                    {
+                        "organization_id": context.organization_id,
+                        "project_id": context.project_id,
+                    },
+                )
+                .mappings()
+                .one_or_none()
+            )
+            if project is None or (
+                workspace_id is not None and workspace_id != project["workspace_id"]
+            ):
+                return frozenset()
+            workspace_id = project["workspace_id"]
+        elif workspace_id is not None:
+            found = self._session.execute(
+                text(
+                    "SELECT id FROM workspace.workspaces "
+                    "WHERE organization_id = :org AND id = :workspace"
                 ),
-                {
-                    "organization_id": context.organization_id,
-                    "project_id": context.project_id,
-                },
+                {"org": context.organization_id, "workspace": workspace_id},
             ).scalar_one_or_none()
-            workspace_id = project_workspace_id
+            if found is None:
+                return frozenset()
 
         rows = self._session.execute(
             text(
@@ -118,6 +134,7 @@ class SqlEffectivePermissionProvider:
 
         return frozenset(permissions)
 
+
 def _grant_from_row(row: RowMapping) -> ResourceGrant:
     return ResourceGrant(
         id=row["grant_id"],
@@ -140,7 +157,10 @@ class SqlResourceGrantRepository:
     def __init__(self, session: Session) -> None:
         self._session = session
 
-    def list_for_organization(self, organization_id: UUID) -> list[ResourceGrant]:
+    def list_for_organization(
+        self, organization_id: UUID, *, context: AuthorizationContext
+    ) -> list[ResourceGrant]:
+        require_member_context(self._session, context, organization_id)
         rows = (
             self._session.execute(
                 text(
@@ -171,7 +191,8 @@ class SqlResourceGrantRepository:
         )
         return [_grant_from_row(row) for row in rows]
 
-    def create(self, grant: ResourceGrant) -> None:
+    def create(self, grant: ResourceGrant, *, context: AuthorizationContext) -> None:
+        require_member_context(self._session, context, grant.organization_id)
         self._session.execute(
             text(
                 """
@@ -209,10 +230,12 @@ class SqlResourceGrantRepository:
     def get(
         self,
         *,
+        context: AuthorizationContext,
         organization_id: UUID,
         grant_id: UUID,
         for_update: bool = False,
     ) -> ResourceGrant | None:
+        require_member_context(self._session, context, organization_id)
         suffix = " FOR UPDATE" if for_update else ""
         row = (
             self._session.execute(
@@ -245,7 +268,8 @@ class SqlResourceGrantRepository:
         )
         return _grant_from_row(row) if row is not None else None
 
-    def update(self, grant: ResourceGrant) -> None:
+    def update(self, grant: ResourceGrant, *, context: AuthorizationContext) -> None:
+        require_member_context(self._session, context, grant.organization_id)
         self._session.execute(
             text(
                 """

@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, Self
 from uuid import UUID
 
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from sqlalchemy.orm import Session
 
 from openvietgis_api.adapters.http.authorization import context_for, require_permission
@@ -47,6 +47,16 @@ class UpdateProjectRequest(BaseModel):
     workspace_id: UUID | None = None
     status: ProjectStatus | None = None
 
+    @model_validator(mode="after")
+    def require_changes(self) -> Self:
+        if (
+            self.name is None
+            and self.status is None
+            and "workspace_id" not in self.model_fields_set
+        ):
+            raise ValueError("at least one change is required")
+        return self
+
 
 def _service(session: Session) -> TenancyService:
     return TenancyService(
@@ -76,9 +86,15 @@ def list_projects(
 ) -> list[dict[str, object]]:
     human_tenant(session, authentication, organization_id)
     repository = SqlTenancyRepository(session)
-    if workspace_id is not None and repository.get_workspace(
-        organization_id=organization_id, workspace_id=workspace_id,
-    ) is None:
+    if (
+        workspace_id is not None
+        and repository.get_workspace(
+            context=context_for(authentication, organization_id=organization_id),
+            organization_id=organization_id,
+            workspace_id=workspace_id,
+        )
+        is None
+    ):
         raise TenantResourceNotFoundError("workspace not found")
     provider = SqlEffectivePermissionProvider(session)
     authorization = AuthorizationService(provider)
@@ -92,6 +108,7 @@ def list_projects(
         return [
             _serialize(item)
             for item in repository.list_projects(
+                context=context_for(authentication, organization_id=organization_id),
                 organization_id=organization_id,
                 workspace_id=workspace_id,
             )
@@ -99,6 +116,7 @@ def list_projects(
 
     visible = []
     for project in repository.list_projects(
+        context=context_for(authentication, organization_id=organization_id),
         organization_id=organization_id,
         workspace_id=workspace_id,
     ):
@@ -120,6 +138,16 @@ def create_project(
     session: Annotated[Session, Depends(get_db_session, scope="function")],
 ) -> dict[str, object]:
     human_tenant(session, authentication, organization_id, lock=True)
+    if (
+        payload.workspace_id is not None
+        and SqlTenancyRepository(session).get_workspace(
+            organization_id=organization_id,
+            workspace_id=payload.workspace_id,
+            context=context_for(authentication, organization_id=organization_id),
+        )
+        is None
+    ):
+        raise TenantResourceNotFoundError("workspace not found")
     context = context_for(
         authentication,
         organization_id=organization_id,
@@ -144,9 +172,14 @@ def get_project(
     session: Annotated[Session, Depends(get_db_session, scope="function")],
 ) -> dict[str, object]:
     human_tenant(session, authentication, organization_id)
-    if SqlTenancyRepository(session).get_project(
-        organization_id=organization_id, project_id=project_id,
-    ) is None:
+    if (
+        SqlTenancyRepository(session).get_project(
+            context=context_for(authentication, organization_id=organization_id),
+            organization_id=organization_id,
+            project_id=project_id,
+        )
+        is None
+    ):
         raise TenantResourceNotFoundError("project not found")
     context = context_for(
         authentication,
@@ -155,6 +188,7 @@ def get_project(
     )
     require_permission(session, context, Permission.PROJECT_READ)
     project = SqlTenancyRepository(session).get_project(
+        context=context_for(authentication, organization_id=organization_id),
         organization_id=organization_id,
         project_id=project_id,
     )
@@ -174,15 +208,30 @@ def update_project(
     session: Annotated[Session, Depends(get_db_session, scope="function")],
 ) -> dict[str, object]:
     human_tenant(session, authentication, organization_id, lock=True)
-    if SqlTenancyRepository(session).get_project(
-        organization_id=organization_id, project_id=project_id,
-    ) is None:
+    if (
+        SqlTenancyRepository(session).get_project(
+            context=context_for(authentication, organization_id=organization_id),
+            organization_id=organization_id,
+            project_id=project_id,
+        )
+        is None
+    ):
         raise TenantResourceNotFoundError("project not found")
     context = context_for(
         authentication,
         organization_id=organization_id,
         project_id=project_id,
     )
+    if (
+        payload.workspace_id is not None
+        and SqlTenancyRepository(session).get_workspace(
+            organization_id=organization_id,
+            workspace_id=payload.workspace_id,
+            context=context_for(authentication, organization_id=organization_id),
+        )
+        is None
+    ):
+        raise TenantResourceNotFoundError("workspace not found")
     if payload.name is not None:
         require_permission(session, context, Permission.PROJECT_MANAGE)
     if "workspace_id" in payload.model_fields_set:

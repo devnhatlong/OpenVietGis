@@ -70,7 +70,9 @@ class GrantService:
         project_id: UUID | None = None,
         now: datetime | None = None,
     ) -> ResourceGrant:
+        context = AuthorizationContext(actor, organization_id)
         membership = self.tenancy_repository.get_membership(
+            context=context,
             organization_id=organization_id,
             membership_id=membership_id,
         )
@@ -85,6 +87,7 @@ class GrantService:
                 raise InvalidGrantError("workspace scope requires workspace_id only")
             if (
                 self.tenancy_repository.get_workspace(
+                    context=context,
                     organization_id=organization_id,
                     workspace_id=workspace_id,
                 )
@@ -96,6 +99,7 @@ class GrantService:
                 raise InvalidGrantError("project scope requires project_id only")
             if (
                 self.tenancy_repository.get_project(
+                    context=context,
                     organization_id=organization_id,
                     project_id=project_id,
                 )
@@ -119,7 +123,7 @@ class GrantService:
             created_by_actor_id=actor.actor_id,
             revoked_at=None,
         )
-        self.repository.create(grant)
+        self.repository.create(grant, context=context)
         self.audit_repository.append(
             AuditEvent(
                 id=uuid4(),
@@ -149,7 +153,9 @@ class GrantService:
         grant_id: UUID,
         now: datetime | None = None,
     ) -> ResourceGrant:
+        context = AuthorizationContext(actor, organization_id)
         grant = self.repository.get(
+            context=context,
             organization_id=organization_id,
             grant_id=grant_id,
             for_update=True,
@@ -161,7 +167,7 @@ class GrantService:
 
         now = now or datetime.now(UTC)
         revoked = replace(grant, revoked_at=now)
-        self.repository.update(revoked)
+        self.repository.update(revoked, context=context)
         self.audit_repository.append(
             AuditEvent(
                 id=uuid4(),

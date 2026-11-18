@@ -6,7 +6,19 @@ from sqlalchemy import text
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.orm import Session
 
-from openvietgis_api.adapters.persistence.rls import set_request_context
+from openvietgis_api.adapters.persistence.rls import (
+    bind_new_organization_context,
+    confirm_member_context,
+    prepare_self_membership_lookup,
+    require_invitation_context,
+    require_member_context,
+)
+from openvietgis_api.domains.authorization.context import (
+    Actor,
+    AuthorizationContext,
+    InvitationAcceptanceContext,
+    TenantContext,
+)
 from openvietgis_api.domains.tenancy.domain import (
     ActorType,
     Invitation,
@@ -92,9 +104,7 @@ def _invitation_from_row(mapping: RowMapping) -> Invitation:
         resource_workspace_id=mapping["resource_workspace_id"],
         resource_project_id=mapping["resource_project_id"],
         resource_role=(
-            ResourceRole(mapping["resource_role"])
-            if mapping["resource_role"] is not None
-            else None
+            ResourceRole(mapping["resource_role"]) if mapping["resource_role"] is not None else None
         ),
         token_hash=mapping["token_hash"],
         token_prefix=mapping["token_prefix"],
@@ -129,7 +139,12 @@ class SqlTenancyRepository:
     def list_active_organizations_for_user(
         self,
         user_id: UUID,
+        *,
+        actor: Actor,
     ) -> list[tuple[Organization, OrganizationMembership]]:
+        prepare_self_membership_lookup(self._session, actor)
+        if actor.actor_id != user_id:
+            raise PermissionError("self-membership discovery requires matching actor")
         rows = (
             self._session.execute(
                 text(
@@ -169,14 +184,13 @@ class SqlTenancyRepository:
     def get_active_membership(
         self,
         *,
+        context: AuthorizationContext,
         organization_id: UUID,
         user_id: UUID,
     ) -> OrganizationMembership | None:
-        set_request_context(
-            self._session,
-            organization_id=organization_id,
-            actor_user_id=user_id,
-        )
+        if context.actor.actor_id != user_id or context.organization_id != organization_id:
+            raise PermissionError("membership lookup requires matching actor and organization")
+        prepare_self_membership_lookup(self._session, context.actor)
         row = (
             self._session.execute(
                 text(
@@ -202,13 +216,28 @@ class SqlTenancyRepository:
             .mappings()
             .one_or_none()
         )
-        return _membership_from_row(row) if row is not None else None
+        if row is not None:
+            confirm_member_context(self._session, context)
+            return _membership_from_row(row)
+        return None
 
     def create_organization_with_owner(
         self,
         organization: Organization,
         membership: OrganizationMembership,
+        *,
+        context: AuthorizationContext,
     ) -> None:
+        if (
+            context.organization_id != organization.id
+            or context.actor.actor_id != membership.user_id
+            or organization.created_by_actor_id != context.actor.actor_id
+            or membership.organization_id != organization.id
+            or membership.role != MembershipRole.OWNER
+            or membership.status != MembershipStatus.ACTIVE
+        ):
+            raise PermissionError("organization creation context mismatch")
+        bind_new_organization_context(self._session, context)
         self._session.execute(
             text(
                 """
@@ -233,11 +262,6 @@ class SqlTenancyRepository:
                 "updated_at": organization.updated_at,
                 "deleted_at": organization.deleted_at,
             },
-        )
-        set_request_context(
-            self._session,
-            organization_id=organization.id,
-            actor_user_id=membership.user_id,
         )
         self._session.execute(
             text(
@@ -264,8 +288,12 @@ class SqlTenancyRepository:
                 "revoked_at": membership.revoked_at,
             },
         )
+        confirm_member_context(self._session, context)
 
-    def list_workspaces(self, organization_id: UUID) -> list[Workspace]:
+    def list_workspaces(
+        self, organization_id: UUID, *, context: AuthorizationContext
+    ) -> list[Workspace]:
+        require_member_context(self._session, context, organization_id)
         rows = (
             self._session.execute(
                 text(
@@ -298,9 +326,11 @@ class SqlTenancyRepository:
     def get_workspace(
         self,
         *,
+        context: AuthorizationContext,
         organization_id: UUID,
         workspace_id: UUID,
     ) -> Workspace | None:
+        require_member_context(self._session, context, organization_id)
         row = (
             self._session.execute(
                 text(
@@ -329,7 +359,8 @@ class SqlTenancyRepository:
         )
         return _workspace_from_row(row) if row is not None else None
 
-    def create_workspace(self, workspace: Workspace) -> None:
+    def create_workspace(self, workspace: Workspace, *, context: AuthorizationContext) -> None:
+        require_member_context(self._session, context, workspace.organization_id)
         self._session.execute(
             text(
                 """
@@ -360,7 +391,8 @@ class SqlTenancyRepository:
             },
         )
 
-    def update_workspace(self, workspace: Workspace) -> None:
+    def update_workspace(self, workspace: Workspace, *, context: AuthorizationContext) -> None:
+        require_member_context(self._session, context, workspace.organization_id)
         self._session.execute(
             text(
                 """
@@ -388,9 +420,11 @@ class SqlTenancyRepository:
     def count_active_projects_in_workspace(
         self,
         *,
+        context: AuthorizationContext,
         organization_id: UUID,
         workspace_id: UUID,
     ) -> int:
+        require_member_context(self._session, context, organization_id)
         return int(
             self._session.execute(
                 text(
@@ -409,9 +443,11 @@ class SqlTenancyRepository:
     def list_projects(
         self,
         *,
+        context: AuthorizationContext,
         organization_id: UUID,
         workspace_id: UUID | None = None,
     ) -> list[Project]:
+        require_member_context(self._session, context, organization_id)
         query = """
             SELECT
                 id AS project_id,
@@ -442,9 +478,11 @@ class SqlTenancyRepository:
     def get_project(
         self,
         *,
+        context: AuthorizationContext,
         organization_id: UUID,
         project_id: UUID,
     ) -> Project | None:
+        require_member_context(self._session, context, organization_id)
         row = (
             self._session.execute(
                 text(
@@ -474,7 +512,8 @@ class SqlTenancyRepository:
         )
         return _project_from_row(row) if row is not None else None
 
-    def create_project(self, project: Project) -> None:
+    def create_project(self, project: Project, *, context: AuthorizationContext) -> None:
+        require_member_context(self._session, context, project.organization_id)
         self._session.execute(
             text(
                 """
@@ -506,7 +545,8 @@ class SqlTenancyRepository:
             },
         )
 
-    def update_project(self, project: Project) -> None:
+    def update_project(self, project: Project, *, context: AuthorizationContext) -> None:
+        require_member_context(self._session, context, project.organization_id)
         self._session.execute(
             text(
                 """
@@ -537,8 +577,13 @@ class SqlTenancyRepository:
         self,
         organization_id: UUID,
         *,
+        context: TenantContext,
         for_update: bool = False,
     ) -> Organization | None:
+        if isinstance(context, InvitationAcceptanceContext):
+            require_invitation_context(self._session, context, organization_id)
+        else:
+            require_member_context(self._session, context, organization_id)
         suffix = " FOR UPDATE" if for_update else ""
         row = (
             self._session.execute(
@@ -566,7 +611,10 @@ class SqlTenancyRepository:
         )
         return _organization_from_row(row) if row is not None else None
 
-    def update_organization(self, organization: Organization) -> None:
+    def update_organization(
+        self, organization: Organization, *, context: AuthorizationContext
+    ) -> None:
+        require_member_context(self._session, context, organization.id)
         self._session.execute(
             text(
                 """
@@ -590,7 +638,10 @@ class SqlTenancyRepository:
     def list_memberships(
         self,
         organization_id: UUID,
+        *,
+        context: AuthorizationContext,
     ) -> list[OrganizationMembership]:
+        require_member_context(self._session, context, organization_id)
         rows = (
             self._session.execute(
                 text(
@@ -620,10 +671,12 @@ class SqlTenancyRepository:
     def get_membership(
         self,
         *,
+        context: AuthorizationContext,
         organization_id: UUID,
         membership_id: UUID,
         for_update: bool = False,
     ) -> OrganizationMembership | None:
+        require_member_context(self._session, context, organization_id)
         suffix = " FOR UPDATE" if for_update else ""
         row = (
             self._session.execute(
@@ -658,10 +711,17 @@ class SqlTenancyRepository:
     def get_membership_for_user(
         self,
         *,
+        context: TenantContext,
         organization_id: UUID,
         user_id: UUID,
         for_update: bool = False,
     ) -> OrganizationMembership | None:
+        if isinstance(context, InvitationAcceptanceContext):
+            require_invitation_context(
+                self._session, context, organization_id, require_verified=True
+            )
+        else:
+            require_member_context(self._session, context, organization_id)
         suffix = " FOR UPDATE" if for_update else ""
         row = (
             self._session.execute(
@@ -693,9 +753,11 @@ class SqlTenancyRepository:
     def count_other_active_owners(
         self,
         *,
+        context: AuthorizationContext,
         organization_id: UUID,
         excluding_membership_id: UUID,
     ) -> int:
+        require_member_context(self._session, context, organization_id)
         return int(
             self._session.execute(
                 text(
@@ -715,7 +777,17 @@ class SqlTenancyRepository:
             ).scalar_one()
         )
 
-    def create_membership(self, membership: OrganizationMembership) -> None:
+    def create_membership(
+        self, membership: OrganizationMembership, *, context: TenantContext
+    ) -> None:
+        if isinstance(context, InvitationAcceptanceContext):
+            if context.actor.actor_id != membership.user_id:
+                raise PermissionError("invitation membership target mismatch")
+            require_invitation_context(
+                self._session, context, membership.organization_id, require_verified=True
+            )
+        else:
+            require_member_context(self._session, context, membership.organization_id)
         self._session.execute(
             text(
                 """
@@ -742,7 +814,17 @@ class SqlTenancyRepository:
             },
         )
 
-    def update_membership(self, membership: OrganizationMembership) -> None:
+    def update_membership(
+        self, membership: OrganizationMembership, *, context: TenantContext
+    ) -> None:
+        if isinstance(context, InvitationAcceptanceContext):
+            if context.actor.actor_id != membership.user_id:
+                raise PermissionError("invitation membership target mismatch")
+            require_invitation_context(
+                self._session, context, membership.organization_id, require_verified=True
+            )
+        else:
+            require_member_context(self._session, context, membership.organization_id)
         self._session.execute(
             text(
                 """
@@ -767,7 +849,8 @@ class SqlTenancyRepository:
             },
         )
 
-    def create_invitation(self, invitation: Invitation) -> None:
+    def create_invitation(self, invitation: Invitation, *, context: AuthorizationContext) -> None:
+        require_member_context(self._session, context, invitation.organization_id)
         self._session.execute(
             text(
                 """
@@ -807,9 +890,7 @@ class SqlTenancyRepository:
                 "resource_workspace_id": invitation.resource_workspace_id,
                 "resource_project_id": invitation.resource_project_id,
                 "resource_role": (
-                    invitation.resource_role.value
-                    if invitation.resource_role is not None
-                    else None
+                    invitation.resource_role.value if invitation.resource_role is not None else None
                 ),
                 "token_hash": invitation.token_hash,
                 "token_prefix": invitation.token_prefix,
@@ -826,10 +907,17 @@ class SqlTenancyRepository:
     def get_invitation(
         self,
         *,
+        context: TenantContext,
         organization_id: UUID,
         invitation_id: UUID,
         for_update: bool = False,
     ) -> Invitation | None:
+        if isinstance(context, InvitationAcceptanceContext):
+            require_invitation_context(
+                self._session, context, organization_id, invitation_id=invitation_id
+            )
+        else:
+            require_member_context(self._session, context, organization_id)
         suffix = " FOR UPDATE" if for_update else ""
         row = (
             self._session.execute(
@@ -874,7 +962,17 @@ class SqlTenancyRepository:
         )
         return _invitation_from_row(row) if row is not None else None
 
-    def update_invitation(self, invitation: Invitation) -> None:
+    def update_invitation(self, invitation: Invitation, *, context: TenantContext) -> None:
+        if isinstance(context, InvitationAcceptanceContext):
+            require_invitation_context(
+                self._session,
+                context,
+                invitation.organization_id,
+                invitation_id=invitation.id,
+                require_verified=invitation.status != InvitationStatus.EXPIRED,
+            )
+        else:
+            require_member_context(self._session, context, invitation.organization_id)
         self._session.execute(
             text(
                 """
