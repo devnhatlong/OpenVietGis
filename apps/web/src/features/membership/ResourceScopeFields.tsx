@@ -8,8 +8,9 @@ export type ScopeSelection = {
 
 export const initialScope: ScopeSelection = { scope: "organization", resourceId: "", role: "viewer" };
 
-export function selectedGrant(selection: ScopeSelection): InvitationResourceGrant | undefined {
-  if (selection.scope !== "organization" && !selection.resourceId) return undefined;
+export function selectedGrant(selection: ScopeSelection, workspaces: Workspace[], projects: Project[]): InvitationResourceGrant | undefined {
+  if (selection.scope !== "organization" && !(selection.scope === "workspace" ? workspaces : projects)
+    .some((item) => item.id === selection.resourceId && item.status === "active")) return undefined;
   return {
     scope_kind: selection.scope,
     role: selection.role,
@@ -39,7 +40,7 @@ export function ResourceScopeFields({ label, value, onChange, workspaces, projec
       </label>
       {value.scope !== "organization" ? (
         <label>Resource
-          <select required value={value.resourceId} onChange={(event) => onChange({ ...value, resourceId: event.target.value })}>
+          <select required value={(value.scope === "workspace" ? workspaces : projects).some((item) => item.id === value.resourceId && item.status === "active") ? value.resourceId : ""} onChange={(event) => onChange({ ...value, resourceId: event.target.value })}>
             <option value="">Select resource</option>
             {(value.scope === "workspace" ? workspaces : projects).filter((item) => item.status === "active").map((item) => (
               <option key={item.id} value={item.id}>{item.name}</option>

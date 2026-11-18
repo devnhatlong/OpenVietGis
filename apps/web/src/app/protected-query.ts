@@ -22,3 +22,8 @@ export function currentProtectedData<T>(result: ProtectedQueryResult<T>): T | un
   }
   return result.data;
 }
+
+/** Identity links are private to the current authenticated actor. */
+export function identityLinksKey(accountId: string) {
+  return ["identity-links", accountId] as const;
+}

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { currentProtectedData, protectedQueryOptions } from "./protected-query";
+import { currentProtectedData, identityLinksKey, protectedQueryOptions } from "./protected-query";
 
 describe("protected query visibility", () => {
   const completed = {
@@ -29,6 +29,11 @@ describe("protected query visibility", () => {
 
   it("fails closed even if a result unexpectedly has both an error and success", () => {
     expect(currentProtectedData({ ...completed, error: new Error("denied") })).toBeUndefined();
+  });
+
+  it("isolates identity link caches between signed-in actors", () => {
+    expect(identityLinksKey("actor-a")).toEqual(["identity-links", "actor-a"]);
+    expect(identityLinksKey("actor-a")).not.toEqual(identityLinksKey("actor-b"));
   });
 
   it("always revalidates protected data on remount, focus and reconnect", () => {

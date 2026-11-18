@@ -1,11 +1,11 @@
-import { acceptInvitation, ApiError, getCurrentUser, loadCsrfToken } from "@openvietgis/client-sdk";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { acceptInvitation, ApiError, loadCsrfToken } from "@openvietgis/client-sdk";
+import { useQueryClient } from "@tanstack/react-query";
 import type { FormEvent } from "react";
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
 import { apiClient } from "../../app/api";
-import { LoginPanel } from "../auth/LoginPanel";
+import { FreshAccount } from "../auth/FreshAccount";
 
 function parseHandoff(raw: string) {
   const data: unknown = JSON.parse(raw);
@@ -18,7 +18,7 @@ function parseHandoff(raw: string) {
   return { organization_id: data.organization_id, invitation_id: data.invitation_id, secret: data.secret };
 }
 
-function AcceptForm() {
+function AcceptForm({ userId }: { userId: string }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [handoff, setHandoff] = useState("");
@@ -35,11 +35,14 @@ function AcceptForm() {
       await loadCsrfToken(apiClient);
       const result = await acceptInvitation(apiClient, input);
       setHandoff("");
-      await queryClient.invalidateQueries({ queryKey: ["my-organizations"] });
+      await queryClient.invalidateQueries({ queryKey: ["my-organizations", userId] });
       await navigate("/organizations/" + encodeURIComponent(result.membership.organization_id));
-    } catch {
+    } catch (error) {
       setError("Unable to accept invitation. Verify the details and sign in with the intended identity.");
       setHandoff("");
+      if (error instanceof ApiError && error.status === 401) {
+        await queryClient.invalidateQueries({ queryKey: ["me"] });
+      }
     } finally {
       setPending(false);
     }
@@ -62,11 +65,5 @@ function AcceptForm() {
 }
 
 export function InvitationAcceptPage() {
-  const user = useQuery({
-    queryKey: ["me"], queryFn: () => getCurrentUser(apiClient), staleTime: 0, refetchOnMount: "always"
-  });
-  if (user.isFetching) return <p>Checking your account…</p>;
-  if (user.error instanceof ApiError && user.error.status === 401) return <LoginPanel />;
-  if (!user.data || user.error) return <p role="alert">Unable to load your account.</p>;
-  return <AcceptForm key={user.data.id} />;
+  return <FreshAccount>{(account) => <AcceptForm key={account.id} userId={account.id} />}</FreshAccount>;
 }

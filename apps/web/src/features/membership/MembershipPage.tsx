@@ -1,5 +1,5 @@
 import {
-  ApiError, createResourceGrant, getCurrentUser, getEffectivePermissions,
+  ApiError, createResourceGrant, getEffectivePermissions,
   listOrganizationMembers, listProjects, listResourceGrants, listWorkspaces,
   loadCsrfToken, revokeResourceGrant, updateOrganizationMembership,
   type MembershipUpdate
@@ -10,7 +10,8 @@ import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
 import { apiClient } from "../../app/api";
-import { LoginPanel } from "../auth/LoginPanel";
+import { currentProtectedData, protectedQueryOptions } from "../../app/protected-query";
+import { FreshAccount } from "../auth/FreshAccount";
 import { InvitationIssuePanel } from "../invitations/InvitationIssuePanel";
 import { initialScope, ResourceScopeFields, selectedGrant } from "./ResourceScopeFields";
 
@@ -30,35 +31,53 @@ function MemberAdministration({ organizationId, userId, permissions }: {
     queryKey: ["members", organizationId, userId],
     queryFn: () => listOrganizationMembers(apiClient, organizationId),
     enabled: canManageMembers || canManageGrants,
-    staleTime: 0
+    ...protectedQueryOptions
   });
   const grants = useQuery({
     queryKey: ["grants", organizationId, userId],
     queryFn: () => listResourceGrants(apiClient, organizationId),
     enabled: canManageGrants,
-    staleTime: 0
+    ...protectedQueryOptions
   });
   const workspaces = useQuery({
     queryKey: ["workspaces", organizationId, userId],
     queryFn: () => listWorkspaces(apiClient, organizationId),
     enabled: canManageGrants || canManageInvitations,
-    staleTime: 0
+    ...protectedQueryOptions
   });
   const projects = useQuery({
     queryKey: ["projects", organizationId, userId],
     queryFn: () => listProjects(apiClient, organizationId),
     enabled: canManageGrants || canManageInvitations,
-    staleTime: 0
+    ...protectedQueryOptions
   });
+
+  const currentMembers = currentProtectedData(members);
+  const currentGrants = currentProtectedData(grants);
+  const currentWorkspaces = currentProtectedData(workspaces);
+  const currentProjects = currentProtectedData(projects);
+  const availableMembers = currentMembers ?? [];
+  const availableWorkspaces = currentWorkspaces ?? [];
+  const availableProjects = currentProjects ?? [];
+  const canSubmitGrant = currentGrants !== undefined && availableMembers.some((member) => member.id === membershipId && member.status === "active") &&
+    !!selectedGrant(scope, availableWorkspaces, availableProjects);
 
   async function refreshAccess() {
     await Promise.all([
-      queryClient.invalidateQueries({ queryKey: ["my-organizations"] }),
-      queryClient.invalidateQueries({ queryKey: ["members", organizationId] }),
-      queryClient.invalidateQueries({ queryKey: ["grants", organizationId] }),
-      queryClient.invalidateQueries({ queryKey: ["permissions", organizationId] }),
-      queryClient.invalidateQueries({ queryKey: ["workspaces", organizationId] }),
-      queryClient.invalidateQueries({ queryKey: ["projects", organizationId] })
+      queryClient.invalidateQueries({ queryKey: ["my-organizations", userId] }),
+      queryClient.invalidateQueries({ queryKey: ["members", organizationId, userId] }),
+      queryClient.invalidateQueries({ queryKey: ["grants", organizationId, userId] }),
+      queryClient.invalidateQueries({ queryKey: ["permissions", organizationId, userId] }),
+      queryClient.invalidateQueries({ queryKey: ["workspaces", organizationId, userId] }),
+      queryClient.invalidateQueries({ queryKey: ["projects", organizationId, userId] })
+    ]);
+  }
+
+  async function refreshAfterError(error: unknown) {
+    await Promise.all([
+      refreshAccess(),
+      ...(error instanceof ApiError && (error.status === 401 || error.status === 403)
+        ? [queryClient.invalidateQueries({ queryKey: ["me"] })] : [])
     ]);
   }
 
@@ -67,12 +86,13 @@ function MemberAdministration({ organizationId, userId, permissions }: {
       await loadCsrfToken(apiClient);
       await updateOrganizationMembership(apiClient, organizationId, id, change);
     },
-    onSuccess: refreshAccess
+    onSuccess: refreshAccess,
+    onError: refreshAfterError
   });
   const grantAccess = useMutation({
     mutationFn: async () => {
-      const grant = selectedGrant(scope);
-      if (!grant || !membershipId) throw new Error("Missing grant target");
+      const grant = selectedGrant(scope, availableWorkspaces, availableProjects);
+      if (!grant || !canSubmitGrant) throw new Error("Missing grant target");
       await loadCsrfToken(apiClient);
       await createResourceGrant(apiClient, organizationId, {
         ...grant, subject_kind: "membership", subject_id: membershipId
@@ -81,32 +101,29 @@ function MemberAdministration({ organizationId, userId, permissions }: {
     onSuccess: async () => {
       setMembershipId("");
       await refreshAccess();
-    }
+    },
+    onError: refreshAfterError
   });
   const revokeAccess = useMutation({
     mutationFn: async (id: string) => {
       await loadCsrfToken(apiClient);
       await revokeResourceGrant(apiClient, organizationId, id);
     },
-    onSuccess: refreshAccess
+    onSuccess: refreshAccess,
+    onError: refreshAfterError
   });
 
   function submitGrant(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!grantAccess.isPending && membershipId && selectedGrant(scope)) grantAccess.mutate();
+    if (!grantAccess.isPending && canSubmitGrant) grantAccess.mutate();
   }
-
-  const availableWorkspaces = workspaces.error || workspaces.isFetching ? [] : workspaces.data ?? [];
-  const availableProjects = projects.error || projects.isFetching ? [] : projects.data ?? [];
-  const availableMembers = members.error || members.isFetching ? [] : members.data ?? [];
 
   return (
     <>
       {canManageMembers ? (
         <section>
           <h2>Members</h2>
-          {members.isFetching ? <p>Loading members…</p> : null}
-          {members.error ? <p role="alert">Unable to load members.</p> : null}
+          {members.fetchStatus !== "idle" || members.isPending ? <p>Loading members…</p> : !currentMembers ? <p role="alert">Unable to load members.</p> : null}
           <ul data-testid="member-list">
             {availableMembers.map((member) => (
               <li key={member.id} data-testid={"member-" + member.id}>
@@ -133,7 +150,7 @@ function MemberAdministration({ organizationId, userId, permissions }: {
           <h2>Resource grants</h2>
           <form onSubmit={submitGrant}>
             <label>Membership
-              <select required value={membershipId} onChange={(event) => setMembershipId(event.target.value)}>
+              <select required value={availableMembers.some((member) => member.id === membershipId && member.status === "active") ? membershipId : ""} onChange={(event) => setMembershipId(event.target.value)}>
                 <option value="">Select member</option>
                 {availableMembers.filter((member) => member.status === "active").map((member) => (
                   <option key={member.id} value={member.id}>{member.user_id} — {member.role}</option>
@@ -141,26 +158,26 @@ function MemberAdministration({ organizationId, userId, permissions }: {
               </select>
             </label>
             <ResourceScopeFields label="Grant resource access" value={scope} onChange={setScope} workspaces={availableWorkspaces} projects={availableProjects} />
-            <button type="submit" disabled={grantAccess.isPending}>Create grant</button>
+            <button type="submit" disabled={grantAccess.isPending || !canSubmitGrant}>Create grant</button>
           </form>
-          {grants.isFetching ? <p>Loading grants…</p> : null}
-          {grants.error || workspaces.error || projects.error ? <p role="alert">Unable to load grant resources.</p> : null}
+          {grants.fetchStatus !== "idle" || grants.isPending ? <p>Loading grants…</p> : null}
+          {grants.error || members.error || workspaces.error || projects.error ? <p role="alert">Unable to load grant resources.</p> : null}
           <ul data-testid="resource-grant-list">
-            {!grants.isFetching && !grants.error ? grants.data?.map((grant) => (
+            {currentGrants?.map((grant) => (
               <li key={grant.id}>
                 {grant.subject_id} — {grant.role} — {grant.scope_kind} {grant.workspace_id ?? grant.project_id ?? ""} — {grant.revoked_at ? "revoked" : "active"}{" "}
                 {!grant.revoked_at ? (
                   <button type="button" disabled={revokeAccess.isPending} onClick={() => revokeAccess.mutate(grant.id)}>Revoke grant</button>
                 ) : null}
               </li>
-            )) : null}
+            ))}
           </ul>
           {grantAccess.error || revokeAccess.error ? <p role="alert">Unable to update grant.</p> : null}
         </section>
       ) : null}
 
       {canManageInvitations ? (
-        <InvitationIssuePanel organizationId={organizationId} workspaces={availableWorkspaces} projects={availableProjects} />
+        <InvitationIssuePanel organizationId={organizationId} workspaces={availableWorkspaces} projects={availableProjects} onAccessError={refreshAfterError} />
       ) : null}
       {!canManageMembers && !canManageGrants && !canManageInvitations ? (
         <p>You do not have permission to administer this organization.</p>
@@ -173,18 +190,19 @@ function OrganizationMembership({ organizationId, userId }: { organizationId: st
   const effective = useQuery({
     queryKey: ["permissions", organizationId, userId],
     queryFn: () => getEffectivePermissions(apiClient, organizationId),
-    staleTime: 0,
-    refetchOnMount: "always"
+    ...protectedQueryOptions
   });
+
+  const current = currentProtectedData(effective);
 
   return (
     <main style={{ maxWidth: 960, margin: "40px auto", fontFamily: "system-ui, sans-serif" }}>
       <Link to={"/organizations/" + encodeURIComponent(organizationId)}>← Organization</Link>
       <h1>Membership and access</h1>
-      {effective.isFetching ? <p>Checking organization permissions…</p> : effective.error || !effective.data ? (
+      {effective.fetchStatus !== "idle" || effective.isPending ? <p>Checking organization permissions…</p> : !current ? (
         <p role="alert">Unable to load organization access.</p>
       ) : (
-        <MemberAdministration organizationId={organizationId} userId={userId} permissions={effective.data.permissions} />
+        <MemberAdministration organizationId={organizationId} userId={userId} permissions={current.permissions} />
       )}
     </main>
   );
@@ -192,10 +210,10 @@ function OrganizationMembership({ organizationId, userId }: { organizationId: st
 
 export function MembershipPage() {
   const { organizationId } = useParams();
-  const user = useQuery({ queryKey: ["me"], queryFn: () => getCurrentUser(apiClient), staleTime: 0, refetchOnMount: "always" });
   if (!organizationId) return <p role="alert">Organization context is missing.</p>;
-  if (user.isFetching) return <p>Checking your account…</p>;
-  if (user.error instanceof ApiError && user.error.status === 401) return <LoginPanel />;
-  if (user.error || !user.data) return <p role="alert">Unable to load your account.</p>;
-  return <OrganizationMembership key={organizationId + ":" + user.data.id} organizationId={organizationId} userId={user.data.id} />;
+  return (
+    <FreshAccount key={organizationId}>
+      {(account) => <OrganizationMembership key={organizationId + ":" + account.id} organizationId={organizationId} userId={account.id} />}
+    </FreshAccount>
+  );
 }

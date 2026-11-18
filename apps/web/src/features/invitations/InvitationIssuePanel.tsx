@@ -8,10 +8,11 @@ import type { FormEvent } from "react";
 import { apiClient } from "../../app/api";
 import { initialScope, ResourceScopeFields, selectedGrant } from "../membership/ResourceScopeFields";
 
-export function InvitationIssuePanel({ organizationId, workspaces, projects }: {
+export function InvitationIssuePanel({ organizationId, workspaces, projects, onAccessError }: {
   organizationId: string;
   workspaces: Workspace[];
   projects: Project[];
+  onAccessError: (error: unknown) => Promise<void>;
 }) {
   const [kind, setKind] = useState<InvitationCreate["target"]["kind"]>("email");
   const [target, setTarget] = useState("");
@@ -25,10 +26,11 @@ export function InvitationIssuePanel({ organizationId, workspaces, projects }: {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
+  const resourceGrant = withGrant ? selectedGrant(scope, workspaces, projects) : null;
+
   async function issue(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (pending) return;
-    const resourceGrant = withGrant ? selectedGrant(scope) : null;
     if (withGrant && !resourceGrant) return;
     const recipient: InvitationCreate["target"] = kind === "email"
       ? { kind, email: target.trim() }
@@ -50,9 +52,10 @@ export function InvitationIssuePanel({ organizationId, workspaces, projects }: {
       setRevokeId(result.id);
       setTarget("");
       setSubject("");
-    } catch {
+    } catch (error) {
       // Never display raw response bodies; the response may contain a one-time secret.
       setError("Unable to issue invitation.");
+      await onAccessError(error);
     } finally {
       setPending(false);
     }
@@ -64,14 +67,15 @@ export function InvitationIssuePanel({ organizationId, workspaces, projects }: {
     setPending(true);
     setError("");
     setMessage("");
+    setIssued(null);
     try {
       await loadCsrfToken(apiClient);
       await revokeInvitation(apiClient, organizationId, revokeId.trim());
-      if (issued?.id === revokeId.trim()) setIssued(null);
       setRevokeId("");
       setMessage("Invitation revoked.");
-    } catch {
+    } catch (error) {
       setError("Unable to revoke invitation.");
+      await onAccessError(error);
     } finally {
       setPending(false);
     }
@@ -109,7 +113,7 @@ export function InvitationIssuePanel({ organizationId, workspaces, projects }: {
         <label><input type="checkbox" checked={withGrant} onChange={(event) => setWithGrant(event.target.checked)} /> Include resource grant</label>
         {withGrant ? <ResourceScopeFields label="Invitation resource access" value={scope} onChange={setScope} workspaces={workspaces} projects={projects} /> : null}
         <p>Expires in 24 hours. The secret is shown once and will not be saved by this page.</p>
-        <button type="submit" disabled={pending}>Issue invitation</button>
+        <button type="submit" disabled={pending || (withGrant && !resourceGrant)}>Issue invitation</button>
       </form>
       {issued ? (
         <section aria-label="Issued invitation">
