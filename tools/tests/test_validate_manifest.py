@@ -22,6 +22,7 @@ def test_root_validation_manifest_contains_all_mandatory_categories() -> None:
         "validate:docs",
         "validate:integration",
         "validate:e2e",
+        "validate:e2e:bootstrap",
     ):
         assert category in scripts
         assert category in scripts["validate"]
@@ -65,10 +66,8 @@ def test_ci_uses_the_dedicated_database_and_reference_identity_fixture() -> None
     migration = next(command for command in commands if "tools.run_with_test_database" in command)
     assert "get_engine().connect()" in migration
     assert commands.index(start) < commands.index(realm) < commands.index(migration)
-    frontend_validation = next(command for command in commands if "pnpm validate:runtime" in command)
+    frontend_validation = next(command for command in commands if command == "pnpm validate")
     assert commands.index(migration) < commands.index(frontend_validation)
-    for category in ("runtime", "ts", "contracts", "e2e"):
-        assert f"pnpm validate:{category}" in frontend_validation
     assert "pnpm install --frozen-lockfile" in commands
     assert "uv sync --project apps/api --frozen" in commands
     timing = next(command for command in commands if "tools/check_tenant_timing.py" in command)

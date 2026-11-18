@@ -125,8 +125,8 @@ jobs:
           "from openvietgis_api.adapters.persistence.db import get_engine;
           connection = get_engine().connect(); connection.close()"
 
-      - name: Validate Node runtime, frontend, generated contracts and browser E2E
-        run: pnpm validate:runtime && pnpm validate:ts && pnpm validate:contracts && pnpm validate:e2e && pnpm validate:e2e:bootstrap
+      - name: Run the full Node 26 root validation workflow
+        run: pnpm validate
 
       - name: Scan explicit synthetic test evidence
         run: |
