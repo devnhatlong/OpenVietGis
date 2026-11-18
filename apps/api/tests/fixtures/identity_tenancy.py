@@ -8,7 +8,7 @@ import pytest
 from sqlalchemy import text
 from testcontainers.community.postgres import PostgresContainer
 
-from openvietgis_api.adapters.persistence.db import get_engine
+from tests.fixtures.db_admin import get_admin_engine
 
 
 @dataclass(frozen=True, slots=True)
@@ -67,7 +67,7 @@ def seed_access_world() -> AccessWorld:
     workspace_b_id = uuid4()
     project_id = uuid4()
 
-    with get_engine().begin() as connection:
+    with get_admin_engine().begin() as connection:
         for user_id, name, email in (
             (owner_user_id, "Owner", "owner@example.test"),
             (member_user_id, "Member", "member-a@example.test"),

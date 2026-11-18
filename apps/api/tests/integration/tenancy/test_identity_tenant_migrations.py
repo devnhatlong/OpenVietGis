@@ -6,11 +6,11 @@ import pytest
 from sqlalchemy import inspect, text
 from sqlalchemy.exc import IntegrityError
 
-from openvietgis_api.adapters.persistence.db import get_engine
+from tests.fixtures.db_admin import get_admin_engine
 
 
 def test_identity_tenant_schemas_and_tables_exist(migrated_database: None) -> None:
-    inspector = inspect(get_engine())
+    inspector = inspect(get_admin_engine())
 
     assert {"users", "identity_links", "web_sessions"} <= set(
         inspector.get_table_names(schema="identity")
@@ -24,7 +24,7 @@ def test_identity_tenant_schemas_and_tables_exist(migrated_database: None) -> No
 
 
 def test_installation_state_is_singleton(migrated_database: None) -> None:
-    engine = get_engine()
+    engine = get_admin_engine()
     with engine.begin() as connection:
         row = connection.execute(
             text(
@@ -61,7 +61,7 @@ def test_project_workspace_composite_fk_rejects_cross_organization_grouping(
     workspace_b = uuid4()
     project_a = uuid4()
 
-    engine = get_engine()
+    engine = get_admin_engine()
     with engine.begin() as connection:
         connection.execute(
             text(
@@ -134,7 +134,7 @@ def test_project_workspace_composite_fk_rejects_cross_organization_grouping(
 def test_identity_link_issuer_subject_is_unique(migrated_database: None) -> None:
     user_a, user_b = uuid4(), uuid4()
     subject = f"subject-{uuid4()}"
-    engine = get_engine()
+    engine = get_admin_engine()
     with engine.begin() as connection:
         for user_id in (user_a, user_b):
             connection.execute(

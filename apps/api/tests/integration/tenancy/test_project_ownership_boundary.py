@@ -6,14 +6,14 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 
-from openvietgis_api.adapters.persistence.db import get_engine
+from tests.fixtures.db_admin import get_admin_engine
 
 
 def test_database_rejects_project_workspace_cross_tenant_reference(
     migrated_database: None,
 ) -> None:
     user_id, org_a, org_b, workspace_b = uuid4(), uuid4(), uuid4(), uuid4()
-    with get_engine().begin() as connection:
+    with get_admin_engine().begin() as connection:
         connection.execute(
             text(
                 """
@@ -58,7 +58,7 @@ def test_database_rejects_project_workspace_cross_tenant_reference(
         )
 
     with pytest.raises(IntegrityError):
-        with get_engine().begin() as connection:
+        with get_admin_engine().begin() as connection:
             connection.execute(
                 text(
                     """

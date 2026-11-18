@@ -44,12 +44,16 @@ def test_settings_reject_empty_database_url() -> None:
         Settings(**values, _env_file=None)
 
 
-def test_runtime_and_migration_urls_fall_back_to_database_url(
+def test_runtime_url_must_be_explicit_and_distinct(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.delenv("OPENVIETGIS_RUNTIME_DATABASE_URL", raising=False)
     monkeypatch.delenv("OPENVIETGIS_MIGRATION_DATABASE_URL", raising=False)
     settings = Settings(**_valid_settings_kwargs(), _env_file=None)
 
-    assert settings.runtime_db_url == settings.database_url
+    with pytest.raises(RuntimeError, match="explicit"):
+        _ = settings.runtime_db_url
     assert settings.migration_db_url == settings.database_url
+    settings.runtime_database_url = settings.database_url
+    with pytest.raises(RuntimeError, match="distinct"):
+        _ = settings.runtime_db_url

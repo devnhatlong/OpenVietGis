@@ -6,7 +6,6 @@ import pytest
 from sqlalchemy import text
 
 from openvietgis_api.adapters.persistence.audit_repository import SqlAuditRepository
-from openvietgis_api.adapters.persistence.db import get_engine, get_session_factory
 from openvietgis_api.adapters.persistence.platform_repository import SqlPlatformRepository
 from openvietgis_api.adapters.persistence.tenancy_repository import SqlTenancyRepository
 from openvietgis_api.domains.authorization.context import Actor
@@ -16,12 +15,13 @@ from openvietgis_api.domains.tenancy.service import (
     TenancyService,
     WorkspaceHasActiveProjectsError,
 )
+from tests.fixtures.db_admin import get_admin_engine, get_admin_session_factory
 
 
 def _seed_orgs_and_actor() -> tuple[Actor, object, object]:
     user_id = uuid4()
     org_a, org_b = uuid4(), uuid4()
-    with get_engine().begin() as connection:
+    with get_admin_engine().begin() as connection:
         connection.execute(
             text(
                 """
@@ -53,7 +53,7 @@ def _seed_orgs_and_actor() -> tuple[Actor, object, object]:
 
 def test_workspace_project_lifecycle_and_same_org_moves(migrated_database: None) -> None:
     actor, org_a, _ = _seed_orgs_and_actor()
-    session = get_session_factory()()
+    session = get_admin_session_factory()()
     try:
         service = TenancyService(
             SqlTenancyRepository(session),
@@ -113,7 +113,7 @@ def test_workspace_project_lifecycle_and_same_org_moves(migrated_database: None)
 
 def test_cross_organization_workspace_move_is_rejected(migrated_database: None) -> None:
     actor, org_a, org_b = _seed_orgs_and_actor()
-    session = get_session_factory()()
+    session = get_admin_session_factory()()
     try:
         service = TenancyService(
             SqlTenancyRepository(session),
@@ -155,7 +155,7 @@ def test_cross_organization_workspace_move_is_rejected(migrated_database: None) 
 
 def test_workspace_delete_rejects_active_project(migrated_database: None) -> None:
     actor, org_a, _ = _seed_orgs_and_actor()
-    session = get_session_factory()()
+    session = get_admin_session_factory()()
     try:
         service = TenancyService(
             SqlTenancyRepository(session),

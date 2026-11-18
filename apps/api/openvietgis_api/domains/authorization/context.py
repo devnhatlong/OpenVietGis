@@ -34,10 +34,13 @@ class RequestedActorContext:
     organization_id: UUID
     workspace_id: UUID | None = None
     project_id: UUID | None = None
+    credential_id: UUID | None = None
 
     def __post_init__(self) -> None:
         if self.actor_type != "system" and self.actor_id is None:
             raise ValueError("non-system requested actor requires actor_id")
+        if (self.actor_type == "service_principal") != (self.credential_id is not None):
+            raise ValueError("only service actors must include credential_id")
 
     def to_payload(self) -> dict[str, str | None]:
         return {
@@ -46,6 +49,7 @@ class RequestedActorContext:
             "organization_id": str(self.organization_id),
             "workspace_id": str(self.workspace_id) if self.workspace_id else None,
             "project_id": str(self.project_id) if self.project_id else None,
+            "credential_id": str(self.credential_id) if self.credential_id else None,
         }
 
     @classmethod
@@ -59,4 +63,5 @@ class RequestedActorContext:
             organization_id=UUID(payload["organization_id"]),
             workspace_id=UUID(payload["workspace_id"]) if payload.get("workspace_id") else None,
             project_id=UUID(payload["project_id"]) if payload.get("project_id") else None,
+            credential_id=UUID(payload["credential_id"]) if payload.get("credential_id") else None,
         )

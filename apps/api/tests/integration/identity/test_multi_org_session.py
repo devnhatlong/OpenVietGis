@@ -6,11 +6,11 @@ from uuid import uuid4
 from fastapi.testclient import TestClient
 from sqlalchemy import text
 
-from openvietgis_api.adapters.persistence.db import get_engine, get_session_factory
 from openvietgis_api.adapters.persistence.identity_repository import SqlIdentityRepository
 from openvietgis_api.domains.audit.ports import AuditRepository
 from openvietgis_api.domains.identity.service import ExternalIdentityClaims, IdentityService
 from openvietgis_api.main import create_app
+from tests.fixtures.db_admin import get_admin_engine, get_admin_session_factory
 
 
 class NullAuditRepository(AuditRepository):
@@ -19,7 +19,7 @@ class NullAuditRepository(AuditRepository):
 
 
 def _authenticated_client() -> tuple[TestClient, str]:
-    session = get_session_factory()()
+    session = get_admin_session_factory()()
     try:
         service = IdentityService(
             SqlIdentityRepository(session),
@@ -49,7 +49,7 @@ def _authenticated_client() -> tuple[TestClient, str]:
 def _set_initialized_for_user(user_id: str) -> None:
     initial_org = uuid4()
     initial_membership = uuid4()
-    with get_engine().begin() as connection:
+    with get_admin_engine().begin() as connection:
         connection.execute(
             text(
                 """
@@ -110,7 +110,7 @@ def _set_initialized_for_user(user_id: str) -> None:
 def test_normal_organization_create_requires_initialized_installation_and_creates_owner(
     migrated_database: None,
 ) -> None:
-    with get_engine().begin() as connection:
+    with get_admin_engine().begin() as connection:
         connection.execute(
             text(
                 """
@@ -163,7 +163,7 @@ def test_normal_organization_create_requires_initialized_installation_and_create
         assert set(created_ids) <= {item["id"] for item in orgs}
         assert all(item["role"] == "owner" for item in orgs)
 
-        with get_engine().connect() as connection:
+        with get_admin_engine().connect() as connection:
             audited = set(
                 connection.execute(
                     text(

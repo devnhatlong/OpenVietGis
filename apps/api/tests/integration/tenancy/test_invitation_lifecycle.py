@@ -6,7 +6,6 @@ import pytest
 
 from openvietgis_api.adapters.persistence.audit_repository import SqlAuditRepository
 from openvietgis_api.adapters.persistence.authorization_repository import SqlResourceGrantRepository
-from openvietgis_api.adapters.persistence.db import get_session_factory
 from openvietgis_api.adapters.persistence.identity_repository import SqlIdentityRepository
 from openvietgis_api.adapters.persistence.tenancy_repository import SqlTenancyRepository
 from openvietgis_api.domains.authorization.context import Actor
@@ -22,6 +21,7 @@ from openvietgis_api.domains.tenancy.service import (
     InvitationService,
     InvitationTargetMismatchError,
 )
+from tests.fixtures.db_admin import get_admin_session_factory
 from tests.fixtures.identity_tenancy import seed_access_world
 
 
@@ -38,7 +38,7 @@ def test_invitation_recipient_binding_accept_once_and_optional_grant(
     migrated_database: None,
 ) -> None:
     world = seed_access_world()
-    session = get_session_factory()()
+    session = get_admin_session_factory()()
     owner = Actor(actor_type="human", actor_id=world.owner_user_id, display_name="Owner")
     wrong = Actor(actor_type="human", actor_id=world.wrong_user_id, display_name="Wrong")
     member = Actor(actor_type="human", actor_id=world.member_user_id, display_name="Member")
@@ -104,7 +104,7 @@ def test_invitation_recipient_binding_accept_once_and_optional_grant(
 
 def test_invitation_expiry_and_revocation_are_rejected(migrated_database: None) -> None:
     world = seed_access_world()
-    session = get_session_factory()()
+    session = get_admin_session_factory()()
     owner = Actor(actor_type="human", actor_id=world.owner_user_id, display_name="Owner")
     member = Actor(actor_type="human", actor_id=world.member_user_id, display_name="Member")
     now = datetime.now(UTC)

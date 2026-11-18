@@ -43,7 +43,11 @@ class Settings(BaseSettings):
 
     @property
     def runtime_db_url(self) -> str:
-        return self.runtime_database_url or self.database_url
+        if not self.runtime_database_url:
+            raise RuntimeError("An explicit non-privileged runtime database URL is required")
+        if self.runtime_database_url == self.migration_db_url:
+            raise RuntimeError("Runtime and migration database credentials must be distinct")
+        return self.runtime_database_url
 
 
 @lru_cache

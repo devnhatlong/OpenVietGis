@@ -7,9 +7,9 @@ from sqlalchemy import text
 from openvietgis_api.adapters.persistence.authorization_repository import (
     SqlEffectivePermissionProvider,
 )
-from openvietgis_api.adapters.persistence.db import get_engine, get_session_factory
 from openvietgis_api.domains.authorization.context import Actor, AuthorizationContext
 from openvietgis_api.domains.authorization.permissions import Permission
+from tests.fixtures.db_admin import get_admin_engine, get_admin_session_factory
 
 
 def test_workspace_grant_inheritance_is_dynamic_and_project_grant_is_additive(
@@ -24,7 +24,7 @@ def test_workspace_grant_inheritance_is_dynamic_and_project_grant_is_additive(
     )
     workspace_grant_id, project_grant_id = uuid4(), uuid4()
 
-    with get_engine().begin() as connection:
+    with get_admin_engine().begin() as connection:
         for user_id, name in ((owner_id, "Owner"), (member_id, "Member")):
             connection.execute(
                 text(
@@ -137,7 +137,7 @@ def test_workspace_grant_inheritance_is_dynamic_and_project_grant_is_additive(
     actor = Actor(actor_type="human", actor_id=member_id, display_name="Member")
     context = AuthorizationContext(actor=actor, organization_id=org_id, project_id=project_id)
 
-    session = get_session_factory()()
+    session = get_admin_session_factory()()
     try:
         provider = SqlEffectivePermissionProvider(session)
         assert Permission.PROJECT_READ in provider.resolve(context)
@@ -145,7 +145,7 @@ def test_workspace_grant_inheritance_is_dynamic_and_project_grant_is_additive(
     finally:
         session.close()
 
-    with get_engine().begin() as connection:
+    with get_admin_engine().begin() as connection:
         connection.execute(
             text(
                 """
@@ -157,7 +157,7 @@ def test_workspace_grant_inheritance_is_dynamic_and_project_grant_is_additive(
             {"workspace_b": workspace_b, "org_id": org_id, "project_id": project_id},
         )
 
-    session = get_session_factory()()
+    session = get_admin_session_factory()()
     try:
         provider = SqlEffectivePermissionProvider(session)
         assert Permission.PROJECT_READ not in provider.resolve(context)
@@ -165,7 +165,7 @@ def test_workspace_grant_inheritance_is_dynamic_and_project_grant_is_additive(
     finally:
         session.close()
 
-    with get_engine().begin() as connection:
+    with get_admin_engine().begin() as connection:
         connection.execute(
             text(
                 """
@@ -189,7 +189,7 @@ def test_workspace_grant_inheritance_is_dynamic_and_project_grant_is_additive(
             },
         )
 
-    session = get_session_factory()()
+    session = get_admin_session_factory()()
     try:
         provider = SqlEffectivePermissionProvider(session)
         assert Permission.PROJECT_READ in provider.resolve(context)

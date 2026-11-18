@@ -31,15 +31,14 @@ os.environ.setdefault(
     ),
 )
 TEST_DATABASE_URL = os.environ["OPENVIETGIS_TEST_DATABASE_URL"]
-os.environ.setdefault("OPENVIETGIS_DATABASE_URL", TEST_DATABASE_URL)
-os.environ["OPENVIETGIS_MIGRATION_DATABASE_URL"] = TEST_DATABASE_URL
-os.environ["OPENVIETGIS_RUNTIME_DATABASE_URL"] = TEST_DATABASE_URL
+
 
 from openvietgis_api.adapters.persistence.db import (  # noqa: E402
     get_engine,
     get_session_factory,
 )
 from openvietgis_api.config import get_settings  # noqa: E402
+from tests.fixtures.db_admin import clear_admin_caches  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[3]
 
@@ -49,6 +48,7 @@ def clear_runtime_caches() -> None:
         get_engine().dispose()
     get_session_factory.cache_clear()
     get_engine.cache_clear()
+    clear_admin_caches()
     get_settings.cache_clear()
 
 
