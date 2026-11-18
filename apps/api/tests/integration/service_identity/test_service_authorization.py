@@ -1,10 +1,17 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
+from threading import Event
 from uuid import UUID, uuid4
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import text
+from sqlalchemy.exc import OperationalError
 
+from openvietgis_api.adapters.persistence.authorization_repository import (
+    SqlServicePrincipalRepository,
+)
 from openvietgis_api.main import create_app
 from openvietgis_api.security.secrets import digest_secret
 from openvietgis_api.security.sessions import issue_session_token
@@ -168,6 +175,178 @@ def test_service_credential_allowed_scope_ceiling_cross_tenant_and_revocation(
         assert principal_revoke.status_code == 204
         with _service_client(second_secret) as service:
             assert service.get(f"{root_a}/projects/{a.project_id}").status_code == 401
+
+
+def _issue_manager_credential(
+    owner: TestClient,
+    root: str,
+    project_id: UUID,
+) -> tuple[str, str, str]:
+    created = owner.post(f"{root}/service-principals", json={"name": "race-fixture"})
+    assert created.status_code == 201, created.text
+    principal_id = created.json()["id"]
+    grant = owner.post(
+        f"{root}/grants",
+        json={
+            "subject_kind": "service_principal",
+            "subject_id": principal_id,
+            "scope_kind": "project",
+            "project_id": str(project_id),
+            "role": "manager",
+        },
+    )
+    assert grant.status_code == 201, grant.text
+    issued = owner.post(
+        f"{root}/service-principals/{principal_id}/credentials",
+        json={"name": "race-credential"},
+    )
+    assert issued.status_code == 201, issued.text
+    return principal_id, issued.json()["id"], issued.json()["secret"]
+
+
+@pytest.mark.parametrize("revoke_principal", [False, True])
+def test_revoke_between_credential_lookup_and_use_denies_stale_authentication(
+    migrated_database: None,
+    monkeypatch: pytest.MonkeyPatch,
+    revoke_principal: bool,
+) -> None:
+    world = seed_access_world()
+    root = f"/api/v1/organizations/{world.organization_id}"
+    looked_up = Event()
+    resume = Event()
+    original = SqlServicePrincipalRepository.get_credential_for_authentication
+
+    def pause_after_lookup(self, *, organization_id, credential_id):
+        resolved = original(
+            self, organization_id=organization_id, credential_id=credential_id
+        )
+        if resolved is not None:
+            looked_up.set()
+            assert resume.wait(timeout=15), "credential lookup was not resumed"
+        return resolved
+
+    monkeypatch.setattr(
+        SqlServicePrincipalRepository,
+        "get_credential_for_authentication",
+        pause_after_lookup,
+    )
+    with _client_for_user(world.owner_user_id) as owner:
+        principal_id, credential_id, secret = _issue_manager_credential(
+            owner, root, world.project_id,
+        )
+        revoke_path = f"{root}/service-principals/{principal_id}"
+        if not revoke_principal:
+            revoke_path += f"/credentials/{credential_id}"
+
+        def service_edit():
+            with _service_client(secret) as service:
+                return service.patch(
+                    f"{root}/projects/{world.project_id}",
+                    json={"name": "must-not-be-written-after-revocation"},
+                )
+
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            pending = executor.submit(service_edit)
+            try:
+                assert looked_up.wait(timeout=10), "service did not reach credential lookup"
+                # The service has genuinely read an active credential in another
+                # transaction. Commit the admin revocation before resuming it.
+                revoked = owner.post(f"{revoke_path}/revoke")
+                assert revoked.status_code == 204, revoked.text
+            finally:
+                resume.set()
+            result = pending.result(timeout=15)
+
+        assert result.status_code == 401, result.text
+        with _service_client(secret) as service:
+            assert service.get(f"{root}/projects/{world.project_id}").status_code == 401
+
+        with get_admin_engine().connect() as connection:
+            credential = connection.execute(
+                text(
+                    "SELECT revoked_at, last_used_at "
+                    "FROM org.service_credentials WHERE id=:id"
+                ),
+                {"id": credential_id},
+            ).one()
+            assert credential.last_used_at is None
+            if not revoke_principal:
+                assert credential.revoked_at is not None
+            else:
+                principal_status = connection.execute(
+                    text("SELECT status FROM org.service_principals WHERE id=:id"),
+                    {"id": principal_id},
+                ).scalar_one()
+                assert principal_status == "revoked"
+            project_name = connection.execute(
+                text("SELECT name FROM workspace.projects WHERE id=:id"),
+                {"id": world.project_id},
+            ).scalar_one()
+            assert project_name != "must-not-be-written-after-revocation"
+
+
+def test_service_credential_use_holds_org_lock_before_project_mutation(
+    migrated_database: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    world = seed_access_world()
+    root = f"/api/v1/organizations/{world.organization_id}"
+    touched = Event()
+    resume = Event()
+    original = SqlServicePrincipalRepository.record_credential_use
+
+    def pause_after_touch(self, credential, *, context):
+        recorded = original(self, credential, context=context)
+        if recorded:
+            touched.set()
+            assert resume.wait(timeout=15), "service credential use was not resumed"
+        return recorded
+
+    monkeypatch.setattr(
+        SqlServicePrincipalRepository,
+        "record_credential_use",
+        pause_after_touch,
+    )
+    with _client_for_user(world.owner_user_id) as owner:
+        principal_id, credential_id, secret = _issue_manager_credential(
+            owner, root, world.project_id,
+        )
+
+        def service_edit():
+            with _service_client(secret) as service:
+                return service.patch(
+                    f"{root}/projects/{world.project_id}",
+                    json={"name": "service-edited-before-revocation"},
+                )
+
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            pending = executor.submit(service_edit)
+            try:
+                assert touched.wait(timeout=10), "service did not reach credential touch"
+                # The authorization transaction must lock the organization before
+                # touching the credential. Otherwise an admin could take this
+                # org lock while waiting for the service's credential lock.
+                with get_admin_engine().connect() as connection:
+                    with pytest.raises(OperationalError) as caught:
+                        connection.execute(
+                            text(
+                                "SELECT id FROM org.organizations "
+                                "WHERE id=:id FOR UPDATE NOWAIT"
+                            ),
+                            {"id": world.organization_id},
+                        )
+                    assert getattr(caught.value.orig, "sqlstate", None) == "55P03"
+            finally:
+                resume.set()
+            result = pending.result(timeout=15)
+        assert result.status_code == 200, result.text
+
+        revoked = owner.post(
+            f"{root}/service-principals/{principal_id}/credentials/{credential_id}/revoke"
+        )
+        assert revoked.status_code == 204, revoked.text
+        with _service_client(secret) as service:
+            assert service.get(f"{root}/projects/{world.project_id}").status_code == 401
 
 
 def test_service_principal_management_is_human_admin_only(

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Annotated
 from uuid import UUID
@@ -180,10 +180,11 @@ def authenticate_request(
         organization_id=organization_id,
         credential_id=credential.id,
     )
-    repository.update_credential(
-        replace(credential, last_used_at=datetime.now(UTC)),
-        context=context,
-    )
+    if not repository.record_credential_use(credential, context=context):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="invalid service credential",
+        )
     return AuthenticatedRequest(
         actor=actor,
         session_id=None,

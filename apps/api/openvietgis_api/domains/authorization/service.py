@@ -464,7 +464,7 @@ class ServicePrincipalService:
             return credential
         now = now or datetime.now(UTC)
         revoked = replace(credential, revoked_at=now)
-        self.repository.update_credential(revoked, context=context)
+        self.repository.mark_credential_revoked(revoked, context=context)
         self._audit(
             actor=actor,
             organization_id=organization_id,

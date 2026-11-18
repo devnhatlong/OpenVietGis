@@ -620,31 +620,94 @@ class SqlServicePrincipalRepository:
         )
         return _credential_from_row(row) if row is not None else None
 
-    def update_credential(
+    def mark_credential_revoked(
         self,
         credential: ServiceCredential,
         *,
         context: AuthorizationContext,
     ) -> None:
         require_member_context(self._session, context, credential.organization_id)
+        if context.actor.actor_type != "human" or credential.revoked_at is None:
+            raise PermissionError("human credential revocation required")
+        # Revocation is monotonic and never writes usage metadata from a snapshot.
         self._session.execute(
             text(
                 """
                 UPDATE org.service_credentials
-                SET last_used_at = :last_used_at, revoked_at = :revoked_at
+                SET revoked_at = :revoked_at
                 WHERE organization_id = :organization_id
                   AND service_principal_id = :service_principal_id
                   AND id = :credential_id
+                  AND revoked_at IS NULL
                 """
             ),
             {
-                "last_used_at": credential.last_used_at,
                 "revoked_at": credential.revoked_at,
                 "organization_id": credential.organization_id,
                 "service_principal_id": credential.service_principal_id,
                 "credential_id": credential.id,
             },
         )
+
+    def record_credential_use(
+        self,
+        credential: ServiceCredential,
+        *,
+        context: AuthorizationContext,
+    ) -> bool:
+        require_member_context(self._session, context, credential.organization_id)
+        if (
+            context.actor.actor_type != "service_principal"
+            or context.actor.actor_id != credential.service_principal_id
+            or context.credential_id != credential.id
+        ):
+            raise PermissionError("matching service credential context required")
+
+        # Acquire the same organization lock as all HTTP admin and project
+        # mutations before locking the credential, or a service mutation can
+        # deadlock with an administrator revoking the very same credential.
+        # The secret has already been verified before we acquire this lock.
+        organization = self._session.execute(
+            text(
+                """
+                SELECT id FROM org.organizations
+                WHERE id = :organization_id AND status = 'active'
+                FOR UPDATE
+                """
+            ),
+            {"organization_id": credential.organization_id},
+        ).scalar_one_or_none()
+        if organization is None:
+            return False
+
+        # Revalidate the live principal and credential after acquiring the
+        # organization lock, which serializes administrative revoke/suspend.
+        # Never write revoked_at from the (potentially stale) lookup snapshot.
+        return self._session.execute(
+            text(
+                """
+                UPDATE org.service_credentials AS c
+                SET last_used_at = GREATEST(c.last_used_at, :now)
+                FROM org.service_principals AS sp
+                WHERE c.organization_id = :organization_id
+                  AND c.service_principal_id = :service_principal_id
+                  AND c.id = :credential_id
+                  AND c.revoked_at IS NULL
+                  AND (c.expires_at IS NULL OR c.expires_at > :now)
+                  AND sp.organization_id = c.organization_id
+                  AND sp.id = c.service_principal_id
+                  AND sp.status = 'active'
+                  AND sp.revoked_at IS NULL
+                RETURNING c.id
+                """
+            ),
+            {
+                "now": datetime.now(UTC),
+                "organization_id": credential.organization_id,
+                "service_principal_id": credential.service_principal_id,
+                "credential_id": credential.id,
+            },
+        ).scalar_one_or_none() is not None
 
     def get_credential_for_authentication(
         self,

@@ -82,12 +82,19 @@ class ServicePrincipalRepository(Protocol):
         for_update: bool = False,
     ) -> ServiceCredential | None: ...
 
-    def update_credential(
+    def mark_credential_revoked(
         self,
         credential: ServiceCredential,
         *,
         context: AuthorizationContext,
     ) -> None: ...
+
+    def record_credential_use(
+        self,
+        credential: ServiceCredential,
+        *,
+        context: AuthorizationContext,
+    ) -> bool: ...
 
     def get_credential_for_authentication(
         self,
