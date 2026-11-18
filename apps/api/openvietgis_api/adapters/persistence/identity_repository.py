@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
 from uuid import UUID
 
 from sqlalchemy import text
@@ -188,16 +187,26 @@ class SqlIdentityRepository:
         ).scalar_one_or_none()
         return locked_id is not None
 
-    def touch_identity_login(self, identity_link_id: UUID) -> None:
+    def refresh_identity_login(self, identity_link: IdentityLink) -> None:
         self._session.execute(
             text(
                 """
                 UPDATE identity.identity_links
-                SET last_login_at = :now
-                WHERE id = :identity_link_id
+                SET last_login_at = :last_login_at,
+                    email_snapshot = :email_snapshot,
+                    email_verified = :email_verified,
+                    display_name_snapshot = :display_name_snapshot
+                WHERE id = :identity_link_id AND user_id = :user_id
                 """
             ),
-            {"identity_link_id": identity_link_id, "now": datetime.now(UTC)},
+            {
+                "identity_link_id": identity_link.id,
+                "user_id": identity_link.user_id,
+                "last_login_at": identity_link.last_login_at,
+                "email_snapshot": identity_link.email_snapshot,
+                "email_verified": identity_link.email_verified,
+                "display_name_snapshot": identity_link.display_name_snapshot,
+            },
         )
 
     def create_web_session(self, web_session: WebSession) -> None:

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
@@ -89,7 +89,16 @@ class IdentityService:
             user, link = existing
             if user.status != UserStatus.ACTIVE:
                 raise IdentityConflictError("user is disabled")
-            self._repository.touch_identity_login(link.id)
+            # Invitation targeting uses this authenticated link's current verified
+            # provider claims, not the snapshot from its first-ever authentication.
+            link = replace(
+                link,
+                email_snapshot=claims.email,
+                email_verified=claims.email_verified,
+                display_name_snapshot=claims.display_name,
+                last_login_at=now,
+            )
+            self._repository.refresh_identity_login(link)
 
         session_id = uuid4()
         raw_token, secret_hash = issue_session_token(session_id)

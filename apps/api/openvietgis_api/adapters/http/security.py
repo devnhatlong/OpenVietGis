@@ -74,6 +74,8 @@ def authenticate_request(
                        u.id AS user_id, u.display_name, u.status AS user_status
                 FROM identity.web_sessions AS s
                 JOIN identity.users AS u ON u.id = s.user_id
+                JOIN identity.identity_links AS l
+                    ON l.id = s.identity_link_id AND l.user_id = s.user_id
                 WHERE s.id = :session_id
                 """
             ),
