@@ -498,4 +498,8 @@ Task evidence: **T097-T104 checked**. T095 still needs real service-actor mutati
 
 Code commit `d4624d5` passed all jobs in [GitHub CI 44233392909](https://github.com/nguyentrieu210/OpenVietGis/actions/runs/44233392909). Service actor Workspace/Project create and update now retain the verified credential context through domain and persistence calls; audit append checks the bound service actor, tenant and credential instead of accepting an unauthenticated actor. The real restricted-runtime HTTP regression verifies four service-authored mutation events, stable historical actor display/tenant after credential and principal revocation, and the administrator's principal/credential audit events. Bootstrap audit was verified in the prior checkpoint. Logical shared (extra tenant present) vs isolated (single-tenant fixture universe) acceptance exercises the same identity, membership, invitation, grant, scoped service access/revocation and audit contracts and compares normalized outcomes. This is not physical dedicated deployment provisioning.
 
-Task evidence: **T095 and T105 checked**. All P2 functional tasks T081–T105 are implemented and tested. T107 and final T109–T115 remain open.
+Task evidence: **T095 and T105 checked**. All P2 functional tasks T081–T105 are implemented and tested. T107 and final T109–T115 remained open at this checkpoint.
+
+### P2 secret-surface completion
+
+Candidate `0cd16b1` passed backend, validate and secrets in [GitHub CI 44234019284](https://github.com/nguyentrieu210/OpenVietGis/actions/runs/44234019284). Synthetic P2 service/bootstrap runtime and audit scans supplement the P1 tests. The explicit evidence scan reported all three artifacts clean: P1 Playwright JSON, bootstrap Playwright JSON and Keycloak log. Git history secret scan also passed. Integrated as `b41ea57`; **T107 checked (108/115)**. No actual customer credentials or production data were used.
