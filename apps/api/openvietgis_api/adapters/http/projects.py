@@ -4,7 +4,7 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
 from openvietgis_api.adapters.http.authorization import context_for, require_permission
@@ -14,6 +14,7 @@ from openvietgis_api.adapters.http.security import (
     get_db_session,
     require_csrf,
 )
+from openvietgis_api.adapters.http.tenant_access import human_tenant
 from openvietgis_api.adapters.persistence.audit_repository import SqlAuditRepository
 from openvietgis_api.adapters.persistence.authorization_repository import (
     SqlEffectivePermissionProvider,
@@ -29,12 +30,16 @@ router = APIRouter(tags=["projects"])
 
 
 class CreateProjectRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     name: str = Field(min_length=1, max_length=200)
     slug: str = Field(min_length=1, max_length=120)
     workspace_id: UUID | None = None
 
 
 class UpdateProjectRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     name: str | None = Field(default=None, min_length=1, max_length=200)
     workspace_id: UUID | None = None
     status: ProjectStatus | None = None
@@ -66,6 +71,7 @@ def list_projects(
     session: Annotated[Session, Depends(get_db_session, scope="function")],
     workspace_id: UUID | None = None,
 ) -> list[dict[str, object]]:
+    human_tenant(session, authentication, organization_id)
     repository = SqlTenancyRepository(session)
     provider = SqlEffectivePermissionProvider(session)
     authorization = AuthorizationService(provider)
@@ -106,6 +112,7 @@ def create_project(
     authentication: Annotated[AuthenticatedRequest, Depends(require_csrf)],
     session: Annotated[Session, Depends(get_db_session, scope="function")],
 ) -> dict[str, object]:
+    human_tenant(session, authentication, organization_id, lock=True)
     context = context_for(
         authentication,
         organization_id=organization_id,
@@ -129,6 +136,7 @@ def get_project(
     authentication: Annotated[AuthenticatedRequest, Depends(authenticate_request)],
     session: Annotated[Session, Depends(get_db_session, scope="function")],
 ) -> dict[str, object]:
+    human_tenant(session, authentication, organization_id)
     context = context_for(
         authentication,
         organization_id=organization_id,
@@ -154,6 +162,7 @@ def update_project(
     authentication: Annotated[AuthenticatedRequest, Depends(require_csrf)],
     session: Annotated[Session, Depends(get_db_session, scope="function")],
 ) -> dict[str, object]:
+    human_tenant(session, authentication, organization_id, lock=True)
     context = context_for(
         authentication,
         organization_id=organization_id,
