@@ -141,9 +141,9 @@
 
 - [X] T055 [P] [US3] Add role-bundle/additive-union/Organization-Workspace-Project inheritance unit tests in `apps/api/tests/unit/authorization/test_role_grant_union.py`
 - [X] T056 [P] [US3] Add dynamic Workspace inheritance tests proving access appears/disappears when Project moves without grant copying in `apps/api/tests/integration/tenancy/test_workspace_grant_inheritance.py`
-- [ ] T057 [P] [US3] Add invitation email/User/external-identity recipient-binding, expiry/revoke/reuse tests in `apps/api/tests/integration/tenancy/test_invitation_lifecycle.py`
+- [X] T057 [P] [US3] Add invitation email/User/external-identity recipient-binding, expiry/revoke/reuse tests in `apps/api/tests/integration/tenancy/test_invitation_lifecycle.py`
 - [X] T058 [P] [US3] Add concurrent double-accept invitation test proving exactly one atomic acceptance in `apps/api/tests/integration/tenancy/test_invitation_concurrency.py`
-- [ ] T059 [P] [US3] Add Last Owner role/status concurrency plus Owner-vs-Admin Organization suspend/restore/soft-delete lifecycle tests in `apps/api/tests/integration/tenancy/test_last_owner.py` and `test_organization_lifecycle.py`
+- [X] T059 [P] [US3] Add Last Owner role/status concurrency plus Owner-vs-Admin Organization suspend/restore/soft-delete lifecycle tests in `apps/api/tests/integration/tenancy/test_last_owner.py` and `test_organization_lifecycle.py`
 - [X] T060 [P] [US3] Add next-request membership/grant revocation tests in `apps/api/tests/integration/tenancy/test_revocation.py`
 - [X] T061 [P] [US3] Add grant/invitation client contract tests in `packages/client-sdk/tests/grants-invitations.test.ts`
 - [ ] T062 [P] [US3] Add Playwright intended-recipient invitation accept + revoke journey to `tests/e2e/invitation-revocation.spec.ts`
@@ -157,7 +157,7 @@
 - [X] T067 [US3] Implement Organization lifecycle/ownership-transfer/member plus grant/invitation/effective-permission HTTP endpoints from `contracts/tenant-core-api.yaml` in `apps/api/openvietgis_api/adapters/http/organizations.py`, `grants.py`, and `invitations.py`
 - [X] T068 [P] [US3] Implement grants/invitations/effective-permissions client methods in `packages/client-sdk/src/organizations.ts` and `invitations.ts`
 - [ ] T069 [P] [US3] Implement minimal membership/invite/grant UI including suspend/revoke and invitation accept handoff in `apps/web/src/features/membership/` and `apps/web/src/features/invitations/`
-- [ ] T070 [US3] Ensure Organization creation/lifecycle/ownership, membership, grant, and invitation mutations append foundational AuditEvent records through the T018 audit port before the P1 gate, without requiring the P2 audit-read UI, in `apps/api/openvietgis_api/domains/tenancy/service.py`
+- [X] T070 [US3] Ensure Organization creation/lifecycle/ownership, membership, grant, and invitation mutations append foundational AuditEvent records through the T018 audit port before the P1 gate, without requiring the P2 audit-read UI, in `apps/api/openvietgis_api/domains/tenancy/service.py`
 
 **Checkpoint**: P1 collaboration access works, inheritance is dynamic, recipient/token races are safe, and revocation is next-request effective.
 
@@ -173,15 +173,15 @@
 
 - [X] T071 [P] [US4] Add cross-tenant API/repository matrix for Organization metadata, Membership, Workspace, Project, Grant, Invitation, and protected list/detail paths in `apps/api/tests/integration/rls/test_cross_tenant_api.py`
 - [X] T072 [P] [US4] Add direct repository/RLS matrix using the real runtime role for every P1 RLS-protected table listed in `data-model.md`, explicitly including `audit.audit_events`, in `apps/api/tests/integration/rls/test_cross_tenant_repository.py`
-- [ ] T073 [P] [US4] Add connection-pool A→B→no-context leakage regression tests under repeated pooled reuse in `apps/api/tests/integration/rls/test_pool_tenant_leak.py`
-- [ ] T074 [P] [US4] Add cross-tenant existence non-disclosure tests distinguishing 404 other-tenant from 403 same-tenant insufficient permission in `apps/api/tests/integration/tenancy/test_tenant_error_semantics.py`
+- [X] T073 [P] [US4] Add connection-pool A→B→no-context leakage regression tests under repeated pooled reuse in `apps/api/tests/integration/rls/test_pool_tenant_leak.py`
+- [X] T074 [P] [US4] Add cross-tenant existence non-disclosure tests distinguishing 404 other-tenant from 403 same-tenant insufficient permission in `apps/api/tests/integration/tenancy/test_tenant_error_semantics.py`
 - [X] T075 [P] [US4] Add direct cross-tenant FK/ownership insert/update rejection tests for Project/Workspace/Grant/Invitation records in `apps/api/tests/integration/rls/test_cross_tenant_constraints.py`
 
 ### Implementation / hardening
 
-- [ ] T076 [US4] Apply explicit AuthorizationContext + transaction-local RLS context to every P1 protected repository transaction in `apps/api/openvietgis_api/adapters/persistence/db.py` and `rls.py`
+- [X] T076 [US4] Apply explicit AuthorizationContext + transaction-local RLS context to every P1 protected repository transaction in `apps/api/openvietgis_api/adapters/persistence/db.py` and `rls.py`
 - [X] T077 [US4] Enforce non-disclosing cross-tenant lookup/error semantics across Organization/Workspace/Project/Grant/Invitation HTTP adapters in `apps/api/openvietgis_api/adapters/http/errors.py` and tenant adapters
-- [ ] T078 [US4] Add authorization-required repository interfaces so protected repositories cannot be called without explicit tenant/actor context in `apps/api/openvietgis_api/domains/tenancy/ports.py` and `domains/authorization/ports.py`
+- [X] T078 [US4] Add authorization-required repository interfaces so protected repositories cannot be called without explicit tenant/actor context in `apps/api/openvietgis_api/domains/tenancy/ports.py` and `domains/authorization/ports.py`
 - [ ] T079 [US4] Add P1 security E2E with direct URL manipulation across Organizations to `tests/e2e/tenant-core.spec.ts`
 - [ ] T080 [US4] Run and record the P1 Tenant Core checkpoint from quickstart sections 2-10, including foundational AuditEvent/RLS and RequestedActorContext round-trip evidence, in `specs/002-identity-organization-tenancy/quickstart.md` before enabling P2 work
 
@@ -432,3 +432,13 @@ After P1:
 - T057 remains open for complete external-identity recipient integration coverage; T059 for full owner status/role race and lifecycle coverage; T070 for exhaustive audit evidence. T073/T074 have regression coverage combined in cross-tenant repository/API tests, but retain their unchecked status pending exact task scope/path reconciliation. T076/T078 require explicit context enforcement across protected repository interfaces and transactions.
 - T062/T069/T079 browser journeys/UI implemented but execution not accepted. T080 remains blocked: Node 26 baseline unavailable on host (Node 24 detected), frozen pnpm install was denied by minimumReleaseAge policy for @tanstack dependencies, and real browser OIDC P1 suite is not yet run. Do not bypass policy. Do not implement P2 or retire FoundationSampleRecord before T080.
 - Next: close remaining P1 task coverage, run reference-provider E2E on the supported runtime and dependency policy, independent review and T080 evidence; only then unlock P2. Do not promote to main before full T115 convergence.
+
+## P1 backend verification checkpoint — 2026-11-18
+
+Code HEAD **830dea5**; 76/115 implementation tasks checked (39 open). P1 is not yet accepted and R002 is not integrated.
+
+- T057/T059/T070/T073/T074: dedicated restricted-runtime PostgreSQL integration regressions now cover recipient email/User/external identity, expiry/revoke/reuse, concurrent Owner role/status changes, Organization lifecycle and audit, repeated A/B/no-context connection reuse, and same-tenant 403 versus missing/foreign 404. Full suite: 58 passed.
+- T076/T078: mandatory actor/tenant contexts across P1 protected repository calls; transaction-local context, membership proof and savepoint/commit invalidation. Invitation acceptance uses a narrow explicit pre-membership exception; all mutations require verified context. Independent review findings were addressed, with regression coverage.
+- 121 backend unit/contract/tool/architecture tests pass; Ruff, mypy (60 files), contract/scope/architecture/docs guards pass. 20 SDK and protected-query tests pass in isolated Node 26 validation.
+- T062/T069/T079 remain open pending real browser evidence; T080 remains open pending all P1 gates. Portable signed Node 26.13.1 resolves the previous runtime blocker, but frozen dependency minimumReleaseAge remains in force. See quickstart section 19 for resumption.
+- Do not begin P2 or retire FoundationSampleRecord until T080 passes. Do not promote R002 to main before T115 convergence.

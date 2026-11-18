@@ -341,3 +341,33 @@ Code checkpoint: 3a74fa7 on takeover/002-identity-tenancy. **This is partial evi
 | Full quickstart, Node 26 pnpm validate, P2, convergence | NOT executed |
 
 Dedicated test database openvietgis_test on loopback port 54330; the development DB was not mutated. Migration sequence includes additive 0003a_identity_unlink_security following 0003, before future 0004. Migration/admin credential used solely for setup/migrations/assertions; protected API and dedicated runtime tests use openvietgis_runtime. Test fixtures are synthetic. OIDC provider discovery was reachable, but this is not proof of interactive login. Frozen dependency installation is blocked by minimumReleaseAge policy; no override was applied. Do not advance P2 or claim T080 until all P1 requirements, including browser, are evidenced.
+
+## 19. P1 backend verification — 2026-11-18
+
+Code checkpoint **830dea5** on takeover/002-identity-tenancy. This supersedes section 18's partial backend evidence; it does not establish T080 acceptance.
+
+| Check | Observed result |
+| --- | --- |
+| Ruff / mypy | pass; 60 source files |
+| Backend unit, contract, tools and architecture | 121 passed |
+| Integration against dedicated PostgreSQL test database | 58 passed, runtime-role API/repository access; admin only for fixtures, migrations and assertions |
+| Contract, runtime scope, architecture, documentation guards | pass |
+| Node 26 isolated SDK and protected-query tests | 20 passed; strict TypeScript compilation of those modules |
+| Repository context | explicit actor/tenant membership proof, transaction-local context, pooled A/B/no-context reuse, invalidation on transaction changes |
+| Independent review follow-up | fixed empty PATCH and missing/foreign scope fail-open; additionally required verified context for invitation expiry mutation |
+| Browser acceptance and full frontend lint/typecheck/build | NOT run; browser fixture pinned to accepted Node and local test OIDC; stale-cache/revocation regression added |
+| T080 / P2 / T115 / main integration | NOT accepted or executed |
+
+The integration suite covers T057/T059/T070/T073/T074 and the protected repository context evidence for T076/T078. These tasks are checked. T062/T069/T079 and T080 remain unchecked. The original dirty worktree and main remain unchanged.
+
+Portable official Node 26.13.1 is installed in the ignored local-only toolchain directory `C:/code/openvietgis-r002-browser/dist/toolchains/node-v26.13.1-win-x64`; SHA-256 of official ZIP `E2EDDA75BFB089654705CF65A13B58933BFD5F57148E8EBDA916F58A2474F1F7` and official release signing-key fingerprint `5BE8A3F6C8A5C01D106C0AD820B1A390B168D356` were verified. Actual Node 26 runtime check passed. pnpm 12.21 is available in the selected process. Normal frozen install remains blocked by unchanged minimumReleaseAge for @tanstack/query-core and @tanstack/react-query 5.108.0 (published Nov 17 13:43 UTC; expected eligible around Nov 18 20:44 Vietnam time, verify rather than assume). Do not override the policy or use already-installed ineligible packages. On next eligible run, from the takeover worktree using cmd.exe:
+
+```bat
+set "PATH=C:\code\openvietgis-r002-browser\dist\toolchains\node-v26.13.1-win-x64;%PATH%"
+node tools/check_node_runtime.mjs
+pnpm.cmd install --frozen-lockfile
+pnpm.cmd validate:ts
+pnpm.cmd validate:e2e
+```
+
+Run each step only if its prerequisite succeeds. Confirm local synthetic test OIDC provider and dedicated test database before browser execution; do not log OAuth secrets. Capture actual results and independent review against all T080 requirements. P2 remains gated.
