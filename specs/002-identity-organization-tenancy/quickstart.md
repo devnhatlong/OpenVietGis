@@ -450,3 +450,20 @@ P1 quickstart mapping:
 - §10: restricted-runtime RLS matrix covers protected tables, A→B→no-context pooled reuse, direct-ID substitution and non-disclosing 403/404 behavior. Foundational AuditEvent RLS and RequestedActorContext serialization/transaction binding are included in the passing backend suites.
 
 Task evidence: **T062, T069, T079, T080 and T108 are checked at this checkpoint.** P1 now unlocks P2 sequencing T081–T105. T107/T111/T112/T113/T114/T115 remain open where their wording requires P2 secrets/migrations/bootstrap, all-scenario evidence, full root validation or convergence. The external Codex reviewer service returned HTTP 429 during the attempted independent read-only review; no independent-agent review is claimed. Coordinator evidence review found no unmet P1 test gate, but a separate independent review should still be attempted before final T115/main promotion.
+
+
+---
+
+## 2026-11-18 P2 Service Identity checkpoint
+
+T081-T090 are implemented and locally validated on the dedicated `takeover/002-p2-service` worktree. Evidence at this checkpoint:
+
+- Service credential/permission-ceiling unit tests: **6 passed**.
+- Service Identity restricted-runtime PostgreSQL integration: **5 passed**, covering forced RLS, cross-tenant FK rejection, invalid hash/permission/expiry constraints, one-time issued secret storage as digest+safe prefix, `last_used_at`, allowed scoped access, real same-tenant out-of-scope denial, cross-tenant denial, credential revoke on the next request, principal revoke, and human-only service administration.
+- P1 tenant HTTP regression subset after shared auth/RLS changes: **12 passed**.
+- Python unit/contract regression: **111 passed**; Ruff and strict mypy passed.
+- Client SDK/web lint, strict TypeScript and tests passed: SDK **13 passed**, web **15 passed**.
+- Spec 002 contracts, architecture boundaries, and runtime scope checks: **OK**.
+- Local shell currently provides Node 24, while the repository requires Node 26. Node-26 root validation remains a CI/final-gate responsibility under T114; this checkpoint does not claim T114.
+
+Task evidence: **T081-T090 checked**. Audit T091-T096, bootstrap T097-T105, and final convergence remain open.

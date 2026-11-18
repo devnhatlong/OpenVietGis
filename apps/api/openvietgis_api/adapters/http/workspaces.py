@@ -14,7 +14,7 @@ from openvietgis_api.adapters.http.security import (
     get_db_session,
     require_csrf,
 )
-from openvietgis_api.adapters.http.tenant_access import human_tenant
+from openvietgis_api.adapters.http.tenant_access import require_tenant_access
 from openvietgis_api.adapters.persistence.audit_repository import SqlAuditRepository
 from openvietgis_api.adapters.persistence.authorization_repository import (
     SqlEffectivePermissionProvider,
@@ -76,7 +76,7 @@ def list_workspaces(
     authentication: Annotated[AuthenticatedRequest, Depends(authenticate_request)],
     session: Annotated[Session, Depends(get_db_session, scope="function")],
 ) -> list[dict[str, object]]:
-    human_tenant(session, authentication, organization_id)
+    require_tenant_access(session, authentication, organization_id)
     repository = SqlTenancyRepository(session)
     provider = SqlEffectivePermissionProvider(session)
     authorization = AuthorizationService(provider)
@@ -115,7 +115,7 @@ def create_workspace(
     authentication: Annotated[AuthenticatedRequest, Depends(require_csrf)],
     session: Annotated[Session, Depends(get_db_session, scope="function")],
 ) -> dict[str, object]:
-    human_tenant(session, authentication, organization_id, lock=True)
+    require_tenant_access(session, authentication, organization_id, lock=True)
     context = context_for(authentication, organization_id=organization_id)
     require_permission(session, context, Permission.WORKSPACE_MANAGE)
     workspace = _service(session).create_workspace(
@@ -135,7 +135,7 @@ def update_workspace(
     authentication: Annotated[AuthenticatedRequest, Depends(require_csrf)],
     session: Annotated[Session, Depends(get_db_session, scope="function")],
 ) -> dict[str, object]:
-    human_tenant(session, authentication, organization_id, lock=True)
+    require_tenant_access(session, authentication, organization_id, lock=True)
     if (
         SqlTenancyRepository(session).get_workspace(
             context=context_for(authentication, organization_id=organization_id),

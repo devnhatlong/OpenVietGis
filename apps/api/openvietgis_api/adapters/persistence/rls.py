@@ -22,6 +22,8 @@ class _TransactionScope:
     transaction: SessionTransaction
     authenticated_user_id: UUID | None = None
     authenticated_organization_id: UUID | None = None
+    authenticated_service_principal_id: UUID | None = None
+    authenticated_credential_id: UUID | None = None
     nested_transaction: SessionTransaction | None = None
     organization_id: UUID | None = None
     actor_user_id: UUID | None = None
@@ -83,13 +85,52 @@ def set_request_context(
 
 
 def bind_authenticated_actor(session: Session, actor: Actor) -> None:
-    """Pin the authenticated identity for the lifetime of this request transaction."""
+    """Pin the authenticated human identity for the request transaction."""
     actor_id = _human_id(actor)
     state = _state(session)
+    if state.authenticated_service_principal_id is not None:
+        raise PermissionError("transaction actor mismatch")
     if state.authenticated_user_id not in (None, actor_id):
         raise PermissionError("transaction actor mismatch")
     set_request_context(session, organization_id=None, actor_user_id=actor_id)
     state.authenticated_user_id = actor_id
+
+
+def prepare_service_credential_lookup(session: Session, organization_id: UUID) -> None:
+    """Bind only the caller-selected tenant before a bearer credential is verified."""
+    state = _state(session)
+    if (
+        state.authenticated_user_id is not None
+        or state.authenticated_service_principal_id is not None
+    ):
+        raise PermissionError("transaction actor already authenticated")
+    set_request_context(session, organization_id=organization_id, actor_user_id=None)
+
+
+def bind_authenticated_service_actor(
+    session: Session,
+    actor: Actor,
+    *,
+    organization_id: UUID,
+    credential_id: UUID,
+) -> None:
+    """Pin a verified service credential to exactly one tenant for this request."""
+    if actor.actor_type != "service_principal" or actor.actor_id is None:
+        raise PermissionError("service principal actor required")
+    state = _state(session)
+    if state.authenticated_user_id is not None:
+        raise PermissionError("transaction actor mismatch")
+    if state.authenticated_service_principal_id not in (None, actor.actor_id):
+        raise PermissionError("transaction actor mismatch")
+    if state.authenticated_credential_id not in (None, credential_id):
+        raise PermissionError("transaction credential mismatch")
+    if state.authenticated_organization_id not in (None, organization_id):
+        raise TenantResourceNotFoundError("resource not found")
+    if state.organization_id != organization_id or state.actor_user_id is not None:
+        set_request_context(session, organization_id=organization_id, actor_user_id=None)
+    state.authenticated_service_principal_id = actor.actor_id
+    state.authenticated_credential_id = credential_id
+    state.authenticated_organization_id = organization_id
 
 
 def _human_id(actor: Actor) -> UUID:
@@ -151,9 +192,28 @@ def require_member_context(
     context: AuthorizationContext,
     organization_id: UUID,
 ) -> None:
-    """Authorize a repository operation with explicit actor and tenant, not a raw UUID."""
+    """Authorize a protected repository call for a verified human or service actor."""
     if not isinstance(context, AuthorizationContext):
-        raise PermissionError("member authorization context required")
+        raise PermissionError("authorization context required")
+    if context.actor.actor_type == "service_principal":
+        actor_id = context.actor.actor_id
+        credential_id = context.credential_id
+        state = _state(session)
+        if actor_id is None or credential_id is None:
+            raise PermissionError("service credential context required")
+        if context.organization_id != organization_id:
+            raise TenantResourceNotFoundError("resource not found")
+        if (
+            state.authenticated_service_principal_id != actor_id
+            or state.authenticated_credential_id != credential_id
+            or state.authenticated_organization_id != organization_id
+        ):
+            raise PermissionError("service actor is not authenticated for tenant")
+        if state.organization_id != organization_id or state.actor_user_id is not None:
+            set_request_context(session, organization_id=organization_id, actor_user_id=None)
+        state.member_verified = False
+        state.invitation_id = None
+        return
     state, actor_id = _validate_target(session, context, organization_id)
     if (
         state.organization_id == organization_id

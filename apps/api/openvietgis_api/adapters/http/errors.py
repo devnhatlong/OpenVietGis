@@ -7,6 +7,10 @@ from openvietgis_api.domains.authorization.service import (
     AuthorizationDeniedError,
     GrantNotFoundError,
     InvalidGrantError,
+    InvalidServiceCredentialError,
+    InvalidServicePrincipalError,
+    ServiceCredentialNotFoundError,
+    ServicePrincipalNotFoundError,
     TenantResourceNotFoundError,
 )
 from openvietgis_api.domains.tenancy.service import (
@@ -64,6 +68,8 @@ def install_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(MembershipNotFoundError)
     @app.exception_handler(GrantNotFoundError)
     @app.exception_handler(InvitationNotFoundError)
+    @app.exception_handler(ServicePrincipalNotFoundError)
+    @app.exception_handler(ServiceCredentialNotFoundError)
     async def tenant_not_found_handler(
         _: Request,
         exc: Exception,
@@ -75,6 +81,8 @@ def install_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(WorkspaceHasActiveProjectsError)
     @app.exception_handler(InvalidOrganizationInputError)
     @app.exception_handler(InvalidGrantError)
+    @app.exception_handler(InvalidServiceCredentialError)
+    @app.exception_handler(InvalidServicePrincipalError)
     @app.exception_handler(InvalidInvitationError)
     @app.exception_handler(LastOwnerError)
     async def tenancy_validation_handler(

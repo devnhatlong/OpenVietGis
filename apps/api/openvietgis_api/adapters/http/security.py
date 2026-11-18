@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from typing import Annotated
 from uuid import UUID
@@ -10,11 +10,21 @@ from fastapi import Depends, HTTPException, Request, status
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from openvietgis_api.adapters.persistence.authorization_repository import (
+    SqlServicePrincipalRepository,
+)
 from openvietgis_api.adapters.persistence.db import session_scope
-from openvietgis_api.adapters.persistence.rls import bind_authenticated_actor
+from openvietgis_api.adapters.persistence.rls import (
+    bind_authenticated_actor,
+    bind_authenticated_service_actor,
+)
 from openvietgis_api.config import Settings, get_settings
-from openvietgis_api.domains.authorization.context import Actor
+from openvietgis_api.domains.authorization.context import Actor, AuthorizationContext
 from openvietgis_api.security.csrf import verify_csrf_token
+from openvietgis_api.security.secrets import (
+    parse_service_credential_id,
+    verify_secret,
+)
 from openvietgis_api.security.sessions import parse_session_token, verify_session_token
 
 
@@ -24,6 +34,8 @@ class AuthenticatedRequest:
     session_id: UUID | None
     raw_session_token: str | None
     identity_link_id: UUID | None = None
+    credential_id: UUID | None = None
+    organization_id: UUID | None = None
 
 
 def get_db_session() -> Iterator[Session]:
@@ -46,9 +58,62 @@ def authenticate_request(
 ) -> AuthenticatedRequest:
     authorization = request.headers.get("authorization", "")
     if authorization.lower().startswith("bearer "):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="service credentials are not enabled yet",
+        raw_credential = authorization[7:].strip()
+        try:
+            credential_id = parse_service_credential_id(raw_credential)
+            organization_value = request.path_params.get("organization_id")
+            if organization_value is None:
+                raise ValueError("tenant route required")
+            organization_id = UUID(str(organization_value))
+        except (ValueError, TypeError) as exc:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="invalid service credential",
+            ) from exc
+
+        repository = SqlServicePrincipalRepository(session)
+        resolved = repository.get_credential_for_authentication(
+            organization_id=organization_id,
+            credential_id=credential_id,
+        )
+        if resolved is None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="invalid service credential",
+            )
+        principal, credential = resolved
+        if not verify_secret(raw_credential, credential.secret_hash):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="invalid service credential",
+            )
+
+        actor = Actor(
+            actor_type="service_principal",
+            actor_id=principal.id,
+            display_name=principal.name,
+        )
+        bind_authenticated_service_actor(
+            session,
+            actor,
+            organization_id=organization_id,
+            credential_id=credential.id,
+        )
+        context = AuthorizationContext(
+            actor=actor,
+            organization_id=organization_id,
+            credential_id=credential.id,
+        )
+        repository.update_credential(
+            replace(credential, last_used_at=datetime.now(UTC)),
+            context=context,
+        )
+        return AuthenticatedRequest(
+            actor=actor,
+            session_id=None,
+            raw_session_token=None,
+            credential_id=credential.id,
+            organization_id=organization_id,
         )
 
     token = request.cookies.get(settings.session_cookie_name)

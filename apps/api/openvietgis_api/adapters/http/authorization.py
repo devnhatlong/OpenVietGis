@@ -25,6 +25,7 @@ def context_for(
         organization_id=organization_id,
         workspace_id=workspace_id,
         project_id=project_id,
+        credential_id=authentication.credential_id,
     )
 
 

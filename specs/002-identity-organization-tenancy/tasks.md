@@ -197,19 +197,19 @@
 
 ### Tests first
 
-- [ ] T081 [P] [US5] Add ServicePrincipal/ServiceCredential migration and field-constraint tests in `apps/api/tests/integration/service_identity/test_service_identity_migration.py`
-- [ ] T082 [P] [US5] Add credential one-time-secret/hash/prefix/expiry/revoke unit tests in `apps/api/tests/unit/identity/test_service_credentials.py`
-- [ ] T083 [P] [US5] Add permission-ceiling intersection tests proving credentials cannot expand principal grants in `apps/api/tests/unit/authorization/test_service_permission_ceiling.py`
-- [ ] T084 [P] [US5] Add real API allowed/out-of-scope/cross-tenant/revoked-next-request tests in `apps/api/tests/integration/service_identity/test_service_authorization.py`
-- [ ] T085 [P] [US5] Add service-admin contract/client tests in `packages/client-sdk/tests/service-principals.test.ts`
+- [X] T081 [P] [US5] Add ServicePrincipal/ServiceCredential migration and field-constraint tests in `apps/api/tests/integration/service_identity/test_service_identity_migration.py`
+- [X] T082 [P] [US5] Add credential one-time-secret/hash/prefix/expiry/revoke unit tests in `apps/api/tests/unit/identity/test_service_credentials.py`
+- [X] T083 [P] [US5] Add permission-ceiling intersection tests proving credentials cannot expand principal grants in `apps/api/tests/unit/authorization/test_service_permission_ceiling.py`
+- [X] T084 [P] [US5] Add real API allowed/out-of-scope/cross-tenant/revoked-next-request tests in `apps/api/tests/integration/service_identity/test_service_authorization.py`
+- [X] T085 [P] [US5] Add service-admin contract/client tests in `packages/client-sdk/tests/service-principals.test.ts`
 
 ### Implementation
 
-- [ ] T086 [US5] Implement ServicePrincipal and ServiceCredential persistence/domain mappings in `apps/api/openvietgis_api/domains/authorization/domain.py` and migration `apps/api/migrations/versions/0004_machine_identity.py`, citing [data-model.md#serviceprincipal] `ServicePrincipal.id`, `ServicePrincipal.organization_id`, `ServicePrincipal.name`, `ServicePrincipal.description`, `ServicePrincipal.status`, `ServicePrincipal.created_at`, `ServicePrincipal.created_by_actor_type`, `ServicePrincipal.created_by_actor_id`, `ServicePrincipal.revoked_at` and [data-model.md#servicecredential] `ServiceCredential.id`, `ServiceCredential.organization_id`, `ServiceCredential.service_principal_id`, `ServiceCredential.name`, `ServiceCredential.prefix`, `ServiceCredential.secret_hash`, `ServiceCredential.permission_ceiling`, `ServiceCredential.created_at`, `ServiceCredential.expires_at`, `ServiceCredential.last_used_at`, `ServiceCredential.revoked_at`
-- [ ] T087 [US5] Implement ServicePrincipal/credential issue/revoke/authentication and ceiling-aware authorization in `apps/api/openvietgis_api/domains/authorization/service.py` and `security/secrets.py`
-- [ ] T088 [US5] Implement ServicePrincipal/credential persistence and runtime RLS policies in `apps/api/openvietgis_api/adapters/persistence/authorization_repository.py` and `apps/api/migrations/versions/0004_machine_identity.py`
-- [ ] T089 [US5] Implement service-admin HTTP endpoints and bearer credential authentication from `contracts/service-admin-api.yaml` in `apps/api/openvietgis_api/adapters/http/service_principals.py` and shared security adapter
-- [ ] T090 [P] [US5] Implement ServicePrincipal client methods in `packages/client-sdk/src/service-principals.ts`
+- [X] T086 [US5] Implement ServicePrincipal and ServiceCredential persistence/domain mappings in `apps/api/openvietgis_api/domains/authorization/domain.py` and migration `apps/api/migrations/versions/0004_machine_identity.py`, citing [data-model.md#serviceprincipal] `ServicePrincipal.id`, `ServicePrincipal.organization_id`, `ServicePrincipal.name`, `ServicePrincipal.description`, `ServicePrincipal.status`, `ServicePrincipal.created_at`, `ServicePrincipal.created_by_actor_type`, `ServicePrincipal.created_by_actor_id`, `ServicePrincipal.revoked_at` and [data-model.md#servicecredential] `ServiceCredential.id`, `ServiceCredential.organization_id`, `ServiceCredential.service_principal_id`, `ServiceCredential.name`, `ServiceCredential.prefix`, `ServiceCredential.secret_hash`, `ServiceCredential.permission_ceiling`, `ServiceCredential.created_at`, `ServiceCredential.expires_at`, `ServiceCredential.last_used_at`, `ServiceCredential.revoked_at`
+- [X] T087 [US5] Implement ServicePrincipal/credential issue/revoke/authentication and ceiling-aware authorization in `apps/api/openvietgis_api/domains/authorization/service.py` and `security/secrets.py`
+- [X] T088 [US5] Implement ServicePrincipal/credential persistence and runtime RLS policies in `apps/api/openvietgis_api/adapters/persistence/authorization_repository.py` and `apps/api/migrations/versions/0004_machine_identity.py`
+- [X] T089 [US5] Implement service-admin HTTP endpoints and bearer credential authentication from `contracts/service-admin-api.yaml` in `apps/api/openvietgis_api/adapters/http/service_principals.py` and shared security adapter
+- [X] T090 [P] [US5] Implement ServicePrincipal client methods in `packages/client-sdk/src/service-principals.ts`
 
 **Checkpoint**: Machine actor authorization reuses the same permission vocabulary and tenant boundary as humans.
 

@@ -14,7 +14,7 @@ from openvietgis_api.adapters.http.security import (
     get_db_session,
     require_csrf,
 )
-from openvietgis_api.adapters.http.tenant_access import human_tenant
+from openvietgis_api.adapters.http.tenant_access import require_tenant_access
 from openvietgis_api.adapters.persistence.audit_repository import SqlAuditRepository
 from openvietgis_api.adapters.persistence.authorization_repository import (
     SqlEffectivePermissionProvider,
@@ -84,7 +84,7 @@ def list_projects(
     session: Annotated[Session, Depends(get_db_session, scope="function")],
     workspace_id: UUID | None = None,
 ) -> list[dict[str, object]]:
-    human_tenant(session, authentication, organization_id)
+    require_tenant_access(session, authentication, organization_id)
     repository = SqlTenancyRepository(session)
     if (
         workspace_id is not None
@@ -137,7 +137,7 @@ def create_project(
     authentication: Annotated[AuthenticatedRequest, Depends(require_csrf)],
     session: Annotated[Session, Depends(get_db_session, scope="function")],
 ) -> dict[str, object]:
-    human_tenant(session, authentication, organization_id, lock=True)
+    require_tenant_access(session, authentication, organization_id, lock=True)
     if (
         payload.workspace_id is not None
         and SqlTenancyRepository(session).get_workspace(
@@ -171,7 +171,7 @@ def get_project(
     authentication: Annotated[AuthenticatedRequest, Depends(authenticate_request)],
     session: Annotated[Session, Depends(get_db_session, scope="function")],
 ) -> dict[str, object]:
-    human_tenant(session, authentication, organization_id)
+    require_tenant_access(session, authentication, organization_id)
     if (
         SqlTenancyRepository(session).get_project(
             context=context_for(authentication, organization_id=organization_id),
@@ -207,7 +207,7 @@ def update_project(
     authentication: Annotated[AuthenticatedRequest, Depends(require_csrf)],
     session: Annotated[Session, Depends(get_db_session, scope="function")],
 ) -> dict[str, object]:
-    human_tenant(session, authentication, organization_id, lock=True)
+    require_tenant_access(session, authentication, organization_id, lock=True)
     if (
         SqlTenancyRepository(session).get_project(
             context=context_for(authentication, organization_id=organization_id),

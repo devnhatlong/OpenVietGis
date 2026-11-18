@@ -75,3 +75,38 @@ def require_human_permission(
         session, context_for(authentication, organization_id=organization_id), permission
     )
     return membership
+
+def require_tenant_access(
+    session: Session,
+    authentication: AuthenticatedRequest,
+    organization_id: UUID,
+    *,
+    lock: bool = False,
+) -> Organization:
+    """Resolve an active tenant for either a human session or verified service credential."""
+    if authentication.actor.actor_type == "human":
+        organization, _ = human_tenant(
+            session,
+            authentication,
+            organization_id,
+            lock=lock,
+        )
+        return organization
+    if authentication.actor.actor_type != "service_principal":
+        raise HTTPException(status_code=401, detail="authentication required")
+    if (
+        authentication.organization_id != organization_id
+        or authentication.credential_id is None
+    ):
+        raise TenantResourceNotFoundError("organization not found")
+    context = context_for(authentication, organization_id=organization_id)
+    service_organization = SqlTenancyRepository(session).get_organization(
+        organization_id,
+        context=context,
+        for_update=lock,
+    )
+    if service_organization is None:
+        raise TenantResourceNotFoundError("organization not found")
+    if service_organization.status != OrganizationStatus.ACTIVE:
+        raise AuthorizationDeniedError("organization is not active")
+    return service_organization

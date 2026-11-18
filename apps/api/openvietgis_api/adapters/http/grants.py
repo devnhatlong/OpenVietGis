@@ -20,10 +20,15 @@ from openvietgis_api.adapters.http.tenant_serialization import serialize_grant
 from openvietgis_api.adapters.persistence.audit_repository import SqlAuditRepository
 from openvietgis_api.adapters.persistence.authorization_repository import (
     SqlResourceGrantRepository,
+    SqlServicePrincipalRepository,
 )
 from openvietgis_api.adapters.persistence.tenancy_repository import SqlTenancyRepository
 from openvietgis_api.domains.authorization.permissions import Permission
-from openvietgis_api.domains.authorization.service import GrantNotFoundError, GrantService
+from openvietgis_api.domains.authorization.service import (
+    GrantNotFoundError,
+    GrantService,
+    ServicePrincipalService,
+)
 from openvietgis_api.domains.tenancy.domain import ResourceRole, ResourceScopeKind
 
 router = APIRouter(tags=["grants"])
@@ -79,19 +84,32 @@ def create_resource_grant(
         Permission.AUTHORIZATION_MANAGE_GRANTS,
         lock=True,
     )
-    # Service credential grants are handled by the P2 machine-identity implementation.
-    if payload.subject_kind != "membership":
-        raise HTTPException(status_code=400, detail="service principals are not enabled yet")
     try:
-        grant = _service(session).create_membership_grant(
-            actor=authentication.actor,
-            organization_id=organization_id,
-            membership_id=payload.subject_id,
-            scope_kind=payload.scope_kind,
-            workspace_id=payload.workspace_id,
-            project_id=payload.project_id,
-            role=payload.role,
-        )
+        if payload.subject_kind == "membership":
+            grant = _service(session).create_membership_grant(
+                actor=authentication.actor,
+                organization_id=organization_id,
+                membership_id=payload.subject_id,
+                scope_kind=payload.scope_kind,
+                workspace_id=payload.workspace_id,
+                project_id=payload.project_id,
+                role=payload.role,
+            )
+        else:
+            grant = ServicePrincipalService(
+                SqlServicePrincipalRepository(session),
+                SqlResourceGrantRepository(session),
+                SqlTenancyRepository(session),
+                SqlAuditRepository(session),
+            ).create_service_grant(
+                actor=authentication.actor,
+                organization_id=organization_id,
+                service_principal_id=payload.subject_id,
+                scope_kind=payload.scope_kind,
+                workspace_id=payload.workspace_id,
+                project_id=payload.project_id,
+                role=payload.role,
+            )
     except IntegrityError as exc:
         raise HTTPException(status_code=400, detail="invalid or duplicate grant") from exc
     return serialize_grant(grant)

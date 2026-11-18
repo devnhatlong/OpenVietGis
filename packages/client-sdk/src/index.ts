@@ -1,3 +1,4 @@
+export * from "./service-principals";
 export * from "./workspaces";
 export * from "./projects";
 export * from "./auth";
