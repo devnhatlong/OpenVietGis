@@ -1,8 +1,11 @@
 import { defineConfig } from "@playwright/test";
 import { execPath } from "node:process";
 
-export default defineConfig({
+export function makeConfig(bootstrap = false) {
+  return defineConfig({
   testDir: "./tests/e2e",
+  ...(bootstrap ? { testMatch: "**/bootstrap-service-identity.spec.ts" } :
+    { testIgnore: "**/bootstrap-service-identity.spec.ts" }),
   timeout: 45_000,
   use: {
     baseURL: "http://127.0.0.1:5178",
@@ -18,7 +21,8 @@ export default defineConfig({
     },
     {
       command:
-        "uv run --project apps/api python -m tools.seed_identity_e2e && " +
+        "uv run --project apps/api python -m tools.seed_identity_e2e" +
+        (bootstrap ? " --uninitialized" : "") + " && " +
         "uv run --project apps/api uvicorn openvietgis_api.main:app " +
         "--app-dir apps/api --host 127.0.0.1 --port 8000 --no-access-log",
       url: "http://127.0.0.1:8000/api/v1/health/live",
@@ -47,4 +51,7 @@ export default defineConfig({
       timeout: 60_000
     }
   ]
-});
+  });
+}
+
+export default makeConfig();

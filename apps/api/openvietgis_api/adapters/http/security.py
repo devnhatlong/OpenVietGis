@@ -51,78 +51,17 @@ def _secret_value(settings_value: object | None, name: str) -> str:
     return str(get_secret_value())
 
 
-def authenticate_request(
+def _authenticate_human_session(
     request: Request,
-    session: Annotated[Session, Depends(get_db_session, scope="function")],
-    settings: Annotated[Settings, Depends(get_settings)],
+    session: Session,
+    settings: Settings,
 ) -> AuthenticatedRequest:
-    authorization = request.headers.get("authorization", "")
-    if authorization.lower().startswith("bearer "):
-        raw_credential = authorization[7:].strip()
-        try:
-            credential_id = parse_service_credential_id(raw_credential)
-            organization_value = request.path_params.get("organization_id")
-            if organization_value is None:
-                raise ValueError("tenant route required")
-            organization_id = UUID(str(organization_value))
-        except (ValueError, TypeError) as exc:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="invalid service credential",
-            ) from exc
-
-        repository = SqlServicePrincipalRepository(session)
-        resolved = repository.get_credential_for_authentication(
-            organization_id=organization_id,
-            credential_id=credential_id,
-        )
-        if resolved is None:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="invalid service credential",
-            )
-        principal, credential = resolved
-        if not verify_secret(raw_credential, credential.secret_hash):
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="invalid service credential",
-            )
-
-        actor = Actor(
-            actor_type="service_principal",
-            actor_id=principal.id,
-            display_name=principal.name,
-        )
-        bind_authenticated_service_actor(
-            session,
-            actor,
-            organization_id=organization_id,
-            credential_id=credential.id,
-        )
-        context = AuthorizationContext(
-            actor=actor,
-            organization_id=organization_id,
-            credential_id=credential.id,
-        )
-        repository.update_credential(
-            replace(credential, last_used_at=datetime.now(UTC)),
-            context=context,
-        )
-        return AuthenticatedRequest(
-            actor=actor,
-            session_id=None,
-            raw_session_token=None,
-            credential_id=credential.id,
-            organization_id=organization_id,
-        )
-
     token = request.cookies.get(settings.session_cookie_name)
     if not token:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="authentication required",
         )
-
     try:
         parsed = parse_session_token(token)
     except ValueError as exc:
@@ -178,16 +117,91 @@ def authenticate_request(
     )
 
 
-def require_csrf(
+def authenticate_human_request(
     request: Request,
-    authentication: Annotated[AuthenticatedRequest, Depends(authenticate_request)],
+    session: Annotated[Session, Depends(get_db_session, scope="function")],
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> AuthenticatedRequest:
-    if request.method.upper() in {"GET", "HEAD", "OPTIONS"}:
-        return authentication
-    if authentication.raw_session_token is None:
-        return authentication
+    return _authenticate_human_session(request, session, settings)
 
+
+def authenticate_request(
+    request: Request,
+    session: Annotated[Session, Depends(get_db_session, scope="function")],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> AuthenticatedRequest:
+    authorization = request.headers.get("authorization", "")
+    if not authorization.lower().startswith("bearer "):
+        return _authenticate_human_session(request, session, settings)
+
+    raw_credential = authorization[7:].strip()
+    try:
+        credential_id = parse_service_credential_id(raw_credential)
+        organization_value = request.path_params.get("organization_id")
+        if organization_value is None:
+            raise ValueError("tenant route required")
+        organization_id = UUID(str(organization_value))
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="invalid service credential",
+        ) from exc
+
+    repository = SqlServicePrincipalRepository(session)
+    resolved = repository.get_credential_for_authentication(
+        organization_id=organization_id,
+        credential_id=credential_id,
+    )
+    if resolved is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="invalid service credential",
+        )
+    principal, credential = resolved
+    if not verify_secret(raw_credential, credential.secret_hash):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="invalid service credential",
+        )
+
+    actor = Actor(
+        actor_type="service_principal",
+        actor_id=principal.id,
+        display_name=principal.name,
+    )
+    bind_authenticated_service_actor(
+        session,
+        actor,
+        organization_id=organization_id,
+        credential_id=credential.id,
+    )
+    context = AuthorizationContext(
+        actor=actor,
+        organization_id=organization_id,
+        credential_id=credential.id,
+    )
+    repository.update_credential(
+        replace(credential, last_used_at=datetime.now(UTC)),
+        context=context,
+    )
+    return AuthenticatedRequest(
+        actor=actor,
+        session_id=None,
+        raw_session_token=None,
+        credential_id=credential.id,
+        organization_id=organization_id,
+    )
+
+
+def verify_request_csrf(
+    request: Request,
+    authentication: AuthenticatedRequest,
+    settings: Settings,
+) -> None:
+    if request.method.upper() in {"GET", "HEAD", "OPTIONS"}:
+        return
+    if authentication.raw_session_token is None:
+        return
     candidate = request.headers.get("x-openvietgis-csrf", "")
     csrf_secret = settings.csrf_secret.get_secret_value()
     if not candidate or not verify_csrf_token(
@@ -195,5 +209,16 @@ def require_csrf(
         csrf_secret,
         candidate,
     ):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="CSRF validation failed")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="CSRF validation failed",
+        )
+
+
+def require_csrf(
+    request: Request,
+    authentication: Annotated[AuthenticatedRequest, Depends(authenticate_request)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> AuthenticatedRequest:
+    verify_request_csrf(request, authentication, settings)
     return authentication

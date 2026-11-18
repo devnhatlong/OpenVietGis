@@ -5,6 +5,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from openvietgis_api.adapters.http import (
     audit,
     auth,
+    bootstrap,
     foundation,
     grants,
     health,
@@ -48,6 +49,7 @@ def create_app() -> FastAPI:
     api_v1.include_router(health.router)
     api_v1.include_router(foundation.router)
     api_v1.include_router(auth.router)
+    api_v1.include_router(bootstrap.router)
     api_v1.include_router(audit.router)
     api_v1.include_router(me.router)
     api_v1.include_router(organizations.router)

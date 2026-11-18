@@ -126,7 +126,7 @@ jobs:
           connection = get_engine().connect(); connection.close()"
 
       - name: Validate Node runtime, frontend, generated contracts and browser E2E
-        run: pnpm validate:runtime && pnpm validate:ts && pnpm validate:contracts && pnpm validate:e2e
+        run: pnpm validate:runtime && pnpm validate:ts && pnpm validate:contracts && pnpm validate:e2e && pnpm validate:e2e:bootstrap
 
   secrets:
     runs-on: ubuntu-latest

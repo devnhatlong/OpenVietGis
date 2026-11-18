@@ -1,6 +1,7 @@
 import {
   ApiError,
   createOrganization,
+  getBootstrapStatus,
   listMyOrganizations,
   loadCsrfToken,
   type CurrentUser
@@ -13,6 +14,7 @@ import { Link, useParams } from "react-router-dom";
 import { apiClient } from "../../app/api";
 import { currentProtectedData, protectedQueryOptions } from "../../app/protected-query";
 import { FreshAccount } from "../auth/FreshAccount";
+import { BootstrapPage } from "./BootstrapPage";
 
 function slugify(value: string): string {
   return value
@@ -163,12 +165,29 @@ function OrganizationList({ organizationId, account }: { organizationId: string 
   );
 }
 
+function InstallationGate({ organizationId, account }: { organizationId: string | undefined; account: CurrentUser }) {
+  const status = useQuery({
+    queryKey: ["bootstrap-status"],
+    queryFn: () => getBootstrapStatus(apiClient),
+    ...protectedQueryOptions
+  });
+  const installation = currentProtectedData(status);
+  if (!installation) {
+    return status.error ? <p role="alert">Unable to check installation status.</p> :
+      <p>Checking installation status…</p>;
+  }
+  if (!installation.initialized) {
+    return <BootstrapPage onInitialized={async () => { await status.refetch(); }} />;
+  }
+  return <OrganizationList key={account.id} organizationId={organizationId} account={account} />;
+}
+
 export function OrganizationHome() {
   const { organizationId } = useParams();
   return (
     <FreshAccount key={organizationId ?? "home"}>
       {(account) => (
-        <OrganizationList
+        <InstallationGate
           key={account.id}
           organizationId={organizationId}
           account={account}

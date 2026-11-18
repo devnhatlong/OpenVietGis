@@ -24,7 +24,8 @@ RUNTIME_URL = "postgresql+psycopg://openvietgis_runtime:password@localhost:54330
         ("test", OWNER_URL, RUNTIME_URL.replace("openvietgis_runtime", "administrator")),
     ],
 )
-def test_unsafe_seed_never_connects(monkeypatch, environment, migration_url, runtime_url) -> None:
+@pytest.mark.parametrize("uninitialized", [False, True])
+def test_unsafe_seed_never_connects(monkeypatch, environment, migration_url, runtime_url, uninitialized) -> None:
     monkeypatch.setattr(
         config,
         "get_settings",
@@ -37,7 +38,7 @@ def test_unsafe_seed_never_connects(monkeypatch, environment, migration_url, run
     connect = Mock()
     monkeypatch.setattr(seed_identity_e2e, "create_engine", connect)
     with pytest.raises(RuntimeError, match="Refusing"):
-        seed_identity_e2e.main()
+        seed_identity_e2e.main(uninitialized=uninitialized)
     connect.assert_not_called()
 
 

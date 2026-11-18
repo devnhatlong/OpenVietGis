@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 from datetime import UTC, datetime
 
 from sqlalchemy import create_engine, text
@@ -28,7 +29,7 @@ def assert_safe_seed_target(environment: str, migration_url: str, runtime_url: s
         raise RuntimeError("Refusing identity E2E seed without distinct runtime role")
 
 
-def main() -> int:
+def main(*, uninitialized: bool = False) -> int:
     from openvietgis_api.config import get_settings
 
     settings = get_settings()
@@ -43,19 +44,28 @@ def main() -> int:
                 text(
                     """
                     UPDATE platform.installation_state
-                    SET initialized_at = COALESCE(initialized_at, :now),
+                    SET initialized_at = CASE WHEN :uninitialized THEN NULL
+                            ELSE COALESCE(initialized_at, :now) END,
+                        initial_organization_id = CASE WHEN :uninitialized THEN NULL
+                            ELSE initial_organization_id END,
+                        initialized_by_user_id = CASE WHEN :uninitialized THEN NULL
+                            ELSE initialized_by_user_id END,
                         updated_at = :now
                     WHERE singleton_key = 'installation'
                     """
                 ),
-                {"now": datetime.now(UTC)},
+                {"now": datetime.now(UTC), "uninitialized": uninitialized},
             )
     finally:
         engine.dispose()
 
-    print("P1 E2E installation marker initialized (dedicated test database only).")
+    marker = "uninitialized" if uninitialized else "initialized"
+    print(f"E2E installation marker {marker} (dedicated test database only).")
     return 0
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--uninitialized", action="store_true")
+    args = parser.parse_args()
+    raise SystemExit(main(uninitialized=args.uninitialized))
