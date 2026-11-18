@@ -26,6 +26,7 @@ import { Link, useParams } from "react-router-dom";
 import { apiClient } from "../../app/api";
 import { currentProtectedData, protectedQueryOptions } from "../../app/protected-query";
 import { FreshAccount } from "../auth/FreshAccount";
+import { FeatureInspector } from "./FeatureInspector";
 
 const fixtureSuggestions = [
   "reference_points_4326", "reference_lines_4326", "reference_polygons_4326",
@@ -281,6 +282,11 @@ function LayerPanel({ organizationId, projectId, accountId, source, writable }: 
           </section>
         ) : null}
       </>}
+      {selected !== null ? (
+        <FeatureInspector key={selected} accountId={accountId} organizationId={organizationId}
+          projectId={projectId} layerId={selected} layer={layers ? detail : undefined}
+          reloadMetadata={async () => { await detailQuery.refetch(); }} />
+      ) : null}
     </section>
   );
 }
