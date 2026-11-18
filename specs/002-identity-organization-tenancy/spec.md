@@ -4,7 +4,7 @@
 
 **Created**: 2026-11-18
 
-**Status**: Draft
+**Status**: Accepted for internal integration (2026-11-18); SC-013 human timing measurement deferred, not passed
 
 **Input**: User description: "Establish the OpenVietGIS identity, organization, workspace, project, membership, permission, invitation, service-account, tenant-isolation, audit-actor, and self-host bootstrap foundation. A user may belong to multiple organizations. Organization is the highest tenant ownership boundary. Workspace is optional grouping, not mandatory ownership. Projects belong directly to an organization. Access is permission-driven, invitations are secure and revocable, cross-tenant access must never leak, service principals are distinct actors, and Cloud/Self-host/Enterprise share the same logical product model."
 

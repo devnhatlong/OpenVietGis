@@ -275,7 +275,7 @@
 - [x] T112 [P] Record browser timing measurements for SC-001/SC-004 and self-host bootstrap timing for SC-011 from existing measured E2E journeys; record the owner-approved internal acceptance exception for SC-013 in `specs/002-identity-organization-tenancy/checklists/unfamiliar-user-timing.md` (real human exercise deferred, not passed; mandatory before external acceptance/release)
 - [x] T113 Record all automated scenario evidence in `specs/002-identity-organization-tenancy/quickstart.md` without weakening thresholds; product owner accepts internal R002 with the explicit SC-013 exception documented above (2026-11-18)
 - [x] T114 Run Node 26 root `pnpm validate`, Gitleaks, scope guard, `git diff --check`, Graphify update, and verify all Spec 002 tasks/acceptance evidence before convergence (CI 44242387123 on 7edb4f4; SC-013 owner-approved deferral recorded)
-- [ ] T115 Run `/speckit-converge` for Spec 002 and append only evidence-driven convergence tasks if any spec/plan/code gap remains in `specs/002-identity-organization-tenancy/tasks.md`
+- [x] T115 Run `/speckit-converge` for Spec 002 and append only evidence-driven convergence tasks if any spec/plan/code gap remains in `specs/002-identity-organization-tenancy/tasks.md`
 
 ---
 
@@ -455,6 +455,6 @@ Code HEAD **61bacc6**; 77/115 checked (38 open). Full Python static/unit/contrac
 
 ## Phase 11: Convergence
 
-- [ ] T116 [HIGH] Prevent service credential resurrection and lock-order inversion when auth and revoke race; enforce monotonic revocation, safe last-used semantics, and real restricted-runtime concurrent regression per FR-036/SC-009 (contradicts).
-- [ ] T117 Freeze the historical 0004 permission-ceiling migration vocabulary and add a regression preventing historical migration imports of mutable application contracts; verify unchanged upgrade/downgrade/restore per FR-035/Constitution development and quality gates (partial).
-- [ ] T118 Implement explicit soft-delete recovery while retaining tenant isolation, appropriate permissions, lifecycle invariants and audit; add restricted-runtime regressions per FR-031/FR-032 and the project.delete permission contract (partial).
+- [x] T116 [HIGH] Prevent service credential resurrection and lock-order inversion when auth and revoke race; enforce monotonic revocation, safe last-used semantics, and real restricted-runtime concurrent regression per FR-036/SC-009 (contradicts).
+- [x] T117 Freeze the historical 0004 permission-ceiling migration vocabulary and add a regression preventing historical migration imports of mutable application contracts; verify unchanged upgrade/downgrade/restore per FR-035/Constitution development and quality gates (partial).
+- [x] T118 Implement explicit soft-delete recovery while retaining tenant isolation, appropriate permissions, lifecycle invariants and audit; add restricted-runtime regressions per FR-031/FR-032 and the project.delete permission contract (partial).
