@@ -13,6 +13,10 @@
 | R002 authorization and new project-specific RLS | Existing org/actor context and current grants retained; project isolation independently enforced for new rows. | RLS bypass, browser enforcement, org-only project filtering. |
 | Transactional audit + safe revision evidence | Track actual changed metadata state with actor/time; same commit as mutation, no secrets. | Audit after commit, destructive retirement, log raw request bodies. |
 
+## Setup re-verification — 2026-11-18 (T002)
+
+Exact previously reviewed baseline 25ff038; independent setup reviewer ran read-only controls in a uniquely named, disposable, network-none container of the pinned image digest `fe440a27c6567aefa932e988962e5827bb2c29e4b97dac2ca5268f5eafe10262`, PROJ_NETWORK=OFF, no published ports; container stopped and removed. PostgreSQL 18.7 / PostGIS 3.7.0 / PROJ 9.9.0 NETWORK_ENABLED=OFF. Both explicit pipeline functions available; all output SRIDs checked. Four EIA triples, 16 directions repeated 0.05160388–0.18943416 m; five geographic pairs, 10 directions repeated 1.21267709–1.55628658 m. Six independent Web Mercator formula controls (including exact longitude/latitude limits) yielded max forward 2.2661e−8 m and inverse 3.1777e−14 degree. Context7 is not available in this execution environment; exact installed APIs and primary PostGIS [forward](https://postgis.net/docs/ST_TransformPipeline.html) / [inverse](https://postgis.net/docs/ST_InverseTransformPipeline.html) and PROJ [webmerc](https://proj.org/en/stable/operations/projections/webmerc.html) / [tmerc](https://proj.org/en/stable/operations/projections/tmerc.html) docs verified instead; explicit output SRID required and source CRS validated separately because pipeline functions ignore input SRID. No dev/review/default DB touched. Setup re-verification passed; this is not SC-004 runtime evidence.
+
 ## Coordinate validation and operations
 
 Public arrays are X,Y only. Geographic X longitude, Y latitude (degrees); projected X easting, Y northing (metres). Native EPSG axis order is separate metadata. API envelope is SpatialGeometry, not RFC 7946 GeoJSON for arbitrary CRS.
