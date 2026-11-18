@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 test("checks readiness and reloads a persisted real tenant project", async ({ page }) => {
-  const readiness = await page.request.get("/api/v1/health/ready");
+  const readiness = await page.request.get("/api/v1/health/ready", { timeout: 5_000 });
   expect(readiness.status()).toBe(200);
   expect(await readiness.json()).toEqual({ status: "ready", database: "ready" });
 

@@ -9,6 +9,16 @@ minimum Spec 002 tenant workflow in under 5 minutes.
 - No coaching from someone already familiar with the product during the measurement.
 - Uses only normal in-product navigation and labels.
 
+## Facilitator preparation (outside the timed exercise)
+
+- Start the documented synthetic test installation; do not use a real customer's deployment.
+- Prepare a synthetic reviewer account with active membership and appropriate create permissions in
+  two Organizations. Verify both are visible; do not demonstrate the navigation to the reviewer.
+- Sign the reviewer into one of those Organizations before starting the stopwatch. Provide only
+  the four task prompts below, without screenshots, click paths or suggested controls.
+- Record the exact reviewed source commit/build and whether the reviewer was coached. Record
+  any interruption or failure rather than restarting the clock to obtain a passing result.
+
 ## Timed tasks
 
 1. Switch to another Organization.
@@ -24,7 +34,9 @@ All four actions complete in under 5 minutes.
 
 | Field | Value |
 | --- | --- |
+| Reviewed source commit/build | Pending |
 | Reviewer role | Pending |
+| Coaching during measurement | Must be none |
 | Prior OpenVietGIS orientation | Must be none |
 | Started at | Pending |
 | Completed at | Pending |

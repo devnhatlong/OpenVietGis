@@ -6,6 +6,9 @@ export function makeConfig(bootstrap = false) {
   testDir: "./tests/e2e",
   ...(bootstrap ? { testMatch: "**/bootstrap-service-identity.spec.ts" } :
     { testIgnore: "**/bootstrap-service-identity.spec.ts" }),
+  // Real OIDC journeys mutate the same disposable identity/tenant fixture.
+  // Run browsers sequentially; API concurrency remains covered independently.
+  workers: 1,
   timeout: 45_000,
   reporter: [
     ["list"],
@@ -31,7 +34,7 @@ export function makeConfig(bootstrap = false) {
         (bootstrap ? " --uninitialized" : "") + " && " +
         "uv run --project apps/api uvicorn openvietgis_api.main:app " +
         "--app-dir apps/api --host 127.0.0.1 --port 8000 --no-access-log",
-      url: "http://127.0.0.1:8000/api/v1/health/live",
+      url: "http://127.0.0.1:8000/api/v1/health/ready",
       reuseExistingServer: false,
       timeout: 60_000,
       env: {
@@ -52,7 +55,8 @@ export function makeConfig(bootstrap = false) {
       // bundled with Node 26 and an old global shim can select a different Node.
       command: `"${execPath}" node_modules/vite/bin/vite.js --host 127.0.0.1 --port 5178`,
       cwd: "./apps/web",
-      url: "http://127.0.0.1:5178",
+      // Ensure the SPA proxy can reach the ready API before any real login.
+      url: "http://127.0.0.1:5178/api/v1/health/ready",
       reuseExistingServer: false,
       timeout: 60_000
     }
