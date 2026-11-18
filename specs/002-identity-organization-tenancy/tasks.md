@@ -230,7 +230,7 @@
 ### Implementation
 
 - [X] T094 [US6] Extend the foundational T018 audit repository with authorized tenant-scoped query/read behavior and pagination-ready ordering in `apps/api/openvietgis_api/adapters/persistence/audit_repository.py` and `apps/api/openvietgis_api/domains/audit/service.py`
-- [ ] T095 [US6] Complete P2 ServicePrincipal/credential/bootstrap audit wiring and actor-after-revocation snapshot behavior on top of the foundational P1 audit port in `apps/api/openvietgis_api/domains/audit/service.py` and relevant P2 domain services
+- [x] T095 [US6] Complete P2 ServicePrincipal/credential/bootstrap audit wiring and actor-after-revocation snapshot behavior on top of the foundational P1 audit port in `apps/api/openvietgis_api/domains/audit/service.py` and relevant P2 domain services
 - [X] T096 [US6] Implement authorized audit-read endpoint from `contracts/service-admin-api.yaml` in `apps/api/openvietgis_api/adapters/http/audit.py`
 
 **Checkpoint**: Security actions remain explainable after revoke and audit storage has no mutation/secret path.
@@ -256,7 +256,7 @@
 - [x] T102 [US7] Implement one-time bootstrap service requiring authenticated User + installation authority and atomically creating Organization/Owner/AuditEvent/initialized state in `apps/api/openvietgis_api/domains/bootstrap/service.py`
 - [x] T103 [US7] Implement bootstrap status/initialize HTTP endpoints with session+bootstrap-secret AND semantics from `contracts/service-admin-api.yaml` in `apps/api/openvietgis_api/adapters/http/bootstrap.py`
 - [x] T104 [US7] Implement minimal first-time bootstrap UI gated by bootstrap status and authenticated User in `apps/web/src/features/organizations/BootstrapPage.tsx`
-- [ ] T105 [US7] Add logical shared-vs-isolated configuration fixture parity tests for identity/membership/grant/invitation/service/audit semantics in `apps/api/tests/integration/tenancy/test_isolated_deployment_parity.py`
+- [x] T105 [US7] Add logical shared-vs-isolated configuration fixture parity tests for identity/membership/grant/invitation/service/audit semantics in `apps/api/tests/integration/tenancy/test_isolated_deployment_parity.py`
 
 **Checkpoint**: Self-host initialization has no anonymous-first-caller backdoor and shares normal identity/authorization semantics.
 

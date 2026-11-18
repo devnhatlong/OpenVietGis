@@ -493,3 +493,9 @@ Code commit `22d1615` was verified by [GitHub CI 44232402147](https://github.com
 - Gitleaks green; test suite uses synthetic secrets only. No final T107 evidence claimed.
 
 Task evidence: **T097-T104 checked**. T095 still needs real service-actor mutation audit/snapshot evidence, T105 parity and final gates remain open. T112 remains open for the separate unfamiliar-user exercise and remaining timing evidence.
+
+## 2026-11-18 P2 runtime audit and logical deployment parity checkpoint
+
+Code commit `d4624d5` passed all jobs in [GitHub CI 44233392909](https://github.com/nguyentrieu210/OpenVietGis/actions/runs/44233392909). Service actor Workspace/Project create and update now retain the verified credential context through domain and persistence calls; audit append checks the bound service actor, tenant and credential instead of accepting an unauthenticated actor. The real restricted-runtime HTTP regression verifies four service-authored mutation events, stable historical actor display/tenant after credential and principal revocation, and the administrator's principal/credential audit events. Bootstrap audit was verified in the prior checkpoint. Logical shared (extra tenant present) vs isolated (single-tenant fixture universe) acceptance exercises the same identity, membership, invitation, grant, scoped service access/revocation and audit contracts and compares normalized outcomes. This is not physical dedicated deployment provisioning.
+
+Task evidence: **T095 and T105 checked**. All P2 functional tasks T081–T105 are implemented and tested. T107 and final T109–T115 remain open.
