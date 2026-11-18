@@ -32,13 +32,18 @@ def synthetic_ids() -> SyntheticIds:
 @pytest.fixture
 def postgis_container_factory() -> Callable[[], PostgresContainer]:
     def factory() -> PostgresContainer:
-        return PostgresContainer(
+        container = PostgresContainer(
             image="postgis/postgis:18-3.7",
             username="openvietgis",
             password="openvietgis",
             dbname="openvietgis_test",
             driver="psycopg",
         )
+        # The Docker SDK accepts a (host IP, dynamic port) tuple; Testcontainers
+        # exposes only int/None in its port-map type. Never publish the test database
+        # on all host interfaces.
+        container.ports[str(container.port)] = ("127.0.0.1", None)  # type: ignore[assignment]
+        return container
 
     return factory
 

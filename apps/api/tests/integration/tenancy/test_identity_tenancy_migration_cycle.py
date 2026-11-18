@@ -170,6 +170,11 @@ def test_p1_migration_cycle_and_logical_backup(
     """Never downgrade/restore the configured test DB or any persistent installation."""
     existing = make_url(get_settings().migration_db_url)
     with postgis_container_factory() as container:
+        docker_container = container.get_wrapped_container()
+        docker_container.reload()
+        published = docker_container.attrs["NetworkSettings"]["Ports"]["5432/tcp"]
+        assert len(published) == 1
+        assert published[0]["HostIp"] == "127.0.0.1"
         isolated_url = make_url(container.get_connection_url())
         database_url = isolated_url.render_as_string(hide_password=False)
         assert_safe_test_target(database_url)
