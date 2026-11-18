@@ -251,29 +251,78 @@ def _metadata(world: AccessWorld, source, mutation, key: str, family: str, dimen
     assert [
         (f["field_id"], f["name"], f["ordinal"], f["type"], f["nullable"]) for f in schema["fields"]
     ] == FIELDS
+    # The complete creation diff records actual safe scalar values only.
+    reason = source["validation_reason"]
+    expected = {
+        "name": source["name"],
+        "kind": source["kind"],
+        "reference_key": key,
+        "fixture_version": provenance["fixture_version"],
+        "manifest_digest": provenance["manifest_digest"],
+        "lifecycle": source["lifecycle"],
+        "validation_state": source["validation_state"],
+        "validation_reason.code": reason["code"] if reason else None,
+        "validation_reason.message": reason["message"] if reason else None,
+        "source_crs": source["source_crs"]["code"] if source["source_crs"] else None,
+        "stored_crs": source["stored_crs"]["code"] if source["stored_crs"] else None,
+        "schema_state": schema["state"],
+        "geometry_family": family,
+        "dimensions": dimensions,
+        "feature_count_state": source["feature_count_state"],
+        "feature_count": source["feature_count"],
+        "extent_state": source["extent_state"],
+        "catalog_revision": 1,
+        "content_revision": source["content_revision"],
+        "schema_revision": source["schema_revision"],
+    }
+    assert _changes(world, mutation, "register_source") == {
+        field: (None, value) for field, value in expected.items() if value is not None
+    }
+
+
+def _changes(world: AccessWorld, mutation, operation: str):
+    """Observe persisted append-only change + success audit, not a computed mock."""
     with get_admin_engine().begin() as connection:
-        evidence = connection.execute(
-            text("""
-                SELECT c.operation,c.actor_id,c.prior_revision,c.new_revision,a.actor_id
+        row = (
+            connection.execute(
+                text("""
+                SELECT c.operation,c.actor_id,c.prior_revision,c.new_revision,c.changes,
+                       a.actor_id AS audit_actor,a.action,a.outcome,a.metadata
                   FROM spatial.catalog_changes c
-                  JOIN audit.audit_events a ON a.id=c.audit_event_id
+                  JOIN audit.audit_events a
+                    ON a.id=c.audit_event_id AND a.organization_id=c.organization_id
                  WHERE c.id=:change AND c.organization_id=:org AND c.project_id=:project
                    AND c.resource_id=:source
             """),
-            {
-                "change": mutation["change_id"],
-                "org": world.organization_id,
-                "project": world.project_id,
-                "source": source["id"],
-            },
-        ).one()
-    assert tuple(evidence) == (
-        "register_source",
-        world.owner_user_id,
-        None,
-        mutation["new_revision"],
-        world.owner_user_id,
-    )
+                {
+                    "change": mutation["change_id"],
+                    "org": world.organization_id,
+                    "project": world.project_id,
+                    "source": mutation["resource_id"],
+                },
+            )
+            .mappings()
+            .one()
+        )
+    assert row["operation"] == operation
+    assert row["actor_id"] == row["audit_actor"] == world.owner_user_id
+    assert row["prior_revision"] == mutation["prior_revision"]
+    assert row["new_revision"] == mutation["new_revision"]
+    assert row["action"] == f"spatial.catalog.{operation}"
+    assert row["outcome"] == "success"
+    assert row["metadata"] == {
+        "project_id": str(world.project_id),
+        "catalog_change_id": mutation["change_id"],
+    }
+    changes = row["changes"]
+    assert len({item["field"] for item in changes}) == len(changes)
+    for item in changes:
+        assert set(item) == {"field", "old_value", "new_value"}
+        old, new = item["old_value"], item["new_value"]
+        assert type(old) in (str, int, float, bool, type(None))
+        assert type(new) in (str, int, float, bool, type(None))
+        assert old != new or type(old) is not type(new)
+    return {item["field"]: (item["old_value"], item["new_value"]) for item in changes}
 
 
 def _rows(source_id: str):
@@ -479,6 +528,10 @@ def test_binding_rename_retire_and_rejections_leave_only_material_evidence(
         assert renamed.status_code == 200, renamed.text
         revision = renamed.json()["new_revision"]
         assert revision == {**first["new_revision"], "catalog_revision": 2}
+        assert _changes(world, renamed.json(), "update_source") == {
+            "name": ("Reference", "New name"),
+            "catalog_revision": (1, 2),
+        }
         assert _get(client, path, source_id)["name"] == "New name"
         _error(
             client.patch(detail_path, json={"expected_revision": 1, "name": "New name"}),
@@ -490,7 +543,21 @@ def test_binding_rename_retire_and_rejections_leave_only_material_evidence(
         assert retired.status_code == 200, retired.text
         assert retired.json()["lifecycle"] == "retired"
         assert retired.json()["new_revision"] == {**revision, "catalog_revision": 3}
+        assert _changes(world, retired.json(), "retire_source") == {
+            "lifecycle": ("active", "retired"),
+            "catalog_revision": (2, 3),
+        }
         assert client.get(detail_path).status_code == 404
+        missing = f"{path}/{uuid4()}"
+        for suffix, payload in (
+            ("", {"expected_revision": 3, "name": "Not restored"}),
+            ("/retire", {"expected_revision": 3}),
+        ):
+            verb = client.patch if not suffix else client.post
+            retired_response = verb(detail_path + suffix, json=payload)
+            absent_response = verb(missing + suffix, json=payload)
+            assert retired_response.status_code == absent_response.status_code == 404
+            assert retired_response.json() == absent_response.json()
         assert client.get(path).json()["items"] == []
         _error(
             client.post(path, json={"reference_key": "reference_points_5899", "name": "Again"}),
@@ -578,6 +645,15 @@ def test_correction_requires_independent_evidence_and_never_rewrites_geometry(
         current = _get(client, path, source_id)
         assert current["validation_state"] == "ready" and current["validation_reason"] is None
         assert current["provenance"] == prior["provenance"]
+        assert _changes(world, result, "correct_source_crs") == {
+            "catalog_revision": (1, 2),
+            "source_crs": (3857, 4326),
+            "validation_state": (prior["validation_state"], "ready"),
+            "validation_reason.code": ("CRS_MISMATCH", None),
+            "validation_reason.message": (prior["validation_reason"]["message"], None),
+            "extent_state": ("unavailable", "available"),
+            "content_revision": (prior["content_revision"], current["content_revision"]),
+        }
         _crs(current["source_crs"], 4326)
         _crs(current["stored_crs"], 4326)
         assert current["extent_state"] == "available"
@@ -666,6 +742,18 @@ def test_registration_scope_independent_binding_and_keyset_listing(migrated_data
         assert a["provenance"] == b["provenance"]
         assert client.get(f"{_path(world, sibling)}/{one['resource_id']}").status_code == 404
         assert client.get(f"{_path(world)}/{two['resource_id']}").status_code == 404
+        sibling_target = f"{_path(world)}/{two['resource_id']}"
+        absent_target = f"{_path(world)}/{uuid4()}"
+        for suffix, payload in (
+            ("", {"expected_revision": 1, "name": "Wrong scope"}),
+            ("/retire", {"expected_revision": 1}),
+        ):
+            verb = client.patch if not suffix else client.post
+            wrong = verb(sibling_target + suffix, json=payload)
+            absent = verb(absent_target + suffix, json=payload)
+            assert wrong.status_code == absent.status_code == 404
+            assert wrong.json() == absent.json()
+        assert _get(client, _path(world, sibling), two["resource_id"]) == b
         assert client.get(_path(other)).status_code == 404
         ordered = sorted([one["resource_id"], three["resource_id"]])
         first = client.get(_path(world), params={"limit": 1}).json()
@@ -693,3 +781,71 @@ def test_registration_scope_independent_binding_and_keyset_listing(migrated_data
             == 403
         )
     assert _counts(world)[:4] == (2, 14, 4, 2)
+
+
+@pytest.mark.parametrize("drift", ["geometry", "attributes"])
+def test_crs_correction_rejects_persisted_fixture_drift_without_committing(
+    migrated_database: None,
+    drift: str,
+) -> None:
+    """Even correct proposed CRS cannot authorize tampered persisted native content."""
+    world = seed_access_world()
+    path = _path(world)
+    with _client(world.owner_user_id) as client:
+        first = _register(client, path, "reference_correctable_crs")
+        source_id = first["resource_id"]
+        prior = _get(client, path, source_id)
+        original = _rows(source_id)
+        # Test-only corruption, intentionally retaining existing assigned pins.
+        # The replacement values remain structurally valid so integrity checks,
+        # not basic SQL constraints or CRS syntax, must reject correction.
+        with get_admin_engine().begin() as connection:
+            if drift == "geometry":
+                changed = connection.execute(
+                    text("""
+                    UPDATE spatial.reference_features
+                    SET geometry=ST_Translate(geometry, 0.001, 0.001)
+                    WHERE organization_id=:org AND project_id=:project AND source_id=:source
+                    """),
+                    {
+                        "org": world.organization_id,
+                        "project": world.project_id,
+                        "source": source_id,
+                    },
+                )
+            else:
+                changed = connection.execute(
+                    text("""
+                    UPDATE spatial.reference_features
+                    SET attributes=jsonb_set(attributes,'{fld_name}',to_jsonb(CAST(:name AS text)))
+                    WHERE organization_id=:org AND project_id=:project AND source_id=:source
+                    """),
+                    {
+                        "org": world.organization_id,
+                        "project": world.project_id,
+                        "source": source_id,
+                        "name": "Changed synthetic value",
+                    },
+                )
+            assert changed.rowcount == 1
+        corrupt = _rows(source_id)
+        assert len(corrupt) == 1 and corrupt != original
+        assert corrupt[0]["content_revision"] == original[0]["content_revision"]
+        assert corrupt[0]["schema_revision"] == original[0]["schema_revision"]
+        _error(
+            client.patch(
+                f"{path}/{source_id}",
+                json={
+                    "expected_revision": 1,
+                    "name": "Must not rename",
+                    "declared_crs": {"authority": "EPSG", "code": 4326, "coordinate_order": "xy"},
+                },
+            ),
+            422,
+            "CRS_CORRECTION_UNVERIFIED",
+        )
+        # The failed operation neither changes metadata nor repairs/rewrites the
+        # existing drift. No catalog/audit success is committed.
+        assert _get(client, path, source_id) == prior
+        assert _rows(source_id) == corrupt
+    assert _counts(world) == (1, 7, 1, 1, 1)
