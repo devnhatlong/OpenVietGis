@@ -242,7 +242,7 @@ def test_runtime_accepts_only_matching_invitation_recipient(
                 "expires_at": (datetime.now(UTC) + timedelta(hours=1)).isoformat(),
             },
         )
-        assert issued.status_code == 201, issued.text
+        assert issued.status_code == 201
         payload = {
             "organization_id": str(world.organization_id),
             "invitation_id": issued.json()["id"],
@@ -283,7 +283,7 @@ def test_runtime_accepts_only_matching_invitation_recipient(
         # User-target accepts any authenticated identity linked to that exact User.
         recipient = alternate if kind == "user" else intended
         accepted = recipient.post(accept_url, json=payload)
-        assert accepted.status_code == 200, accepted.text
+        assert accepted.status_code == 200
         assert accepted.json()["membership"]["user_id"] == str(world.wrong_user_id)
         assert accepted.json()["membership"]["status"] == "active"
         assert accepted.json()["grant"]["project_id"] == str(world.project_id)
@@ -311,7 +311,7 @@ def test_runtime_invitation_expired_or_revoked_is_unusable(
                 "expires_at": (datetime.now(UTC) + timedelta(hours=1)).isoformat(),
             },
         )
-        assert issued.status_code == 201, issued.text
+        assert issued.status_code == 201
         invitation_id = issued.json()["id"]
         if state == "revoked":
             assert owner.post(
@@ -388,7 +388,7 @@ def test_acceptance_reuses_existing_identical_active_grant(
             "invitation_id": issued.json()["id"],
             "secret": issued.json()["secret"],
         })
-        assert accepted.status_code == 200, accepted.text
+        assert accepted.status_code == 200
         assert accepted.json()["grant"]["id"] == grant_id
         assert accepted.json()["membership"]["id"] == str(world.member_membership_id)
     with get_admin_engine().connect() as connection:

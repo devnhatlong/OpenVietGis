@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import json
+import logging
 from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
+import pytest
 from sqlalchemy import text
 
 from tests.fixtures.db_admin import get_admin_engine
@@ -13,7 +15,9 @@ from tests.integration.rls.test_cross_tenant_api import client_for_user
 
 def test_p1_sensitive_mutations_append_durable_actor_attributed_audit(
     migrated_database: None,
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
+    caplog.set_level(logging.INFO)
     world = seed_access_world()
     with get_admin_engine().begin() as connection:
         original_state = dict(connection.execute(
@@ -38,6 +42,16 @@ def test_p1_sensitive_mutations_append_durable_actor_attributed_audit(
             client_for_user(world.member_user_id) as member,
             client_for_user(world.wrong_user_id) as recipient,
         ):
+            canaries = tuple(
+                value
+                for client in (owner, member, recipient)
+                for value in (
+                    client.cookies.get("ovg_session"),
+                    client.headers.get("X-OpenVietGIS-CSRF"),
+                )
+                if value
+            )
+            assert len(canaries) == 6
             created = owner.post("/api/v1/organizations", json={
                 "name": "Audit fixture", "slug": f"audit-{uuid4().hex}",
             })
@@ -59,7 +73,7 @@ def test_p1_sensitive_mutations_append_durable_actor_attributed_audit(
                     "scope_kind": "project", "project_id": project_id, "role": "viewer",
                 },
             })
-            assert issued.status_code == 201, issued.text
+            assert issued.status_code == 201
             invite_id = issued.json()["id"]
             accepted_secret = issued.json()["secret"]
             accepted = member.post("/api/v1/invitations/accept", json={
@@ -67,7 +81,7 @@ def test_p1_sensitive_mutations_append_durable_actor_attributed_audit(
                 "invitation_id": invite_id,
                 "secret": accepted_secret,
             })
-            assert accepted.status_code == 200, accepted.text
+            assert accepted.status_code == 200
             membership_id = accepted.json()["membership"]["id"]
             bundled_grant_id = accepted.json()["grant"]["id"]
 
@@ -141,8 +155,12 @@ def test_p1_sensitive_mutations_append_durable_actor_attributed_audit(
             }
             assert event["actor_display_snapshot"]
         raw_metadata = json.dumps([event["metadata"] for event in events], default=str)
-        assert accepted_secret not in raw_metadata
-        assert pending_secret not in raw_metadata
+        canaries += (accepted_secret, pending_secret)
+        if any(secret in raw_metadata for secret in canaries):
+            pytest.fail("P1 audit contains a synthetic credential", pytrace=False)
+        if any(secret in caplog.text for secret in canaries):
+            caplog.clear()
+            pytest.fail("P1 runtime log contains a synthetic credential", pytrace=False)
 
         def matching(action: str, resource_id: str, actor: UUID) -> list:
             return [
