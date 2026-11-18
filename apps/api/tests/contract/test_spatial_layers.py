@@ -28,6 +28,7 @@ from openvietgis_api.domains.spatial.domain import (
     Layer,
     Lifecycle,
     ValidationReason,
+    ValidationReasonCode,
     ValidationState,
 )
 from openvietgis_api.domains.spatial.ports import SpatialRevisionConflictError
@@ -292,9 +293,9 @@ def test_feature_unavailable_preserves_read_authority_and_metadata_support(
     # port seam, not a user mutation endpoint or arbitrary source update.
     nonready = replace(
         source,
-        validation_state=ValidationState.INVALID,
+        validation_state=ValidationState.NOT_READY,
         validation_reason=ValidationReason(
-            "CRS_MISMATCH", "Fixture metadata could not be validated."
+            ValidationReasonCode.FIXTURE_UNAVAILABLE, "Fixture native assessment is unavailable."
         ),
         extent_state=ExtentState.UNAVAILABLE,
         extent=None,
@@ -307,7 +308,7 @@ def test_feature_unavailable_preserves_read_authority_and_metadata_support(
     layers.repository.features[key] = pinned.features
 
     item = layers.layer(layer_id)
-    assert item["source"]["validation_state"] == "invalid"
+    assert item["source"]["validation_state"] == "not_ready"
     assert_capabilities(item, feature_available=False)
     assert layers.layer_list()["items"] == [item]
 
