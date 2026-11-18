@@ -9,7 +9,10 @@ from openvietgis_api.domains.audit.domain import AuditEvent, AuditOutcome
 from openvietgis_api.domains.audit.ports import AuditRepository
 from openvietgis_api.domains.authorization.context import Actor
 from openvietgis_api.domains.authorization.domain import ResourceGrant
+from openvietgis_api.domains.authorization.permissions import Permission
 from openvietgis_api.domains.authorization.ports import ResourceGrantRepository
+from openvietgis_api.domains.authorization.roles import ORGANIZATION_ROLE_PERMISSIONS
+from openvietgis_api.domains.identity.domain import UserStatus
 from openvietgis_api.domains.identity.ports import IdentityRepository
 from openvietgis_api.domains.tenancy.domain import (
     ActorType,
@@ -119,6 +122,43 @@ def _clean_slug(value: str) -> str:
     return normalized
 
 
+def _lock_active_organization(
+    repository: TenancyRepository, organization_id: UUID,
+) -> Organization:
+    """Serialize tenant lifecycle and membership/invitation mutations on one row."""
+    organization = repository.get_organization(organization_id, for_update=True)
+    if organization is None:
+        raise OrganizationNotFoundError("organization not found")
+    if organization.status != OrganizationStatus.ACTIVE:
+        raise InvalidLifecycleTransitionError("organization is not active")
+    return organization
+
+
+def _require_member_permission(
+    repository: TenancyRepository,
+    *,
+    actor: Actor,
+    organization_id: UUID,
+    permission: Permission,
+) -> OrganizationMembership:
+    # Call only while holding the organization row lock. Revocation cannot race
+    # the authorization decision for these administrative mutations.
+    if actor.actor_type != "human" or actor.actor_id is None:
+        raise OwnerRequiredError("active human membership required")
+    membership = repository.get_membership_for_user(
+        organization_id=organization_id,
+        user_id=actor.actor_id,
+        for_update=True,
+    )
+    if (
+        membership is None
+        or membership.status != MembershipStatus.ACTIVE
+        or permission not in ORGANIZATION_ROLE_PERMISSIONS[membership.role]
+    ):
+        raise OwnerRequiredError("insufficient organization authority")
+    return membership
+
+
 class TenancyService:
     def __init__(
         self,
@@ -219,6 +259,7 @@ class TenancyService:
         slug: str,
         now: datetime | None = None,
     ) -> Workspace:
+        _lock_active_organization(self._repository, organization_id)
         now = now or datetime.now(UTC)
         workspace = Workspace(
             id=uuid4(),
@@ -255,6 +296,7 @@ class TenancyService:
         status: WorkspaceStatus | None = None,
         now: datetime | None = None,
     ) -> Workspace:
+        _lock_active_organization(self._repository, organization_id)
         workspace = self._repository.get_workspace(
             organization_id=organization_id,
             workspace_id=workspace_id,
@@ -314,6 +356,7 @@ class TenancyService:
         workspace_id: UUID | None = None,
         now: datetime | None = None,
     ) -> Project:
+        _lock_active_organization(self._repository, organization_id)
         if workspace_id is not None:
             workspace = self._repository.get_workspace(
                 organization_id=organization_id,
@@ -365,6 +408,7 @@ class TenancyService:
         status: ProjectStatus | None = None,
         now: datetime | None = None,
     ) -> Project:
+        _lock_active_organization(self._repository, organization_id)
         project = self._repository.get_project(
             organization_id=organization_id,
             project_id=project_id,
@@ -442,25 +486,27 @@ class TenancyService:
     ) -> Organization:
         organization = self._repository.get_organization(
             organization_id,
-            for_update=status is not None,
+            for_update=True,
         )
         if organization is None:
             raise OrganizationNotFoundError("organization not found")
 
-        if actor.actor_type != "human" or actor.actor_id is None:
-            raise OwnerRequiredError("human Owner required")
-        membership = self._repository.get_membership_for_user(
+        _require_member_permission(
+            self._repository,
+            actor=actor,
             organization_id=organization_id,
-            user_id=actor.actor_id,
-            for_update=status is not None,
+            permission=(
+                Permission.ORGANIZATION_LIFECYCLE
+                if status is not None
+                else Permission.ORGANIZATION_MANAGE_SETTINGS
+            ),
         )
-        if membership is None:
-            raise OwnerRequiredError("active membership required")
-        if status is not None and (
-            membership.role != MembershipRole.OWNER
-            or membership.status != MembershipStatus.ACTIVE
-        ):
-            raise OwnerRequiredError("Owner required for organization lifecycle")
+        if organization.status != OrganizationStatus.ACTIVE and status is None:
+            raise InvalidLifecycleTransitionError("organization is not active")
+        if organization.status != OrganizationStatus.ACTIVE and name is not None:
+            raise InvalidLifecycleTransitionError(
+                "restore organization before changing its settings"
+            )
 
         now = now or datetime.now(UTC)
         new_status = status or organization.status
@@ -504,7 +550,13 @@ class TenancyService:
         status: MembershipStatus | None = None,
         now: datetime | None = None,
     ) -> OrganizationMembership:
-        self._repository.get_organization(organization_id, for_update=True)
+        _lock_active_organization(self._repository, organization_id)
+        caller_membership = _require_member_permission(
+            self._repository,
+            actor=actor,
+            organization_id=organization_id,
+            permission=Permission.ORGANIZATION_MANAGE_MEMBERS,
+        )
         membership = self._repository.get_membership(
             organization_id=organization_id,
             membership_id=membership_id,
@@ -515,6 +567,11 @@ class TenancyService:
 
         new_role = role or membership.role
         new_status = status or membership.status
+        if (
+            membership.role == MembershipRole.OWNER or new_role == MembershipRole.OWNER
+        ) and caller_membership.role != MembershipRole.OWNER:
+            raise OwnerRequiredError("Owner required for ownership changes")
+
         stops_being_active_owner = (
             membership.role == MembershipRole.OWNER
             and membership.status == MembershipStatus.ACTIVE
@@ -577,7 +634,7 @@ class TenancyService:
     ) -> tuple[OrganizationMembership, OrganizationMembership]:
         if actor.actor_type != "human" or actor.actor_id is None:
             raise OwnerRequiredError("human Owner required")
-        self._repository.get_organization(organization_id, for_update=True)
+        _lock_active_organization(self._repository, organization_id)
         current = self._repository.get_membership_for_user(
             organization_id=organization_id,
             user_id=actor.actor_id,
@@ -649,6 +706,18 @@ class InvitationService:
         resource_role: ResourceRole | None = None,
         now: datetime | None = None,
     ) -> IssuedInvitation:
+        _lock_active_organization(self._tenancy_repository, organization_id)
+        inviter_membership = _require_member_permission(
+            self._tenancy_repository,
+            actor=actor,
+            organization_id=organization_id,
+            permission=Permission.INVITATION_MANAGE,
+        )
+        if (
+            organization_role == MembershipRole.OWNER
+            and inviter_membership.role != MembershipRole.OWNER
+        ):
+            raise OwnerRequiredError("Owner required for Owner invitation")
         now = now or datetime.now(UTC)
         if expires_at <= now:
             raise InvalidInvitationError("invitation expiry must be in the future")
@@ -706,7 +775,7 @@ class InvitationService:
             target_kind=target_kind,
             target_email_normalized=normalized_email,
             target_user_id=target_user_id,
-            target_issuer=target_issuer.rstrip("/") if target_issuer else None,
+            target_issuer=target_issuer,
             target_subject=target_subject,
             organization_role=organization_role,
             resource_scope_kind=resource_scope_kind,
@@ -744,24 +813,40 @@ class InvitationService:
         )
         return IssuedInvitation(invitation=invitation, secret=secret)
 
-    def _target_matches(self, invitation: Invitation, *, user_id: UUID) -> bool:
+    def _target_matches(
+        self,
+        invitation: Invitation,
+        *,
+        user_id: UUID,
+        identity_link_id: UUID | None,
+    ) -> bool:
         if invitation.target_kind == InvitationTargetKind.USER:
             return invitation.target_user_id == user_id
 
-        links = self._identity_repository.list_identity_links(user_id)
+        # Email and external-identity invitations require proof from the identity
+        # used to establish this authenticated session, not another linked identity.
+        if identity_link_id is None:
+            return False
+        link = next(
+            (
+                item
+                for item in self._identity_repository.list_identity_links(user_id)
+                if item.id == identity_link_id and item.user_id == user_id
+            ),
+            None,
+        )
+        if link is None:
+            return False
         if invitation.target_kind == InvitationTargetKind.EMAIL:
-            expected = invitation.target_email_normalized
-            return any(
+            return (
                 link.email_verified
                 and link.email_snapshot is not None
-                and link.email_snapshot.strip().lower() == expected
-                for link in links
+                and link.email_snapshot.strip().lower() == invitation.target_email_normalized
             )
 
-        return any(
-            link.issuer.rstrip("/") == (invitation.target_issuer or "").rstrip("/")
+        return (
+            link.issuer == invitation.target_issuer
             and link.subject == invitation.target_subject
-            for link in links
         )
 
     def accept(
@@ -772,8 +857,21 @@ class InvitationService:
         organization_id: UUID,
         invitation_id: UUID,
         secret: str,
+        identity_link_id: UUID | None = None,
         now: datetime | None = None,
     ) -> tuple[OrganizationMembership, ResourceGrant | None]:
+        if actor.actor_type != "human" or actor.actor_id != user_id:
+            raise InvitationTargetMismatchError("authenticated human identity required")
+        user = self._identity_repository.get_user(user_id)
+        if user is None or user.status != UserStatus.ACTIVE:
+            raise InvitationTargetMismatchError("authenticated human identity required")
+
+        # The same organization row is acquired first for invitation issue,
+        # acceptance/revocation, ownership transfer, and membership changes.
+        try:
+            _lock_active_organization(self._tenancy_repository, organization_id)
+        except (OrganizationNotFoundError, InvalidLifecycleTransitionError) as exc:
+            raise InvalidInvitationError("invalid invitation") from exc
         invitation = self._tenancy_repository.get_invitation(
             organization_id=organization_id,
             invitation_id=invitation_id,
@@ -790,8 +888,30 @@ class InvitationService:
             raise InvalidInvitationError("invitation has expired")
         if not verify_secret(secret, invitation.token_hash):
             raise InvalidInvitationError("invalid invitation secret")
-        if not self._target_matches(invitation, user_id=user_id):
+        if not self._target_matches(
+            invitation, user_id=user_id, identity_link_id=identity_link_id
+        ):
             raise InvitationTargetMismatchError("invitation target does not match identity")
+
+        # Assigning Owner requires a currently active Owner inviter. This also
+        # invalidates outstanding Owner invitations after the inviter loses authority.
+        if invitation.organization_role == MembershipRole.OWNER:
+            inviter = (
+                self._tenancy_repository.get_membership_for_user(
+                    organization_id=organization_id,
+                    user_id=invitation.created_by_actor_id,
+                    for_update=True,
+                )
+                if invitation.created_by_actor_type == ActorType.HUMAN
+                and invitation.created_by_actor_id is not None
+                else None
+            )
+            if (
+                inviter is None
+                or inviter.role != MembershipRole.OWNER
+                or inviter.status != MembershipStatus.ACTIVE
+            ):
+                raise InvalidInvitationError("Owner invitation authority is no longer active")
 
         membership = self._tenancy_repository.get_membership_for_user(
             organization_id=organization_id,
@@ -812,6 +932,13 @@ class InvitationService:
             )
             self._tenancy_repository.create_membership(membership)
         else:
+            # Invitation acceptance is not the ownership-transfer mechanism.
+            # Never permit an invitation to downgrade an existing Owner.
+            if (
+                membership.role == MembershipRole.OWNER
+                and invitation.organization_role != MembershipRole.OWNER
+            ):
+                raise InvalidInvitationError("invitation cannot downgrade an Owner")
             membership = replace(
                 membership,
                 role=invitation.organization_role,
@@ -874,6 +1001,13 @@ class InvitationService:
         invitation_id: UUID,
         now: datetime | None = None,
     ) -> Invitation:
+        _lock_active_organization(self._tenancy_repository, organization_id)
+        revoker = _require_member_permission(
+            self._tenancy_repository,
+            actor=actor,
+            organization_id=organization_id,
+            permission=Permission.INVITATION_MANAGE,
+        )
         invitation = self._tenancy_repository.get_invitation(
             organization_id=organization_id,
             invitation_id=invitation_id,
@@ -881,6 +1015,11 @@ class InvitationService:
         )
         if invitation is None:
             raise InvitationNotFoundError("invitation not found")
+        if (
+            invitation.organization_role == MembershipRole.OWNER
+            and revoker.role != MembershipRole.OWNER
+        ):
+            raise OwnerRequiredError("Owner required to revoke an Owner invitation")
         if invitation.status != InvitationStatus.PENDING:
             raise InvalidInvitationError("only pending invitation can be revoked")
         now = now or datetime.now(UTC)

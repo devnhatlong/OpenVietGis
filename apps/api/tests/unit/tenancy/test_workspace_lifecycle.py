@@ -8,6 +8,8 @@ import pytest
 from openvietgis_api.domains.authorization.context import Actor
 from openvietgis_api.domains.tenancy.domain import (
     ActorType,
+    Organization,
+    OrganizationStatus,
     Workspace,
     WorkspaceStatus,
 )
@@ -20,6 +22,21 @@ from openvietgis_api.domains.tenancy.service import (
 class WorkspaceRepo:
     def __init__(self, workspace: Workspace) -> None:
         self.workspace = workspace
+
+    def get_organization(self, organization_id, *, for_update=False):
+        assert organization_id == self.workspace.organization_id
+        assert for_update
+        return Organization(
+            id=organization_id,
+            name="Organization",
+            slug="organization",
+            status=OrganizationStatus.ACTIVE,
+            created_by_actor_type=ActorType.HUMAN,
+            created_by_actor_id=self.workspace.created_by_actor_id,
+            created_at=self.workspace.created_at,
+            updated_at=self.workspace.updated_at,
+            deleted_at=None,
+        )
 
     def get_workspace(self, *, organization_id, workspace_id):
         assert organization_id == self.workspace.organization_id
