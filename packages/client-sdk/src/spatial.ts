@@ -1,5 +1,5 @@
 import { ApiClient, ApiError } from "./http";
-import type { components } from "./generated/spatial-catalog";
+import type { components, operations } from "./generated/spatial-catalog";
 
 export type SpatialSource = components["schemas"]["Source"];
 export type SpatialSourceList = components["schemas"]["SourceList"];
@@ -162,4 +162,42 @@ export function retireSpatialLayer(
   return spatialRequest(client, layerPath(organizationId, projectId, layerId) + "/retire", {
     method: "POST", body: JSON.stringify(input)
   });
+}
+
+export type SpatialFeaturePage = components["schemas"]["FeaturePage"];
+export type SpatialFeatureDetail = components["schemas"]["FeatureDetail"];
+export type SpatialFeature = components["schemas"]["Feature"];
+export type SpatialFeatureReadContext = components["schemas"]["FeatureReadContext"];
+export type ReadSpatialFeaturesOptions = operations["pageSpatialFeatures"]["parameters"]["query"];
+export type GetSpatialFeatureOptions = operations["getSpatialFeature"]["parameters"]["query"];
+
+function featureReadParams(options: GetSpatialFeatureOptions): URLSearchParams {
+  const params = new URLSearchParams({
+    content_revision: options.content_revision,
+    schema_revision: options.schema_revision
+  });
+  if (options.include_geometry !== undefined) {
+    params.set("include_geometry", String(options.include_geometry));
+  }
+  if (options.response_crs !== undefined) params.set("response_crs", String(options.response_crs));
+  return params;
+}
+
+export function readSpatialFeatures(
+  client: ApiClient, organizationId: string, projectId: string, layerId: string,
+  options: ReadSpatialFeaturesOptions
+): Promise<SpatialFeaturePage> {
+  const params = featureReadParams(options);
+  if (options.limit !== undefined) params.set("limit", String(options.limit));
+  if (options.after_feature_id !== undefined) params.set("after_feature_id", options.after_feature_id);
+  return spatialRequest(client, layerPath(organizationId, projectId, layerId) +
+    "/features?" + params.toString());
+}
+
+export function getSpatialFeature(
+  client: ApiClient, organizationId: string, projectId: string, layerId: string,
+  featureId: string, options: GetSpatialFeatureOptions
+): Promise<SpatialFeatureDetail> {
+  return spatialRequest(client, layerPath(organizationId, projectId, layerId) +
+    "/features/" + encodeURIComponent(featureId) + "?" + featureReadParams(options).toString());
 }
