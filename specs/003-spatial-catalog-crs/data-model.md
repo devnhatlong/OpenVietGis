@@ -29,18 +29,19 @@ A registered DataSource is logical source identity, not a table, Layer, or file.
 | id, organization_id, project_id | UUID; composite unique (organization_id, project_id, id), FK Project owner |
 | name | trimmed, 1–200 characters; duplicate display names allowed |
 | kind | enum `reference_fixture` only in R003 |
-| reference_key | immutable private-adapter binding to a registry entry; safe logical alias exposed in provenance, never a table/path/locator; unique (org, project, reference_key), including retired records |
-| fixture_version, manifest_digest | immutable accepted manifest identity; public safe provenance; SHA-256 digest of reproducible fixture manifest |
+| reference_key | immutable private-adapter binding to a registry entry; safe logical alias exposed in provenance, never a table/path/locator; 1–100 characters; unique (org, project, reference_key), including retired records |
+| fixture_version, manifest_digest | immutable accepted manifest identity; fixture_version length 1–100, manifest_digest lowercase 64-hex SHA-256 digest of reproducible fixture manifest; public safe provenance |
 | source_asset_id | null for reference fixture; no artifact store in R003 |
 | lifecycle | `active` or `retired` |
 | validation_state | `ready`, `invalid`, `not_ready`; independent of lifecycle |
 | validation_reason | null when ready; otherwise stable reason enum (contract) + safe message |
 | source_crs | nullable declared exact supported/known EPSG profile reference; never guessed |
 | stored_crs | nullable independently verified native CRS profile reference; may differ from declaration for invalid source |
+| schema_state | `known` or `unavailable`; unavailable schema has no exposed fields; ready requires known schema |
 | geometry_family, dimensions | inspected family Point/LineString/Polygon or explicit mixed/unsupported/unknown; XY or XYZ/XYM/XYZM/mixed/unknown |
-| feature_count_state, feature_count | `known` + nonnegative integer, or `unavailable` + null |
+| feature_count_state, feature_count | `known` + integer 0–2147483647, or `unavailable` + null |
 | extent_state, extent | `available` + finite native bounding box with explicit CRS, or `empty` / `unavailable` + null |
-| catalog_revision | positive bigint, starts 1, increments once per material source metadata/lifecycle change |
+| catalog_revision | positive bigint, 1–9007199254740991 (wire-safe integer), starts 1, increments once per material source metadata/lifecycle change |
 | content_revision, schema_revision | opaque nonempty tokens; deterministic manifest digests (details below); even invalid registered sources identify what was validated, never confer readiness |
 | created_at, updated_at, retired_at | UTC timestamptz, retired_at null iff active |
 
@@ -64,7 +65,7 @@ Only exact types and finite coordinates admitted to ready fixtures: text max 409
 | source_id | immutable UUID; composite (org, project, source_id) FK DataSource |
 | name | trimmed 1–200 characters; duplicate names allowed |
 | lifecycle | `active` or `retired` |
-| layer_revision | positive bigint from 1; independent of source revisions |
+| layer_revision | positive bigint 1–9007199254740991 from 1; independent of source revisions |
 | created_at, updated_at, retired_at | UTC timestamptz; retired_at null iff active |
 
 Layer has no duplicated feature, schema or extent rows. Its detail resolves current same-scope Source; list and detail return the same bounded Layer + source metadata representation. A Layer is created only from an active, ready source. Technical capability names are fixed; `metadata_read` and `feature_read` supported, the latter available only when source and Layer are active/ready. Render/query/edit/style/export/analysis/offline not supported. Capability entries expose required permission or null, technical support, current availability and actor permission independently. Metadata read remains available for active invalid source metadata. A source's validation failure after a controlled change makes feature read unavailable without retiring existing Layers.
@@ -75,7 +76,7 @@ Immutable code/versioned registry, not editable by tenant. Profiles distinguish 
 
 ### CatalogChange — `spatial.catalog_changes`
 
-Append-only UUID `id`, org/project, target `resource_type` (`data_source` or `layer`), `resource_id`, nullable `source_id` or `layer_id` with **exactly one** populated according to type; each composite FK to its resource, no polymorphic unconstrained reference. `actor_type` human/service_principal, `actor_id` stable UUID, safe display snapshot, `operation` register_source/update_source/correct_source_crs/retire_source/create_layer/rename_layer/retire_layer; support tests for controlled content/schema changes may use `refresh_reference_fixture` internal operation, not a public endpoint. `created_at` UTC timestamptz; R002 success audit event reference in same transaction, linked by ID (scoped to org). `prior_revision` nullable on creation; `new_revision` non-null; each is a typed revision object (source: catalog/content/schema; layer: layer). `changes` bounded structured safe changed-value entries (field and JSON-safe scalar old/new including null for absent, names/CRS codes/lifecycle/validation and revision tokens); source registration records selected safe provenance/schema/count state, not raw features. Record only actual changed fields, no mass feature values, credentials, path, SQL or storage keys. Enforce logically append-only by runtime grants and no update/delete repository method; preserve through retirement. Bounded ascending change ID traversal under project.read, not R002 tenant-wide audit.read; subject to current project lifecycle/access.
+Append-only UUID `id`, org/project, target `resource_type` (`data_source` or `layer`), `resource_id`, nullable `source_id` or `layer_id` with **exactly one** populated according to type; each composite FK to its resource, no polymorphic unconstrained reference. `actor_type` human/service_principal, `actor_id` stable UUID, `actor_display_snapshot` safe 1–200 characters, `operation` register_source/update_source/correct_source_crs/retire_source/create_layer/rename_layer/retire_layer; support tests for controlled content/schema changes may use `refresh_reference_fixture` internal operation, not a public endpoint. `created_at` UTC timestamptz; `audit_event_id` UUID R002 success audit event reference in same transaction, scoped to org. `prior_revision` nullable on creation; `new_revision` non-null; each is a typed revision object (source: catalog/content/schema; layer: layer). `changes` bounded 1–100 structured safe changed-value entries (field and JSON-safe scalar old/new including null for absent, names/CRS codes/lifecycle/validation and revision tokens); source registration records selected safe provenance/schema/count state, not raw features. Record only actual changed fields, no mass feature values, credentials, path, SQL or storage keys. Enforce logically append-only by runtime grants and no update/delete repository method; preserve through retirement. Bounded ascending change ID traversal under project.read, not R002 tenant-wide audit.read; subject to current project lifecycle/access.
 
 ## Revision and transaction invariants
 
