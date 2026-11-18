@@ -164,6 +164,22 @@ export function retireSpatialLayer(
   });
 }
 
+export type SpatialCatalogChange = components["schemas"]["CatalogChange"];
+export type SpatialChangeList = components["schemas"]["ChangeList"];
+
+export function listSpatialCatalogChanges(
+  client: ApiClient, organizationId: string, projectId: string,
+  options: NonNullable<operations["listSpatialCatalogChanges"]["parameters"]["query"]> = {}
+): Promise<SpatialChangeList> {
+  const params = new URLSearchParams();
+  if (options.limit !== undefined) params.set("limit", String(options.limit));
+  if (options.after_id !== undefined) params.set("after_id", options.after_id);
+  const query = params.toString();
+  const path = "/organizations/" + encodeURIComponent(organizationId) +
+    "/projects/" + encodeURIComponent(projectId) + "/spatial/changes";
+  return spatialRequest(client, path + (query ? "?" + query : ""));
+}
+
 export type SpatialFeaturePage = components["schemas"]["FeaturePage"];
 export type SpatialFeatureDetail = components["schemas"]["FeatureDetail"];
 export type SpatialFeature = components["schemas"]["Feature"];
