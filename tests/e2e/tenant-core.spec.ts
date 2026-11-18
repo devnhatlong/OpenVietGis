@@ -15,7 +15,8 @@ async function signIn(page: import("@playwright/test").Page) {
 
 test("logs in, creates organizations, and switches explicit organization context", async ({
   page
-}) => {
+}, testInfo) => {
+  test.setTimeout(120_000);
   await signIn(page);
 
   const suffix = Date.now().toString();
@@ -32,13 +33,53 @@ test("logs in, creates organizations, and switches explicit organization context
     await expect(page.getByRole("link", { name })).toBeVisible();
   }
 
-  const first = page.getByRole("link", { name: names[0] ?? "" });
-  await first.click();
-  await expect(page).toHaveURL(/\/organizations\/[0-9a-f-]{36}$/);
-  await expect(page.getByTestId("active-organization")).toContainText("owner");
+  // Start in one Organization and perform three real switches without signing out.
+  const organizationIds = new Map<string, string>();
+  for (const name of names) {
+    const href = await page.getByRole("link", { name, exact: true }).getAttribute("href");
+    const id = href?.split("/").at(-1) ?? "";
+    expect(id).toMatch(/^[0-9a-f-]{36}$/);
+    organizationIds.set(name, id);
+  }
+  expect(new Set(organizationIds.values()).size).toBe(3);
+  await page.getByRole("link", { name: names[0] ?? "", exact: true }).click();
+  await expect(page.getByTestId("active-organization")).toContainText(organizationIds.get(names[0] ?? "") ?? "");
 
-  await page.getByRole("link", { name: names[1] ?? "" }).click();
-  await expect(page.getByRole("heading", { name: names[1] ?? "" })).toBeVisible();
+  const timings: Array<{ switchNumber: number; elapsedMs: number }> = [];
+  for (const [index, name] of [names[2], names[0], names[1]].entries()) {
+    if (!name) throw new Error("Missing switch target");
+    const id = organizationIds.get(name);
+    if (!id) throw new Error("Missing organization ID");
+    const started = performance.now();
+    await page.getByRole("link", { name, exact: true }).click();
+    await expect(page).toHaveURL(new RegExp("/organizations/" + id + "$"));
+    await expect(page.getByRole("heading", { name, exact: true })).toBeVisible();
+    const context = page.getByTestId("active-organization");
+    await expect(context).toContainText(id);
+    await expect(context).toContainText("owner");
+
+    // A heading alone does not establish resource access. Wait for the scoped
+    // API response and a rendered project list at the explicit target route.
+    const projectList = page.waitForResponse((response) =>
+      new URL(response.url()).pathname === "/api/v1/organizations/" + id + "/projects" &&
+      response.request().method() === "GET"
+    );
+    await page.getByRole("link", { name: "Projects", exact: true }).click();
+    expect((await projectList).status()).toBe(200);
+    await expect(page).toHaveURL(new RegExp("/organizations/" + id + "/projects$"));
+    await expect(page.getByTestId("project-list")).toBeVisible();
+    const elapsedMs = performance.now() - started;
+    timings.push({ switchNumber: index + 1, elapsedMs: Math.round(elapsedMs) });
+    await testInfo.attach("sc-001-switch-" + (index + 1), {
+      body: JSON.stringify(timings.at(-1)),
+      contentType: "application/json"
+    });
+    expect(elapsedMs).toBeLessThan(10_000);
+    await page.getByRole("link", { name: "← Organization", exact: true }).click();
+    await expect(page.getByRole("heading", { name, exact: true })).toBeVisible();
+  }
+  const organizationId = organizationIds.get(names[1] ?? "");
+  if (!organizationId) throw new Error("Missing organization for workspace journey");
 
   const workspaceA1 = "Workspace A1 " + suffix;
   const workspaceA2 = "Workspace A2 " + suffix;
@@ -64,20 +105,37 @@ test("logs in, creates organizations, and switches explicit organization context
   const a2Value = await projectWorkspace
     .getByRole("option", { name: workspaceA2 })
     .getAttribute("value");
-  expect(a2Value).toBeTruthy();
+  if (!a2Value) throw new Error("Missing destination workspace ID");
   const projectRow = page
     .locator('li[data-testid^="project-"]')
     .filter({ hasText: projectName });
 
+  const projectId = (await projectRow.getAttribute("data-testid"))?.slice("project-".length) ?? "";
+  expect(projectId).toMatch(/^[0-9a-f-]{36}$/);
+  async function assertOwnership(workspaceId: string | null, status: "active" | "archived") {
+    const response = await page.request.get("/api/v1/organizations/" + organizationId + "/projects/" + projectId);
+    expect(response.status()).toBe(200);
+    expect(await response.json()).toMatchObject({
+      id: projectId, organization_id: organizationId, workspace_id: workspaceId, status
+    });
+  }
+  const originalWorkspaceId = await projectWorkspace.inputValue();
+  expect(originalWorkspaceId).toMatch(/^[0-9a-f-]{36}$/);
+  expect(originalWorkspaceId).not.toBe(a2Value);
+  await assertOwnership(originalWorkspaceId, "active");
+
   await projectWorkspace.selectOption({ label: workspaceA2 });
   await page.getByRole("button", { name: "Move " + projectName }).click();
   await expect(projectRow).toContainText("workspace " + a2Value);
+  await assertOwnership(a2Value, "active");
 
   await page.getByRole("button", { name: "Ungroup " + projectName }).click();
   await expect(projectRow).toContainText("workspace none");
+  await assertOwnership(null, "active");
 
   await page.getByRole("button", { name: "Archive " + projectName }).click();
   await expect(projectRow).toContainText("archived");
+  await assertOwnership(null, "archived");
 
   const storage = await page.evaluate(() => ({
     local: Object.keys(localStorage),

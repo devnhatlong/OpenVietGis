@@ -78,8 +78,9 @@ async function submitInvitation(page: Page, handoff: string, status: number) {
 
 test("recipient-bound invitation grants one project and revocation stops the next protected request", async ({
   page: owner, browser, baseURL
-}) => {
-  test.setTimeout(120_000);
+}, testInfo) => {
+  // Keep the surrounding setup/rejection/revocation separate from the SC-004 clock.
+  test.setTimeout(300_000);
   const options = { baseURL: baseURL ?? "http://127.0.0.1:5178" };
   const wrongContext = await browser.newContext(options);
   const recipientContext = await browser.newContext(options);
@@ -134,11 +135,20 @@ test("recipient-bound invitation grants one project and revocation stops the nex
     expect(wrongOrganizations.status()).toBe(200);
     expect((await wrongOrganizations.json() as Array<{ id: string }>).some((org) => org.id === orgId)).toBe(false);
 
+    // Direct SPA navigation must also fail closed for a verified nonmember;
+    // checking a direct API URL alone does not exercise the client display boundary.
+    await wrong.goto("/organizations/" + orgId + "/projects");
+    await expect(wrong.getByRole("alert")).toContainText("Unable to load project access");
+    await expect(wrong.getByTestId("project-list")).toHaveCount(0);
+    await expect(wrong.getByText(projectName, { exact: true })).toHaveCount(0);
+    await expect(wrong.getByText(hiddenProjectName, { exact: true })).toHaveCount(0);
     const unauthorizedDetail = await wrong.goto(projectPath);
     expect(unauthorizedDetail?.status()).toBe(404);
     expect(await unauthorizedDetail?.text()).not.toContain(projectName);
 
-    // The intended identity completes the very same invitation exactly once.
+    // The intended identity completes the documented journey: authenticate,
+    // accept through the UI, and reach the actual granted project.
+    const acceptanceStarted = performance.now();
     await signIn(recipient, "member-a");
     const recipientUserId = await currentUserId(recipient);
     await submitInvitation(recipient, handoff, 200);
@@ -147,7 +157,16 @@ test("recipient-bound invitation grants one project and revocation stops the nex
     await recipient.getByRole("link", { name: "Projects", exact: true }).click();
     await expect(recipient.getByText(projectName, { exact: true })).toBeVisible();
     await expect(recipient.getByText(hiddenProjectName, { exact: true })).toHaveCount(0);
-    expect((await recipient.request.get(projectPath)).status()).toBe(200);
+    const granted = await recipient.request.get(projectPath);
+    expect(granted.status()).toBe(200);
+    expect(await granted.json()).toMatchObject({ id: projectId, organization_id: orgId });
+    const acceptanceElapsedMs = performance.now() - acceptanceStarted;
+    // The attachment contains only elapsed time, never the invitation handoff.
+    await testInfo.attach("sc-004-invitation-acceptance", {
+      body: JSON.stringify({ elapsedMs: Math.round(acceptanceElapsedMs) }),
+      contentType: "application/json"
+    });
+    expect(acceptanceElapsedMs).toBeLessThan(180_000);
 
     await submitInvitation(recipient, handoff, 400);
     await expect(recipient.getByRole("alert")).toContainText("Unable to accept invitation");
