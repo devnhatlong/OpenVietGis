@@ -9,16 +9,32 @@ or a specific independently expected validation failure.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterator, Mapping
-from dataclasses import dataclass, replace
+import json
+import math
+from collections.abc import Callable, Iterator, Mapping, Sequence
+from dataclasses import asdict, dataclass, replace
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from types import MappingProxyType
 from uuid import UUID
 
+from sqlalchemy import text
+from sqlalchemy.engine import RowMapping
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session
+
+from openvietgis_api.adapters.persistence.rls import require_project_context
+from openvietgis_api.domains.authorization.context import AuthorizationContext
+from openvietgis_api.domains.authorization.permissions import Permission
 from openvietgis_api.domains.spatial.domain import (
+    MAX_POSITIONS,
+    READABLE_CRS_CODES,
+    SUPPORTED_FAMILIES,
+    WEB_MERCATOR_MAX,
     AttributeValue,
+    CoordinateTree,
     DataSource,
+    Extent,
     ExtentState,
     FeatureCountState,
     FieldType,
@@ -37,8 +53,14 @@ from openvietgis_api.domains.spatial.domain import (
     ValidationState,
     canonical_attribute_value,
     canonical_manifest_digest,
+    validate_ready_geometry,
 )
-from openvietgis_api.domains.spatial.service import PinnedSource, derive_source_pins
+from openvietgis_api.domains.spatial.ports import SpatialScopeError
+from openvietgis_api.domains.spatial.service import (
+    PinnedSource,
+    derive_source_pins,
+    verify_source_pins,
+)
 
 FIXTURE_VERSION = "r003-reference-v1"
 _PROVISIONAL_PIN = "0" * 64
@@ -592,3 +614,627 @@ def materialize_reference_fixture(
     return PinnedSource(
         replace(pinned.source, manifest_digest=manifest_digest), pinned.fields, pinned.features
     )
+
+
+class ReferenceFixtureIntegrityError(SpatialValidationError):
+    """Unexpected registry or storage discrepancy; registration must roll back."""
+
+
+class ReferenceFixtureQueryError(ReferenceFixtureIntegrityError):
+    """Unexpected SQL/engine failure; never represent as unavailable evidence."""
+
+
+class ReferenceCorrectionUnverifiedError(SpatialValidationError):
+    """A proposed declaration is not supported by the immutable control evidence."""
+
+
+def _integrity() -> ReferenceFixtureIntegrityError:
+    return ReferenceFixtureIntegrityError("Reference fixture native verification failed.")
+
+
+def _unverified() -> ReferenceCorrectionUnverifiedError:
+    return ReferenceCorrectionUnverifiedError("Reference CRS correction could not be verified.")
+
+
+def _scope_params(
+    session: Session, context: AuthorizationContext, source: DataSource
+) -> dict[str, UUID]:
+    require_project_context(session, context, permission=Permission.PROJECT_EDIT)
+    if (source.organization_id, source.project_id) != (
+        context.organization_id, context.project_id
+    ):
+        raise SpatialScopeError("reference fixture scope mismatch")
+    return {
+        "org": source.organization_id,
+        "project": source.project_id,
+        "source": source.id,
+    }
+
+
+def _checked_manifest(fixture: ReferenceFixture, pinned: PinnedSource) -> PinnedSource:
+    """Prove actual pins against the original trusted binding, not caller fields."""
+    source = pinned.source
+    if get_reference_fixture(fixture.key) is not fixture:
+        raise _integrity()
+    original = materialize_reference_fixture(
+        fixture.key, organization_id=source.organization_id, project_id=source.project_id,
+        source_id=source.id, name=source.name, now=source.created_at,
+    )
+    if (
+        replace(
+            source,
+            validation_state=original.source.validation_state,
+            validation_reason=original.source.validation_reason,
+            extent_state=original.source.extent_state,
+            extent=original.source.extent,
+            catalog_revision=1,
+            updated_at=source.created_at,
+        ) != original.source
+        or pinned.fields != original.fields
+        or pinned.features != original.features
+    ):
+        raise _integrity()
+    try:
+        verify_source_pins(source, pinned.fields, pinned.features)
+    except SpatialValidationError:
+        raise _integrity() from None
+    return original
+
+
+def _position_wkt(tree: float | CoordinateTree) -> str:
+    if (
+        not isinstance(tree, tuple) or not tree
+        or not all(isinstance(value, float) for value in tree)
+    ):
+        raise _integrity()
+    return " ".join(repr(value) for value in tree)
+
+
+def _sequence_wkt(tree: float | CoordinateTree) -> str:
+    if not isinstance(tree, tuple) or not tree:
+        raise _integrity()
+    return "(" + ",".join(_position_wkt(position) for position in tree) + ")"
+
+
+def native_geometry_parameters(geometry: NativeGeometry | None) -> tuple[str | None, int | None]:
+    """Exact SQL insertion transport for the finite fixture geometry vocabulary."""
+    if geometry is None:
+        return None, None
+    marker = {
+        GeometryDimensions.XY: "",
+        GeometryDimensions.XYZ: " Z",
+        GeometryDimensions.XYM: " M",
+        GeometryDimensions.XYZM: " ZM",
+    }.get(geometry.dimensions)
+    if marker is None or geometry.members or geometry.type not in (
+        "Point", "LineString", "Polygon", "MultiPoint"
+    ):
+        raise _integrity()
+    head = geometry.type.upper() + marker
+    tree = geometry.coordinates
+    if geometry.is_empty:
+        return head + " EMPTY", geometry.srid
+    if geometry.type == "Point":
+        body = "(" + _position_wkt(tree) + ")"
+    elif geometry.type == "LineString":
+        body = _sequence_wkt(tree)
+    elif geometry.type == "Polygon":
+        body = "(" + ",".join(_sequence_wkt(ring) for ring in tree) + ")"
+    else:
+        body = "(" + ",".join("(" + _position_wkt(point) + ")" for point in tree) + ")"
+    return head + " " + body, geometry.srid
+
+
+def _native_input(pinned: PinnedSource) -> str:
+    return json.dumps([
+        {
+            "feature_id": row.feature_id,
+            "attributes": dict(row.attributes),
+            "geometry_state": row.geometry_state.value,
+            "content_revision": row.content_revision,
+            "schema_revision": row.schema_revision,
+            "wkt": wkt,
+            "srid": srid,
+        }
+        for row in pinned.features
+        for wkt, srid in (native_geometry_parameters(row.geometry),)
+    ], allow_nan=False)
+
+
+# The geometry construction is exactly the insertion transport, without any
+# geography cast, coordinate conversion, repair, guessed native CRS or transform.
+_EXPECTED_SQL = """
+    WITH expected AS (
+        SELECT r.feature_id, r.attributes, r.geometry_state,
+               r.content_revision, r.schema_revision,
+               CASE WHEN r.wkt IS NULL THEN NULL
+                    ELSE ST_GeomFromText(r.wkt, COALESCE(r.srid, 0)) END AS geometry
+        FROM jsonb_to_recordset(CAST(:records AS jsonb)) AS r(
+            feature_id text, attributes jsonb, geometry_state text,
+            content_revision text, schema_revision text, wkt text, srid integer
+        )
+    )
+"""
+
+# PostgreSQL float8 arrays retain actual binary64 ordinates (no GeoJSON/WKT
+# round-trip rounding). ST_Zmflag, unlike ST_NDims alone, distinguishes M and Z.
+# EWKB comparison also preserves component/ring grouping and raw native SRID.
+_OBSERVE_SQL = """
+    SELECT a.feature_id, a.attributes, a.geometry_state, a.content_revision, a.schema_revision,
+           a.geometry IS NULL AS absent, ST_IsEmpty(a.geometry) AS empty,
+           ST_GeometryType(a.geometry) AS family, ST_SRID(a.geometry) AS srid,
+           ST_Zmflag(a.geometry) AS zm, ST_NDims(a.geometry) AS ndims,
+           ST_IsValid(a.geometry, 0) AS valid, ST_NPoints(a.geometry) AS point_count,
+           e.feature_id IS NOT NULL
+             AND ST_AsEWKB(a.geometry) IS NOT DISTINCT FROM ST_AsEWKB(e.geometry)
+               AS exact_geometry,
+           (
+               SELECT array_agg(
+                   ARRAY[ST_X(dp.geom), ST_Y(dp.geom), ST_Z(dp.geom), ST_M(dp.geom)]
+                   ORDER BY dp.path
+               )
+               FROM ST_DumpPoints(a.geometry) AS dp
+           ) AS positions
+"""
+
+_CANDIDATE_SQL = _EXPECTED_SQL + _OBSERVE_SQL + """
+    FROM expected AS a JOIN expected AS e ON e.feature_id=a.feature_id
+    ORDER BY a.feature_id COLLATE "C"
+"""
+_PERSISTED_SQL = _EXPECTED_SQL + _OBSERVE_SQL + """
+    FROM spatial.reference_features AS a
+    LEFT JOIN expected AS e ON e.feature_id=a.feature_id
+    WHERE a.organization_id=:org AND a.project_id=:project AND a.source_id=:source
+    ORDER BY a.feature_id COLLATE "C"
+"""
+
+
+def _observe(
+    session: Session, pinned: PinnedSource, scope: Mapping[str, UUID] | None = None
+) -> Sequence[RowMapping]:
+    try:
+        return session.execute(
+            text(_CANDIDATE_SQL if scope is None else _PERSISTED_SQL),
+            dict(scope or {}) | {"records": _native_input(pinned)},
+        ).mappings().all()
+    except SQLAlchemyError:
+        # Unexpected engine/parser/SQL faults are not an accepted negative
+        # fixture. Caller owns transaction rollback; never expose raw SQL.
+        raise ReferenceFixtureQueryError("Reference native verification unavailable.") from None
+
+
+def _verify_persisted_metadata(
+    session: Session, pinned: PinnedSource, scope: Mapping[str, UUID]
+) -> None:
+    """Read actual current metadata, fields and pins, under the verified RLS scope."""
+    try:
+        source = session.execute(
+            text("""
+                SELECT * FROM spatial.data_sources
+                WHERE organization_id=:org AND project_id=:project AND id=:source
+            """), scope,
+        ).mappings().one_or_none()
+        fields = session.execute(
+            text("""
+                SELECT * FROM spatial.source_fields
+                WHERE organization_id=:org AND project_id=:project AND source_id=:source
+                ORDER BY ordinal
+            """), scope,
+        ).mappings().all()
+    except SQLAlchemyError:
+        raise ReferenceFixtureQueryError("Reference native verification unavailable.") from None
+    if (
+        source is None
+        or dict(source) != asdict(pinned.source)
+        or [dict(field) for field in fields] != [asdict(field) for field in pinned.fields]
+    ):
+        raise _integrity()
+
+
+def _flatten(tree: CoordinateTree) -> Iterator[tuple[float, ...]]:
+    if not tree:
+        return
+    if isinstance(tree[0], float):
+        if not all(isinstance(value, float) for value in tree):
+            raise _integrity()
+        yield tuple(value for value in tree if isinstance(value, float))
+        return
+    for item in tree:
+        if not isinstance(item, tuple):
+            raise _integrity()
+        yield from _flatten(item)
+
+
+def _raw_positions(geometry: NativeGeometry) -> tuple[tuple[float | None, ...], ...]:
+    result: list[tuple[float | None, ...]] = []
+    for position in _flatten(geometry.coordinates):
+        match geometry.dimensions:
+            case GeometryDimensions.XY:
+                if len(position) != 2:
+                    raise _integrity()
+                result.append((*position, None, None))
+            case GeometryDimensions.XYZ:
+                if len(position) != 3:
+                    raise _integrity()
+                result.append((*position, None))
+            case GeometryDimensions.XYM:
+                if len(position) != 3:
+                    raise _integrity()
+                result.append((position[0], position[1], None, position[2]))
+            case GeometryDimensions.XYZM:
+                if len(position) != 4:
+                    raise _integrity()
+                result.append(position)
+            case _:
+                raise _integrity()
+    if geometry.members:
+        raise _integrity()  # No nested collection exists in the trusted fixture manifest.
+    return tuple(result)
+
+
+_ZM_DIMENSIONS = {
+    0: GeometryDimensions.XY,
+    1: GeometryDimensions.XYM,
+    2: GeometryDimensions.XYZ,
+    3: GeometryDimensions.XYZM,
+}
+
+
+@dataclass(frozen=True, slots=True)
+class _NativeObservation:
+    geometry: NativeGeometry | None
+    family: GeometryFamily
+    dimensions: GeometryDimensions
+    srid: int | None
+    positions: tuple[XY, ...]
+    empty: bool
+    valid: bool
+    state: GeometryState
+
+
+def _coordinate_out_of_domain(x: float, y: float, srid: int | None) -> bool:
+    if not (math.isfinite(x) and math.isfinite(y)):
+        return True
+    if srid in (4326, 4756):
+        return not (-180 <= x <= 180 and -90 <= y <= 90)
+    if srid == 3857:
+        return abs(x) > WEB_MERCATOR_MAX or abs(y) > WEB_MERCATOR_MAX
+    return False
+
+
+def _verified_observations(
+    pinned: PinnedSource, rows: Sequence[RowMapping]
+) -> tuple[_NativeObservation, ...]:
+    if len(rows) != len(pinned.features):
+        raise _integrity()
+    result: list[_NativeObservation] = []
+    field_by_id = {field.field_id: field for field in pinned.fields}
+    for feature, row in zip(pinned.features, rows, strict=True):
+        attrs = row["attributes"]
+        if (
+            row["feature_id"] != feature.feature_id
+            or row["geometry_state"] != feature.geometry_state.value
+            or row["content_revision"] != feature.content_revision
+            or row["schema_revision"] != feature.schema_revision
+            or not row["exact_geometry"]
+            or not isinstance(attrs, dict)
+            or set(attrs) != set(field_by_id)
+        ):
+            raise _integrity()
+        for key, value in attrs.items():
+            try:
+                canonical = canonical_attribute_value(field_by_id[key], value)
+            except SpatialValidationError:
+                raise _integrity() from None
+            expected = feature.attributes[key]
+            if type(canonical) is not type(value) or type(expected) is not type(value):
+                raise _integrity()
+            if canonical != value or expected != value:
+                raise _integrity()
+        geometry = feature.geometry
+        if geometry is None:
+            if (
+                row["absent"] is not True
+                or any(row[key] is not None for key in (
+                    "family", "srid", "zm", "ndims", "empty", "valid", "point_count", "positions"
+                ))
+                or feature.geometry_state != GeometryState.ABSENT
+            ):
+                raise _integrity()
+            result.append(_NativeObservation(
+                None, GeometryFamily.UNKNOWN, GeometryDimensions.UNKNOWN, None,
+                (), False, False, GeometryState.ABSENT,
+            ))
+            continue
+        raw = tuple(tuple(position) for position in row["positions"] or ())
+        dims = _ZM_DIMENSIONS.get(row["zm"])
+        srid = row["srid"] or None
+        if (
+            row["absent"] is not False or row["family"] != "ST_" + geometry.type
+            or dims is None or dims != geometry.dimensions or srid != geometry.srid
+            or row["ndims"] != {
+                GeometryDimensions.XY: 2, GeometryDimensions.XYZ: 3,
+                GeometryDimensions.XYM: 3, GeometryDimensions.XYZM: 4,
+            }[dims]
+            or row["empty"] != geometry.is_empty
+            or row["point_count"] != len(raw)
+            or raw != _raw_positions(geometry)
+            or type(row["valid"]) is not bool
+        ):
+            raise _integrity()
+        family = (
+            GeometryFamily(geometry.type)
+            if geometry.type in SUPPORTED_FAMILIES else GeometryFamily.UNSUPPORTED
+        )
+        xy = tuple((point[0], point[1]) for point in raw)
+        if row["empty"]:
+            state = GeometryState.EMPTY
+        elif family not in SUPPORTED_FAMILIES or dims != GeometryDimensions.XY:
+            state = GeometryState.UNSUPPORTED
+        elif not row["valid"] or any(_coordinate_out_of_domain(x, y, srid) for x, y in xy):
+            state = GeometryState.INVALID
+        else:
+            state = GeometryState.PRESENT
+        if state != feature.geometry_state:
+            raise _integrity()
+        result.append(_NativeObservation(
+            geometry, family, dims, srid, xy, row["empty"], row["valid"], state
+        ))
+    return tuple(result)
+
+
+def _wrapping(geometry: NativeGeometry) -> bool:
+    if geometry.srid not in (4326, 4756) or geometry.type == "Point":
+        return False
+    parts = (
+        (geometry.coordinates,) if geometry.type == "LineString" else geometry.coordinates
+    )
+    for part in parts:
+        if not isinstance(part, tuple):
+            raise _integrity()
+        positions = tuple(_flatten(part))
+        if any(abs(a[0] - b[0]) > 180 for a, b in zip(positions, positions[1:], strict=False)):
+            return True
+    return False
+
+
+def _validation_reason(
+    fixture: ReferenceFixture,
+    observations: Sequence[_NativeObservation],
+    family: GeometryFamily,
+    dimensions: GeometryDimensions,
+    stored_crs: int | None,
+    declared_crs: int | None,
+) -> ValidationReasonCode | None:
+    code = ValidationReasonCode
+    if any(row.geometry is None for row in observations):
+        return code.NULL_GEOMETRY
+    if any(row.empty for row in observations):
+        return code.EMPTY_GEOMETRY
+    if family not in SUPPORTED_FAMILIES:
+        return code.UNSUPPORTED_GEOMETRY
+    if dimensions != GeometryDimensions.XY:
+        return code.UNSUPPORTED_DIMENSIONS
+    if stored_crs is None or declared_crs is None:
+        return code.MISSING_CRS
+    if stored_crs not in READABLE_CRS_CODES or declared_crs not in READABLE_CRS_CODES:
+        return code.UNSUPPORTED_CRS
+    if stored_crs != declared_crs:
+        return code.CRS_MISMATCH
+    if family != fixture.declared_family:
+        return code.GEOMETRY_FAMILY_MISMATCH
+    if any(not row.valid for row in observations):
+        return code.INVALID_GEOMETRY
+    if fixture.axis_control_xy is not None:
+        # Only independently published known point controls justify an axis
+        # conclusion; no swapping or inference for merely plausible numbers.
+        if len(observations) != 1 or observations[0].positions != (fixture.axis_control_xy,):
+            return code.AXIS_CONFLICT
+    if any(
+        _coordinate_out_of_domain(x, y, stored_crs)
+        for row in observations for x, y in row.positions
+    ):
+        return code.COORDINATE_OUT_OF_DOMAIN
+    if any(
+        row.geometry is not None and _wrapping(row.geometry) for row in observations
+    ):
+        return code.EXTENT_WRAP_UNSUPPORTED
+    if any(len(row.positions) > MAX_POSITIONS for row in observations):
+        return code.BOUNDS_EXCEEDED
+    if stored_crs == 5899 and fixture.provenance != FixtureProvenance.QUANG_NINH_HVS:
+        return code.UNSUPPORTED_CRS
+    # Domain shape and finite-domain invariants augment native topology checks.
+    try:
+        for row in observations:
+            assert row.geometry is not None
+            validate_ready_geometry(row.geometry, family, stored_crs)
+    except SpatialValidationError:
+        return code.INVALID_GEOMETRY
+    return None
+
+
+_REASON_MESSAGES: Mapping[ValidationReasonCode, str] = MappingProxyType({
+    ValidationReasonCode.NULL_GEOMETRY: "The reference contains absent geometry.",
+    ValidationReasonCode.EMPTY_GEOMETRY: "The reference contains an empty geometry.",
+    ValidationReasonCode.MISSING_CRS: "Native CRS metadata is missing.",
+    ValidationReasonCode.UNSUPPORTED_CRS: "The native CRS is not readable in this release.",
+    ValidationReasonCode.CRS_MISMATCH: "Declared CRS differs from verified native CRS.",
+    ValidationReasonCode.UNSUPPORTED_GEOMETRY: "The inspected geometry family is unsupported.",
+    ValidationReasonCode.UNSUPPORTED_DIMENSIONS: "Only XY geometry is readable.",
+    ValidationReasonCode.GEOMETRY_FAMILY_MISMATCH: "Declared and inspected families differ.",
+    ValidationReasonCode.INVALID_GEOMETRY: "Native geometry failed topology validation.",
+    ValidationReasonCode.AXIS_CONFLICT: "Native axes conflict with the independent control.",
+    ValidationReasonCode.COORDINATE_OUT_OF_DOMAIN: "Native coordinates exceed their CRS domain.",
+    ValidationReasonCode.EXTENT_WRAP_UNSUPPORTED: "Wrapped geographic extents are unsupported.",
+    ValidationReasonCode.BOUNDS_EXCEEDED: "Native geometry exceeds the position limit.",
+})
+
+
+def _verified_metadata(
+    fixture: ReferenceFixture,
+    source: DataSource,
+    observations: Sequence[_NativeObservation],
+    *,
+    corrected: bool = False,
+) -> DataSource:
+    nonnull = [row for row in observations if row.geometry is not None]
+    if not observations:
+        # Zero rows are independently expected by this declared schema, not an
+        # unknown empty geometry/SRID. The manifest is already verified.
+        family, dimensions = fixture.declared_family, fixture.declared_dimensions
+        stored_crs = fixture.stored_crs
+    elif not nonnull:
+        family, dimensions, stored_crs = GeometryFamily.UNKNOWN, GeometryDimensions.UNKNOWN, None
+    else:
+        families = {row.family for row in nonnull}
+        dims = {row.dimensions for row in nonnull}
+        srids = {row.srid for row in nonnull}
+        family = next(iter(families)) if len(families) == 1 else GeometryFamily.MIXED
+        dimensions = next(iter(dims)) if len(dims) == 1 else GeometryDimensions.MIXED
+        if len(srids) != 1:
+            raise _integrity()
+        stored_crs = next(iter(srids))
+    if (
+        len(observations) != fixture.expected_count
+        or family != fixture.expected_family or dimensions != fixture.expected_dimensions
+        or stored_crs != fixture.stored_crs
+    ):
+        raise _integrity()
+    reason = _validation_reason(
+        fixture, observations, family, dimensions, stored_crs, source.source_crs
+    )
+    if reason != (None if corrected else fixture.expected_reason):
+        # A fixture expectation is an independent check, never the classifier.
+        raise _unverified() if corrected else _integrity()
+    positions = tuple(point for row in observations for point in row.positions)
+    bounds: Bounds | None = None
+    if positions:
+        xs, ys = zip(*positions, strict=True)
+        bounds = (min(xs), min(ys), max(xs), max(ys))
+    if fixture.expected_native_bounds is not None and bounds != fixture.expected_native_bounds:
+        raise _integrity()
+    extent: Extent | None = None
+    extent_state = ExtentState.UNAVAILABLE
+    if reason is None:
+        if bounds is not None:
+            if stored_crs is None:
+                raise _integrity()
+            extent = Extent(*bounds, stored_crs)
+            extent_state = ExtentState.AVAILABLE
+        elif len(observations) == 0:
+            extent_state = ExtentState.EMPTY
+        else:
+            raise _integrity()
+    return replace(
+        source, schema_state=SchemaState.KNOWN, geometry_family=family, dimensions=dimensions,
+        stored_crs=stored_crs, feature_count_state=FeatureCountState.KNOWN,
+        feature_count=len(observations),
+        validation_state=(
+            ValidationState.READY if reason is None
+            else ValidationState.NOT_READY if reason == ValidationReasonCode.MISSING_CRS
+            else ValidationState.INVALID
+        ),
+        validation_reason=(
+            ValidationReason(reason, _REASON_MESSAGES[reason]) if reason is not None else None
+        ),
+        extent_state=extent_state, extent=extent,
+    )
+
+
+def _verify_native(
+    session: Session, fixture: ReferenceFixture, pinned: PinnedSource,
+    scope: Mapping[str, UUID] | None,
+) -> tuple[PinnedSource, tuple[_NativeObservation, ...]]:
+    observations = _verified_observations(pinned, _observe(session, pinned, scope))
+    result = PinnedSource(
+        _verified_metadata(fixture, pinned.source, observations), pinned.fields, pinned.features
+    )
+    try:
+        verify_source_pins(result.source, result.fields, result.features)
+    except SpatialValidationError:
+        raise _integrity() from None
+    return result, observations
+
+
+def validate_reference_candidate(
+    session: Session, fixture: ReferenceFixture, pinned: PinnedSource
+) -> PinnedSource:
+    """Inspect actual native SQL values before insertion; not yet publication."""
+    original = _checked_manifest(fixture, pinned)
+    if pinned != original:
+        raise _integrity()
+    return _verify_native(session, fixture, pinned, None)[0]
+
+
+def validate_persisted_reference_source(
+    session: Session, fixture: ReferenceFixture, pinned: PinnedSource,
+    *, context: AuthorizationContext,
+) -> PinnedSource:
+    """Reverify actual scoped storage in the same outer registration transaction.
+
+    Supports provisional or already verified initial source metadata, but never
+    commits or publishes anything. Any discrepancy fails closed.
+    """
+    scope = _scope_params(session, context, pinned.source)
+    original = _checked_manifest(fixture, pinned)
+    _verify_persisted_metadata(session, pinned, scope)
+    verified, _ = _verify_native(session, fixture, pinned, scope)
+    if pinned.source not in (original.source, verified.source):
+        raise _integrity()
+    return verified
+
+
+def validate_reference_correction(
+    session: Session, source: DataSource, *, context: AuthorizationContext,
+    declared_crs: int, now: datetime,
+) -> DataSource:
+    """Return corrected interpretation only after exact actual persisted proof.
+
+    The caller owns the source lock and CAS, all writes and audit in the same
+    transaction. Native EWKB, attributes, metadata schema and manifest identity
+    remain unchanged; no SQL UPDATE or geometry conversion occurs here.
+    """
+    scope = _scope_params(session, context, source)
+    fixture = get_reference_fixture(source.reference_key)
+    if (
+        fixture is None or fixture.correctable_to_crs is None
+        or declared_crs != fixture.correctable_to_crs or type(declared_crs) is not int
+        or fixture.axis_control_xy is None
+        or source.lifecycle != Lifecycle.ACTIVE
+        or source.validation_state != ValidationState.INVALID
+        or source.validation_reason is None
+        or source.validation_reason.code != ValidationReasonCode.CRS_MISMATCH
+        or source.source_crs == declared_crs
+    ):
+        raise _unverified()
+    original = materialize_reference_fixture(
+        fixture.key, organization_id=source.organization_id, project_id=source.project_id,
+        source_id=source.id, name=source.name, now=source.created_at,
+    )
+    actual = PinnedSource(source, original.fields, original.features)
+    try:
+        _checked_manifest(fixture, actual)
+        _verify_persisted_metadata(session, actual, scope)
+        verified, observations = _verify_native(session, fixture, actual, scope)
+        if verified.source != source:
+            raise _integrity()
+    except ReferenceFixtureQueryError:
+        raise
+    except ReferenceFixtureIntegrityError:
+        raise _unverified() from None
+    if source.stored_crs != declared_crs or len(observations) != 1:
+        raise _unverified()
+    proposal = replace(source, source_crs=declared_crs)
+    result = _verified_metadata(fixture, proposal, observations, corrected=True)
+    corrected = derive_source_pins(
+        replace(result, catalog_revision=source.catalog_revision + 1, updated_at=now),
+        actual.fields, actual.features,
+    )
+    if (
+        corrected.source.validation_state != ValidationState.READY
+        or corrected.source.content_revision == source.content_revision
+        or corrected.source.schema_revision != source.schema_revision
+        or corrected.source.manifest_digest != source.manifest_digest
+    ):
+        raise _unverified()
+    return corrected.source
