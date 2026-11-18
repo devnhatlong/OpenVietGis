@@ -546,7 +546,7 @@ Implementation is accepted only when all are true:
 13. **Audit**: actor snapshots remain readable after revoke; no secret material is logged/audited.
 14. **Bootstrap**: requires both authenticated human and one-time installation authority; reuse rejected.
 15. **Browser**: Playwright P1 and bootstrap/invite flows pass with Keycloak reference provider.
-16. **Unfamiliar-user timing**: SC-013 is measured with a reviewer who has no prior product orientation.
+16. **Unfamiliar-user timing**: SC-013 is measured with a reviewer who has no prior product orientation before external acceptance/release. The owner's 2026-11-18 internal-integration exception defers this measurement, not its five-minute threshold; no pass is claimed.
 17. **Performance**: authorization p95 target in quickstart benchmark is met without stale permission cache.
 18. **Scope**: zero public sharing/custom role/GIS/Map/Processing/Field/vertical-domain implementation.
 19. **Legacy cleanup**: disposable FoundationSampleRecord is removed without breaking Spec 001 platform gates.

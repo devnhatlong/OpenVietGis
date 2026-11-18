@@ -274,7 +274,7 @@
 - [x] T111 [P] Add backup/migration downgrade/upgrade safety tests for all Spec 002 migrations and runtime-role grants in `apps/api/tests/integration/tenancy/test_identity_tenancy_migration_cycle.py`
 - [x] T112 [P] Record browser timing measurements for SC-001/SC-004 and self-host bootstrap timing for SC-011 from existing measured E2E journeys; record the owner-approved internal acceptance exception for SC-013 in `specs/002-identity-organization-tenancy/checklists/unfamiliar-user-timing.md` (real human exercise deferred, not passed; mandatory before external acceptance/release)
 - [x] T113 Record all automated scenario evidence in `specs/002-identity-organization-tenancy/quickstart.md` without weakening thresholds; product owner accepts internal R002 with the explicit SC-013 exception documented above (2026-11-18)
-- [ ] T114 Run Node 26 root `pnpm validate`, Gitleaks, scope guard, `git diff --check`, Graphify update, and verify all Spec 002 tasks/acceptance evidence before convergence
+- [x] T114 Run Node 26 root `pnpm validate`, Gitleaks, scope guard, `git diff --check`, Graphify update, and verify all Spec 002 tasks/acceptance evidence before convergence (CI 44242387123 on 7edb4f4; SC-013 owner-approved deferral recorded)
 - [ ] T115 Run `/speckit-converge` for Spec 002 and append only evidence-driven convergence tasks if any spec/plan/code gap remains in `specs/002-identity-organization-tenancy/tasks.md`
 
 ---
@@ -452,3 +452,9 @@ T062/T069/T079/T080 remain open until actual frontend/browser acceptance. Browse
 ## P1 independent hardening checkpoint — 2026-11-18
 
 Code HEAD **61bacc6**; 77/115 checked (38 open). Full Python static/unit/contract/tool/architecture 173 passed, 1 Windows symlink skip; integration + performance 66 passed, 1 opt-in OIDC skipped (previously passed separately). Final audit regressions 2 passed. T107 secret scanner and P1 runtime evidence, T108 CI fixture preparation, T111 isolated P1 migration/backup evidence, and UI security regressions are implemented in part. T107/T108/T111 remain unchecked; migration loopback repeat timed out without confirmed result. UI helper 15 passed, four targeted E2E tests collected only. See quickstart §21 for exact limits and resumption. T062/T069/T079/T080, P2, T115 and main integration remain open.
+
+## Phase 11: Convergence
+
+- [ ] T116 [HIGH] Prevent service credential resurrection and lock-order inversion when auth and revoke race; enforce monotonic revocation, safe last-used semantics, and real restricted-runtime concurrent regression per FR-036/SC-009 (contradicts).
+- [ ] T117 Freeze the historical 0004 permission-ceiling migration vocabulary and add a regression preventing historical migration imports of mutable application contracts; verify unchanged upgrade/downgrade/restore per FR-035/Constitution development and quality gates (partial).
+- [ ] T118 Implement explicit soft-delete recovery while retaining tenant isolation, appropriate permissions, lifecycle invariants and audit; add restricted-runtime regressions per FR-031/FR-032 and the project.delete permission contract (partial).

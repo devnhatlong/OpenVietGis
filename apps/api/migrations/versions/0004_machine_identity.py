@@ -6,14 +6,36 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-from openvietgis_api.domains.authorization.permissions import Permission
-
 revision: str = "0004_machine_identity"
 down_revision: str | Sequence[str] | None = "0003a_identity_unlink_security"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
 UUID = postgresql.UUID(as_uuid=True)
+
+# Frozen Spec 002 vocabulary. New permissions require their own migration;
+# importing a live enum would change the meaning of this historical revision.
+PERMISSION_VALUES = (
+    "organization.read",
+    "organization.manage_members",
+    "organization.manage_settings",
+    "organization.lifecycle",
+    "organization.owner.transfer",
+    "organization.delete",
+    "authorization.manage_grants",
+    "invitation.manage",
+    "service_principal.manage",
+    "audit.read",
+    "workspace.read",
+    "workspace.manage",
+    "project.read",
+    "project.edit",
+    "project.manage",
+    "project.move_workspace",
+    "project.archive",
+    "project.delete",
+    "project.share",
+)
 
 
 def _tenant_expr() -> str:
@@ -66,9 +88,7 @@ def upgrade() -> None:
         schema="org",
     )
 
-    permission_values = ",".join(
-        "'" + permission.value.replace("'", "''") + "'" for permission in Permission
-    )
+    permission_values = ",".join("'" + permission + "'" for permission in PERMISSION_VALUES)
     op.create_table(
         "service_credentials",
         sa.Column("id", UUID, primary_key=True, nullable=False),

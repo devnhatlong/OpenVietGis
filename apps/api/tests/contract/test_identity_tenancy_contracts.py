@@ -1,3 +1,4 @@
+import ast
 from pathlib import Path
 
 from tools.check_contracts import validate_contracts
@@ -32,3 +33,16 @@ def test_permission_registry_contract_exists_and_is_product_permission_based() -
         "audit.read",
     ):
         assert f"`{permission}`" in registry
+
+
+def test_historical_migrations_do_not_import_mutable_runtime_contracts() -> None:
+    versions = ROOT / "apps" / "api" / "migrations" / "versions"
+    for migration in versions.glob("*.py"):
+        tree = ast.parse(migration.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom):
+                assert not (node.module or "").startswith("openvietgis_api"), migration
+            elif isinstance(node, ast.Import):
+                assert all(
+                    not alias.name.startswith("openvietgis_api") for alias in node.names
+                ), migration
