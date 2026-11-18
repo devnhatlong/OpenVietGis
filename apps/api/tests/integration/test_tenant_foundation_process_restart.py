@@ -6,8 +6,12 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+from uuid import uuid4
 
 import httpx
+
+from tests.fixtures.identity_tenancy import seed_access_world
+from tests.integration.rls.test_cross_tenant_api import client_for_user
 
 ROOT = Path(__file__).resolve().parents[4]
 
@@ -67,30 +71,33 @@ def stop_api(process: subprocess.Popen[bytes]) -> None:
         process.wait(timeout=5)
 
 
-def test_record_survives_ten_real_api_process_restarts(migrated_database: None) -> None:
+def test_tenant_record_survives_ten_real_api_process_restarts(migrated_database: None) -> None:
+    world = seed_access_world()
+    with client_for_user(world.owner_user_id) as authenticated:
+        cookie = authenticated.cookies.get("ovg_session")
+        csrf = authenticated.headers["X-OpenVietGIS-CSRF"]
+    assert cookie is not None
     port = free_port()
     base_url = f"http://127.0.0.1:{port}/api/v1"
+    path = f"{base_url}/organizations/{world.organization_id}/projects"
     process = start_api(port)
 
     try:
-        for index in range(10):
-            create = httpx.post(
-                f"{base_url}/foundation-records",
-                json={"label": f"process-restart-{index}"},
-                timeout=2,
-            )
-            assert create.status_code == 201
-            created = create.json()
+        with httpx.Client(
+            cookies={"ovg_session": cookie}, headers={"X-OpenVietGIS-CSRF": csrf}, timeout=2
+        ) as client:
+            for index in range(10):
+                create = client.post(path, json={
+                    "name": f"process-restart-{index}", "slug": f"restart-{uuid4().hex}",
+                })
+                assert create.status_code == 201
+                created = create.json()
 
-            stop_api(process)
-            process = start_api(port)
+                stop_api(process)
+                process = start_api(port)
 
-            loaded = httpx.get(
-                f"{base_url}/foundation-records/{created['id']}",
-                timeout=2,
-            )
-            assert loaded.status_code == 200
-            assert loaded.json()["id"] == created["id"]
-            assert loaded.json()["label"] == created["label"]
+                loaded = client.get(f"{path}/{created['id']}")
+                assert loaded.status_code == 200
+                assert loaded.json() == created
     finally:
         stop_api(process)

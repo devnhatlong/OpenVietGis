@@ -18,4 +18,8 @@ def test_migrations_apply_from_zero_to_head() -> None:
     command.upgrade(config, "head")
 
     inspector = inspect(get_engine())
-    assert "sample_records" in inspector.get_table_names(schema="foundation")
+    assert "sample_records" not in inspector.get_table_names(schema="foundation")
+    assert {"service_principals", "service_credentials"} <= set(
+        inspector.get_table_names(schema="org")
+    )
+    assert {"workspaces", "projects"} <= set(inspector.get_table_names(schema="workspace"))

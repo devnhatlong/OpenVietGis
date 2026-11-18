@@ -6,7 +6,6 @@ from openvietgis_api.adapters.http import (
     audit,
     auth,
     bootstrap,
-    foundation,
     grants,
     health,
     invitations,
@@ -47,7 +46,6 @@ def create_app() -> FastAPI:
 
     api_v1 = APIRouter(prefix="/api/v1")
     api_v1.include_router(health.router)
-    api_v1.include_router(foundation.router)
     api_v1.include_router(auth.router)
     api_v1.include_router(bootstrap.router)
     api_v1.include_router(audit.router)

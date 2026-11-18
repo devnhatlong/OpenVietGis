@@ -2,7 +2,6 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
-from openvietgis_api.application.foundation_service import FoundationRecordNotFoundError
 from openvietgis_api.domains.authorization.service import (
     AuthorizationDeniedError,
     GrantNotFoundError,
@@ -45,13 +44,6 @@ def install_error_handlers(app: FastAPI) -> None:
                 ]
             },
         )
-
-    @app.exception_handler(FoundationRecordNotFoundError)
-    async def foundation_not_found_handler(
-        _: Request,
-        exc: FoundationRecordNotFoundError,
-    ) -> JSONResponse:
-        return JSONResponse(status_code=404, content={"detail": str(exc)})
 
     @app.exception_handler(AuthorizationDeniedError)
     @app.exception_handler(OwnerRequiredError)

@@ -4,7 +4,7 @@ from typing import Annotated, Self
 from uuid import UUID
 
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
 from sqlalchemy.orm import Session
 
 from openvietgis_api.adapters.http.authorization import context_for, require_permission
@@ -30,12 +30,13 @@ from openvietgis_api.domains.tenancy.domain import ProjectStatus
 from openvietgis_api.domains.tenancy.service import TenancyService
 
 router = APIRouter(tags=["projects"])
+ProjectName = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)]
 
 
 class CreateProjectRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    name: str = Field(min_length=1, max_length=200)
+    name: ProjectName
     slug: str = Field(min_length=1, max_length=120)
     workspace_id: UUID | None = None
 
@@ -43,7 +44,7 @@ class CreateProjectRequest(BaseModel):
 class UpdateProjectRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    name: str | None = Field(default=None, min_length=1, max_length=200)
+    name: ProjectName | None = None
     workspace_id: UUID | None = None
     status: ProjectStatus | None = None
 

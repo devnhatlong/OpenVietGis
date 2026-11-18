@@ -6,7 +6,6 @@ import { ProjectPage } from "../features/projects/ProjectPage";
 import { MembershipPage } from "../features/membership/MembershipPage";
 import { InvitationAcceptPage } from "../features/invitations/InvitationAcceptPage";
 import { WorkspacePage } from "../features/workspaces/WorkspacePage";
-import { FoundationPage } from "./FoundationPage";
 
 export const router = createBrowserRouter([
   { path: "/", element: <OrganizationHome /> },
@@ -15,6 +14,5 @@ export const router = createBrowserRouter([
   { path: "/organizations/:organizationId/projects", element: <ProjectPage /> },
   { path: "/organizations/:organizationId/membership", element: <MembershipPage /> },
   { path: "/invitations/accept", element: <InvitationAcceptPage /> },
-  { path: "/identity", element: <IdentityPage /> },
-  { path: "/foundation", element: <FoundationPage /> }
+  { path: "/identity", element: <IdentityPage /> }
 ]);

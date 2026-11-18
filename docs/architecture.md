@@ -57,3 +57,8 @@ Do not create rules for empty future packages.
 Spec 001 proves the architecture runway only. It does not implement map rendering, GIS editing,
 production identity, tenant billing, field/offline behavior, processing, or House Numbering.
 Future folders/services are created only when their first real feature needs them.
+
+After the Spec 002 P1 browser gate, migration 0005 retires the disposable FoundationSampleRecord.
+The real tenant Project slice now exercises the same create/read, process restart and persistent
+browser acceptance path. Health endpoints, dependency boundaries and historical R001 evidence
+remain available; the retired sample data is not a product domain or a migration target.

@@ -141,6 +141,9 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    # This is a destructive rollback of P2 service identity. Retain all human
+    # grants; remove service grants before dropping their referenced principals.
+    op.execute("DELETE FROM org.resource_grants WHERE subject_kind = 'service_principal'")
     op.drop_constraint(
         "fk_resource_grants_service_principal_same_org",
         "resource_grants",

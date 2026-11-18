@@ -68,12 +68,15 @@ pnpm dev:web
 
 Open `http://127.0.0.1:5173`.
 
-The shell exposes only:
-- foundation readiness;
-- one disposable `FoundationSampleRecord` create/read flow.
+The shell exposes real identity, Organization, Workspace and Project flows, with scoped access,
+invitation, service identity, and audit contracts. Foundation readiness remains at
+`/api/v1/health/ready`. The disposable Spec 001 sample route, SDK, UI and table are retired by
+migration `0005_retire_foundation_sample`; existing sample-only records are intentionally removed.
+The historical Spec 001 evidence remains unchanged. Create/read/restart and browser persistence
+regressions now exercise an authenticated tenant Project instead.
 
-It does **not** contain map rendering, GIS editing, production authentication, tenancy, billing,
-processing, field/offline workflows, or House Numbering.
+It does **not** contain map rendering, GIS editing, billing, processing, field/offline workflows,
+or House Numbering.
 
 ## Identity and tenancy development profile
 

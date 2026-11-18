@@ -1,16 +1,17 @@
-"""R002/P1 migration and logical-backup evidence in a disposable PostGIS container."""
+"""R002 historical P1 and complete P2 backup/migration cycle in disposable PostGIS."""
 
 from __future__ import annotations
 
 import os
 from collections.abc import Callable
 from pathlib import Path
+from uuid import uuid4
 
 import pytest
 from alembic import command
 from alembic.config import Config
 from sqlalchemy import text
-from sqlalchemy.engine import Connection, make_url
+from sqlalchemy.engine import Connection, Engine, make_url
 from testcontainers.community.postgres import PostgresContainer
 from tools.test_database import assert_safe_test_target, build_test_environment
 
@@ -22,6 +23,8 @@ ROOT = Path(__file__).resolve().parents[5]
 P1_SCHEMA = "0002_identity_tenant_core"
 P1_RLS = "0003_tenant_rls"
 P1_HEAD = "0003a_identity_unlink_security"
+P2_HEAD = "0004_machine_identity"
+FINAL_HEAD = "0005_retire_foundation_sample"
 FOUNDATION = "0001_foundation_sample"
 SCHEMAS = ("foundation", "identity", "org", "workspace", "audit", "platform")
 TABLE_GRANTS = {
@@ -46,6 +49,16 @@ RLS_TABLES = {
     "workspace.projects",
     "audit.audit_events",
 }
+P2_TABLE_GRANTS = {
+    **TABLE_GRANTS,
+    "org.service_principals": "SELECT INSERT UPDATE",
+    "org.service_credentials": "SELECT INSERT UPDATE",
+}
+FINAL_TABLE_GRANTS = {
+    table: grants for table, grants in P2_TABLE_GRANTS.items()
+    if table != "foundation.sample_records"
+}
+P2_RLS_TABLES = RLS_TABLES | {"org.service_principals", "org.service_credentials"}
 PRIVILEGES = (
     "SELECT",
     "INSERT",
@@ -78,7 +91,14 @@ def _assert_schema_absent(connection: Connection, schemas: tuple[str, ...]) -> N
         ).scalar_one()
 
 
-def _assert_runtime_security(connection: Connection, *, enabled: bool, unlink: bool) -> None:
+def _assert_runtime_security(
+    connection: Connection,
+    *,
+    enabled: bool,
+    unlink: bool,
+    table_grants: dict[str, str] = TABLE_GRANTS,
+    rls_tables: set[str] = RLS_TABLES,
+) -> None:
     role = connection.execute(
         text(
             """
@@ -95,7 +115,7 @@ def _assert_runtime_security(connection: Connection, *, enabled: bool, unlink: b
                 {"schema": schema, "privilege": privilege},
             ).scalar_one()
             assert actual is (enabled and privilege == "USAGE"), (schema, privilege)
-    for table, expected in TABLE_GRANTS.items():
+    for table, expected in table_grants.items():
         for privilege in PRIVILEGES:
             actual = connection.execute(
                 text("SELECT has_table_privilege('openvietgis_runtime', :table, :privilege)"),
@@ -109,7 +129,7 @@ def _assert_runtime_security(connection: Connection, *, enabled: bool, unlink: b
             ),
             {"table": table},
         ).one()
-        use_rls = enabled and table in RLS_TABLES
+        use_rls = enabled and table in rls_tables
         assert tuple(flags) == (use_rls, use_rls), table
     function = connection.execute(
         text(
@@ -133,7 +153,9 @@ def _assert_runtime_security(connection: Connection, *, enabled: bool, unlink: b
         assert function is None
 
 
-def _snapshot(connection: Connection) -> dict[str, list[str]]:
+def _snapshot(
+    connection: Connection, table_grants: dict[str, str] = TABLE_GRANTS
+) -> dict[str, list[str]]:
     # Fixed table names only; JSON text retains IDs, values, timestamps and NULLs.
     return {
         table: list(
@@ -141,7 +163,7 @@ def _snapshot(connection: Connection) -> dict[str, list[str]]:
                 text(f"SELECT row_to_json(t)::text FROM {table} t ORDER BY 1")
             ).scalars()
         )
-        for table in TABLE_GRANTS
+        for table in table_grants
     }
 
 
@@ -164,7 +186,7 @@ def _container_command(container: PostgresContainer, command_args: list[str]) ->
     assert result.exit_code == 0, result.output.decode(errors="replace")
 
 
-def test_p1_migration_cycle_and_logical_backup(
+def test_p1_and_p2_migration_cycle_and_logical_backup(
     postgis_container_factory: Callable[[], PostgresContainer],
 ) -> None:
     """Never downgrade/restore the configured test DB or any persistent installation."""
@@ -364,6 +386,135 @@ def test_p1_migration_cycle_and_logical_backup(
                 command.stamp(config, P1_HEAD)
                 with engine.connect() as connection:
                     _assert_revision(connection, P1_HEAD)
+
+                _exercise_p2_migration_cycle(container, engine, config, world, expected)
             finally:
                 clear_admin_caches()
                 get_settings.cache_clear()
+
+
+def _exercise_p2_migration_cycle(
+    container: PostgresContainer,
+    engine: Engine,
+    config: Config,
+    world: AccessWorld,
+    p1_expected: dict[str, list[str]],
+) -> None:
+    principal_id, credential_id = uuid4(), uuid4()
+    command.upgrade(config, P2_HEAD)
+    with engine.begin() as connection:
+        connection.execute(text("""
+            INSERT INTO org.service_principals (
+                id, organization_id, name, status, created_at,
+                created_by_actor_type, created_by_actor_id
+            ) VALUES (:id, :org, 'Synthetic principal', 'active', now(), 'human', :actor)
+        """), {"id": principal_id, "org": world.organization_id, "actor": world.owner_user_id})
+        connection.execute(text("""
+            INSERT INTO org.service_credentials (
+                id, organization_id, service_principal_id, name, prefix, secret_hash,
+                permission_ceiling, created_at
+            ) VALUES (:id, :org, :principal, 'Synthetic credential', 'synthetic-prefix',
+                decode(repeat('5a', 32), 'hex'), ARRAY['project.read']::text[], now())
+        """), {"id": credential_id, "org": world.organization_id, "principal": principal_id})
+        connection.execute(text("""
+            INSERT INTO org.resource_grants (
+                id, organization_id, subject_kind, service_principal_id,
+                scope_kind, project_id, role, created_at, created_by_actor_type,
+                created_by_actor_id
+            ) VALUES (gen_random_uuid(), :org, 'service_principal', :principal,
+                'project', :project, 'viewer', now(), 'human', :actor)
+        """), {
+            "org": world.organization_id, "principal": principal_id,
+            "project": world.project_id, "actor": world.owner_user_id,
+        })
+
+    with engine.connect() as connection:
+        _assert_revision(connection, P2_HEAD)
+        p2_expected = _snapshot(connection, P2_TABLE_GRANTS)
+        assert all(p2_expected.values())
+        _assert_runtime_security(
+            connection, enabled=True, unlink=True,
+            table_grants=P2_TABLE_GRANTS, rls_tables=P2_RLS_TABLES,
+        )
+
+    command.upgrade(config, FINAL_HEAD)
+    final_expected = {
+        table: rows for table, rows in p2_expected.items()
+        if table != "foundation.sample_records"
+    }
+    with engine.connect() as connection:
+        _assert_revision(connection, FINAL_HEAD)
+        assert connection.execute(text(
+            "SELECT to_regclass('foundation.sample_records') IS NULL"
+        )).scalar_one()
+        assert _snapshot(connection, FINAL_TABLE_GRANTS) == final_expected
+        _assert_runtime_security(
+            connection, enabled=True, unlink=True,
+            table_grants=FINAL_TABLE_GRANTS, rls_tables=P2_RLS_TABLES,
+        )
+
+    final_backup = "/tmp/openvietgis-final-migration-test.dump"
+    _container_command(container, [
+        "pg_dump", *DB_ARGS, "--format=custom", f"--file={final_backup}",
+        *(f"--schema={schema}" for schema in SCHEMAS),
+    ])
+
+    # The outgoing sample data is disposable; downgrade restores its empty
+    # structure and permissions, not deleted sample contents.
+    command.downgrade(config, P2_HEAD)
+    with engine.connect() as connection:
+        assert _snapshot(connection, P2_TABLE_GRANTS) == {
+            **final_expected, "foundation.sample_records": []
+        }
+        _assert_runtime_security(
+            connection, enabled=True, unlink=True,
+            table_grants=P2_TABLE_GRANTS, rls_tables=P2_RLS_TABLES,
+        )
+    command.downgrade(config, P1_HEAD)
+    with engine.connect() as connection:
+        _assert_revision(connection, P1_HEAD)
+        assert _snapshot(connection) == {**p1_expected, "foundation.sample_records": []}
+        assert connection.execute(text(
+            "SELECT to_regclass('org.service_principals') IS NULL"
+        )).scalar_one()
+        _assert_runtime_security(connection, enabled=True, unlink=True)
+
+    # Re-upgrade proves no orphan service grants break the new FK. P1 data stays.
+    command.upgrade(config, FINAL_HEAD)
+    with engine.connect() as connection:
+        reupgraded = _snapshot(connection, FINAL_TABLE_GRANTS)
+        assert reupgraded == {
+            **{k: v for k, v in p1_expected.items() if k != "foundation.sample_records"},
+            "org.service_principals": [],
+            "org.service_credentials": [],
+        }
+        _assert_runtime_security(
+            connection, enabled=True, unlink=True,
+            table_grants=FINAL_TABLE_GRANTS, rls_tables=P2_RLS_TABLES,
+        )
+
+    command.downgrade(config, "base")
+    with engine.connect() as connection:
+        _assert_schema_absent(connection, SCHEMAS)
+    _container_command(container, [
+        "pg_restore", *DB_ARGS, "--single-transaction", "--exit-on-error", final_backup,
+    ])
+    with engine.connect() as connection:
+        assert _snapshot(connection, FINAL_TABLE_GRANTS) == final_expected
+        _assert_runtime_security(
+            connection, enabled=True, unlink=True,
+            table_grants=FINAL_TABLE_GRANTS, rls_tables=P2_RLS_TABLES,
+        )
+        _assert_runtime_visibility(connection, world)
+        assert connection.execute(text(
+            "SELECT id FROM org.service_principals"
+        )).scalars().all() == [principal_id]
+        assert connection.execute(text(
+            "SELECT id FROM org.service_credentials"
+        )).scalars().all() == [credential_id]
+        connection.execute(text("SELECT set_config('openvietgis.organization_id', '', true)"))
+        assert not connection.execute(text("SELECT id FROM org.service_principals")).scalars().all()
+
+    command.stamp(config, FINAL_HEAD)
+    with engine.connect() as connection:
+        _assert_revision(connection, FINAL_HEAD)
