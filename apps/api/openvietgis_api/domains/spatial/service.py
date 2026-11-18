@@ -2,22 +2,32 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
+from typing import NotRequired, TypedDict
 from uuid import UUID, uuid4
 
 from openvietgis_api.domains.audit.domain import AuditEvent, AuditOutcome
 from openvietgis_api.domains.authorization.context import AuthorizationContext
 from openvietgis_api.domains.authorization.permissions import Permission
 from openvietgis_api.domains.authorization.service import TenantResourceNotFoundError
+from openvietgis_api.domains.spatial.crs import (
+    CoordinateReferenceWire,
+    get_coordinate_reference,
+    get_transformation_profile,
+)
 from openvietgis_api.domains.spatial.domain import (
     MAX_REVISION,
+    AttributeValue,
     CatalogChange,
     CatalogOperation,
     ChangedValue,
     ChangeValue,
+    CoordinateTree,
     DataSource,
+    GeometryState,
     Layer,
     Lifecycle,
     ReferenceFeature,
@@ -25,12 +35,17 @@ from openvietgis_api.domains.spatial.domain import (
     SourceField,
     SpatialValidationError,
     ValidationState,
+    canonical_attribute_value,
     content_revision_digest,
     schema_revision_digest,
+    validate_ready_geometry,
+    validate_revision_token,
     validate_source_contents,
 )
 from openvietgis_api.domains.spatial.ports import (
     SpatialActiveLayerDependenciesError,
+    SpatialFeatureRepository,
+    SpatialInvalidFeatureRequestError,
     SpatialLayerRepository,
     SpatialLayerRevisionConflictError,
     SpatialNoChangesError,
@@ -39,6 +54,10 @@ from openvietgis_api.domains.spatial.ports import (
     SpatialSourceAlreadyRegisteredError,
     SpatialSourceNotReadyError,
     SpatialSourceRepository,
+    SpatialStaleReadPinError,
+    SpatialTransformationUnavailableError,
+    SpatialUnsupportedCRSError,
+    SpatialUnsupportedTransformationError,
 )
 from openvietgis_api.domains.tenancy.domain import ActorType
 
@@ -727,3 +746,278 @@ class SpatialLayerService:
         self.repository.update_layer(current, context=context, expected_revision=expected_revision)
         self.repository.append_change(evidence.change, evidence.audit, context=context)
         return LayerMutationResult(current, evidence.change)
+
+
+class FeatureGeometryWire(TypedDict):
+    type: str
+    coordinates: CoordinateTree
+    coordinate_reference: CoordinateReferenceWire
+
+
+class FeatureWire(TypedDict):
+    feature_id: str
+    attributes: dict[str, AttributeValue]
+    geometry_state: str
+    geometry: NotRequired[FeatureGeometryWire]
+
+
+class FeatureReadContextWire(TypedDict):
+    organization_id: UUID
+    project_id: UUID
+    layer_id: UUID
+    source_id: UUID
+    content_revision: str
+    schema_revision: str
+    geometry_included: bool
+    response_crs: CoordinateReferenceWire | None
+    transformation: None
+
+
+class FeaturePageWire(TypedDict):
+    context: FeatureReadContextWire
+    items: list[FeatureWire]
+    next_after_feature_id: str | None
+
+
+class FeatureDetailWire(TypedDict):
+    context: FeatureReadContextWire
+    feature: FeatureWire
+
+
+def serialize_feature(
+    source: DataSource,
+    fields: Sequence[SourceField],
+    feature: ReferenceFeature,
+    *,
+    include_geometry: bool,
+) -> FeatureWire:
+    """Emit exact logical attributes and an explicit native XY geometry envelope."""
+    if (
+        not source.readable
+        or (feature.organization_id, feature.project_id, feature.source_id)
+        != (source.organization_id, source.project_id, source.id)
+        or (feature.content_revision, feature.schema_revision)
+        != (source.content_revision, source.schema_revision)
+    ):
+        raise SpatialValidationError("feature scope or pin disagrees")
+    if set(feature.attributes) != {field.field_id for field in fields}:
+        raise SpatialValidationError("logical attributes disagree with schema")
+    attributes: dict[str, AttributeValue] = {}
+    for field in fields:
+        if (field.organization_id, field.project_id, field.source_id, field.schema_revision) != (
+            source.organization_id,
+            source.project_id,
+            source.id,
+            source.schema_revision,
+        ):
+            raise SpatialValidationError("logical schema scope or pin disagrees")
+        raw = feature.attributes[field.field_id]
+        value = canonical_attribute_value(field, raw)
+        if type(value) is not type(raw) or value != raw:
+            raise SpatialValidationError("noncanonical logical attribute")
+        attributes[field.field_id] = value
+    geometry = feature.geometry
+    if feature.geometry_state != GeometryState.PRESENT or geometry is None:
+        raise SpatialValidationError("ready feature requires present geometry")
+    validate_ready_geometry(geometry, source.geometry_family, source.stored_crs)
+    wire: FeatureWire = {
+        "feature_id": feature.feature_id,
+        "attributes": attributes,
+        "geometry_state": feature.geometry_state.value,
+    }
+    if include_geometry:
+        if source.stored_crs is None:
+            raise SpatialValidationError("ready source requires native CRS")
+        reference = get_coordinate_reference(source.stored_crs)
+        if reference is None:
+            raise SpatialValidationError("ready source requires readable native CRS")
+        wire["geometry"] = {
+            "type": geometry.type,
+            "coordinates": geometry.coordinates,
+            "coordinate_reference": reference.to_wire(),
+        }
+    return wire
+
+
+def validate_feature_id(value: str) -> None:
+    if not isinstance(value, str) or re.fullmatch(r"[A-Za-z0-9_-]{1,128}", value) is None:
+        raise SpatialValidationError("invalid stable feature ID")
+
+
+@dataclass(slots=True)
+class SpatialFeatureService:
+    """Native pinned reads; the transaction remains owned by the request adapter."""
+
+    repository: SpatialFeatureRepository
+
+    def _snapshot(
+        self,
+        *,
+        context: AuthorizationContext,
+        layer_id: UUID,
+        content_revision: str,
+        schema_revision: str,
+        include_geometry: bool,
+        response_crs: int | None,
+    ) -> tuple[SourceDetail, FeatureReadContextWire]:
+        self.repository.prepare_scope(
+            context=context, permission=Permission.PROJECT_READ, mutation=False
+        )
+        layer = SpatialLayerService(self.repository)._active(context=context, layer_id=layer_id)
+        catalog = SpatialCatalogService(self.repository)
+        source = catalog._active(context=context, source_id=layer.source_id)
+        if not source.readable:
+            raise SpatialSourceNotReadyError("source not ready")
+        validate_revision_token(content_revision)
+        validate_revision_token(schema_revision)
+        if (content_revision, schema_revision) != (source.content_revision, source.schema_revision):
+            raise SpatialStaleReadPinError("read pins are stale; reload the current catalog")
+        if type(include_geometry) is not bool:
+            raise SpatialValidationError("invalid geometry inclusion")
+        reference = None
+        if not include_geometry:
+            if response_crs is not None:
+                raise SpatialInvalidFeatureRequestError("response CRS requires geometry")
+        else:
+            native = source.stored_crs
+            if native is None:
+                raise SpatialValidationError("ready source requires native CRS")
+            target = native if response_crs is None else response_crs
+            reference = get_coordinate_reference(target)
+            if reference is None:
+                raise SpatialUnsupportedCRSError("requested CRS is not readable")
+            if target != native:
+                if get_transformation_profile(native, target) is None:
+                    raise SpatialUnsupportedTransformationError("no approved direct operation")
+                # US5 must verify exact control evidence and native runtime before
+                # any coordinate-changing operation is allowed.
+                raise SpatialTransformationUnavailableError("transformation execution unavailable")
+        detail = catalog._detail(context=context, source=source)
+        wire: FeatureReadContextWire = {
+            "organization_id": source.organization_id,
+            "project_id": source.project_id,
+            "layer_id": layer.id,
+            "source_id": source.id,
+            "content_revision": source.content_revision,
+            "schema_revision": source.schema_revision,
+            "geometry_included": include_geometry,
+            "response_crs": reference.to_wire() if reference is not None else None,
+            "transformation": None,
+        }
+        return detail, wire
+
+    def read_features(
+        self,
+        *,
+        context: AuthorizationContext,
+        layer_id: UUID,
+        content_revision: str,
+        schema_revision: str,
+        include_geometry: bool = True,
+        response_crs: int | None = None,
+        after_feature_id: str | None = None,
+        limit: int = 100,
+    ) -> FeaturePageWire:
+        detail, wire = self._snapshot(
+            context=context,
+            layer_id=layer_id,
+            content_revision=content_revision,
+            schema_revision=schema_revision,
+            include_geometry=include_geometry,
+            response_crs=response_crs,
+        )
+        if type(limit) is not int or not 1 <= limit <= 100:
+            raise SpatialValidationError("feature page limit out of bounds")
+        if after_feature_id is not None:
+            validate_feature_id(after_feature_id)
+        rows = self.repository.read_features(
+            context=context,
+            source_id=detail.source.id,
+            content_revision=content_revision,
+            schema_revision=schema_revision,
+            after_feature_id=after_feature_id,
+            limit=limit,
+        )
+        if len(rows) > limit + 1:
+            raise SpatialValidationError("unbounded feature page")
+        previous = after_feature_id
+        items: list[FeatureWire] = []
+        for row in rows:
+            if previous is not None and row.feature_id <= previous:
+                raise SpatialValidationError("feature page is not strictly ordered")
+            previous = row.feature_id
+            serialized = serialize_feature(
+                detail.source, detail.fields, row, include_geometry=include_geometry
+            )
+            if len(items) < limit:
+                items.append(serialized)
+        return {
+            "context": wire,
+            "items": items,
+            "next_after_feature_id": items[-1]["feature_id"] if len(rows) > limit else None,
+        }
+
+    def get_feature(
+        self,
+        *,
+        context: AuthorizationContext,
+        layer_id: UUID,
+        feature_id: str,
+        content_revision: str,
+        schema_revision: str,
+        include_geometry: bool = True,
+        response_crs: int | None = None,
+    ) -> FeatureDetailWire:
+        detail, wire = self._snapshot(
+            context=context,
+            layer_id=layer_id,
+            content_revision=content_revision,
+            schema_revision=schema_revision,
+            include_geometry=include_geometry,
+            response_crs=response_crs,
+        )
+        validate_feature_id(feature_id)
+        feature = self.repository.get_feature(
+            context=context,
+            source_id=detail.source.id,
+            feature_id=feature_id,
+            content_revision=content_revision,
+            schema_revision=schema_revision,
+        )
+        if feature is None:
+            raise TenantResourceNotFoundError("resource not found")
+        if feature.feature_id != feature_id:
+            raise SpatialValidationError("feature identity disagrees")
+        return {
+            "context": wire,
+            "feature": serialize_feature(
+                detail.source, detail.fields, feature, include_geometry=include_geometry
+            ),
+        }
+
+    def refresh_reference_fixture_for_test(
+        self, *, context: AuthorizationContext, source_id: UUID, variant: str
+    ) -> SourceMutationResult:
+        """Internal controlled acceptance-test seam; deliberately no HTTP route."""
+        self.repository.prepare_scope(
+            context=context, permission=Permission.PROJECT_EDIT, mutation=True
+        )
+        prior = SpatialCatalogService(self.repository)._active(context=context, source_id=source_id)
+        if not prior.readable:
+            raise SpatialSourceNotReadyError("source not ready")
+        if variant not in ("content", "schema"):
+            raise SpatialValidationError("invalid controlled fixture variant")
+        next_revision(prior.catalog_revision, prior.catalog_revision)
+        now = datetime.now(UTC)
+        current = self.repository.refresh_reference_fixture_for_test(
+            context=context, source=prior, variant=variant, now=now
+        )
+        evidence = build_mutation_evidence(
+            context=context,
+            prior=prior,
+            current=current,
+            operation=CatalogOperation.REFRESH_REFERENCE_FIXTURE,
+            now=now,
+        )
+        self.repository.append_change(evidence.change, evidence.audit, context=context)
+        return SourceMutationResult(current, evidence.change)

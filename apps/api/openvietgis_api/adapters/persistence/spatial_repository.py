@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import struct
 from collections.abc import Sequence
 from dataclasses import asdict, replace
 from datetime import datetime
@@ -22,6 +23,7 @@ from openvietgis_api.adapters.persistence.rls import (
 from openvietgis_api.adapters.persistence.spatial_fixtures import (
     ReferenceCorrectionUnverifiedError,
     ReferenceFixtureIntegrityError,
+    derive_test_fixture_refresh,
     get_reference_fixture,
     materialize_reference_fixture,
     native_geometry_parameters,
@@ -30,6 +32,7 @@ from openvietgis_api.adapters.persistence.spatial_fixtures import (
     validate_reference_correction,
 )
 from openvietgis_api.adapters.persistence.tenancy_repository import SqlTenancyRepository
+from openvietgis_api.config import get_settings
 from openvietgis_api.domains.audit.domain import AuditEvent, AuditOutcome
 from openvietgis_api.domains.authorization.context import AuthorizationContext
 from openvietgis_api.domains.authorization.permissions import Permission
@@ -47,8 +50,10 @@ from openvietgis_api.domains.spatial.domain import (
     FieldType,
     GeometryDimensions,
     GeometryFamily,
+    GeometryState,
     Layer,
     Lifecycle,
+    NativeGeometry,
     ReferenceFeature,
     ResourceType,
     SchemaState,
@@ -58,19 +63,107 @@ from openvietgis_api.domains.spatial.domain import (
     ValidationReason,
     ValidationReasonCode,
     ValidationState,
+    validate_revision_token,
 )
 from openvietgis_api.domains.spatial.ports import (
     SpatialCrsCorrectionUnverifiedError,
+    SpatialInvalidCursorError,
     SpatialLayerRevisionConflictError,
     SpatialProjectReadOnlyError,
     SpatialRevisionConflictError,
     SpatialScopeError,
     SpatialSourceAlreadyRegisteredError,
     SpatialSourceNotReadyError,
+    SpatialStaleReadPinError,
     SpatialUnknownReferenceKeyError,
 )
-from openvietgis_api.domains.spatial.service import PinnedSource, verify_source_pins
+from openvietgis_api.domains.spatial.service import (
+    PinnedSource,
+    validate_feature_id,
+    verify_source_pins,
+)
 from openvietgis_api.domains.tenancy.domain import OrganizationStatus, ProjectStatus
+
+
+def _read_native_wkb(value: bytes, srid: int) -> NativeGeometry:
+    """Decode bounded little-endian 2D OGC WKB without decimal rounding."""
+    if not isinstance(value, bytes) or len(value) < 5 or len(value) > 5 + 4 + 4096 * 20:
+        raise SpatialValidationError("invalid native geometry encoding")
+    if value[0] != 1:
+        raise SpatialValidationError("unexpected native byte order")
+    geometry_type = struct.unpack_from("<I", value, 1)[0]
+    offset = 5
+    remaining = 4096
+
+    def count() -> int:
+        nonlocal offset
+        if offset + 4 > len(value):
+            raise SpatialValidationError("incomplete native geometry")
+        result = struct.unpack_from("<I", value, offset)[0]
+        offset += 4
+        return result
+
+    def positions(number: int) -> tuple[tuple[float, float], ...]:
+        nonlocal offset, remaining
+        if not 1 <= number <= remaining or offset + number * 16 > len(value):
+            raise SpatialValidationError("invalid native position count")
+        result = tuple(
+            (x, y) for x, y in struct.iter_unpack("<dd", value[offset : offset + number * 16])
+        )
+        offset += number * 16
+        remaining -= number
+        return result
+
+    geometry: NativeGeometry
+    if geometry_type == 1:
+        geometry = NativeGeometry("Point", positions(1)[0], srid)
+    elif geometry_type == 2:
+        geometry = NativeGeometry("LineString", positions(count()), srid)
+    elif geometry_type == 3:
+        rings = count()
+        if not 1 <= rings <= 1024:
+            raise SpatialValidationError("unbounded native ring count")
+        geometry = NativeGeometry("Polygon", tuple(positions(count()) for _ in range(rings)), srid)
+    else:
+        raise SpatialValidationError("unsupported native geometry family")
+    if offset != len(value):
+        raise SpatialValidationError("unexpected native geometry data")
+    return geometry
+
+
+def _feature_from_row(row: RowMapping) -> ReferenceFeature:
+    if (
+        row["geometry_state"] != GeometryState.PRESENT
+        or not row["valid_geometry"]
+        or row["native_wkb"] is None
+        or type(row["native_srid"]) is not int
+    ):
+        raise SpatialValidationError("ready feature has invalid native geometry")
+    return ReferenceFeature(
+        organization_id=row["organization_id"],
+        project_id=row["project_id"],
+        source_id=row["source_id"],
+        feature_id=row["feature_id"],
+        attributes=row["attributes"],
+        geometry=_read_native_wkb(bytes(row["native_wkb"]), row["native_srid"]),
+        geometry_state=GeometryState.PRESENT,
+        content_revision=row["content_revision"],
+        schema_revision=row["schema_revision"],
+    )
+
+
+_FEATURE_COLUMNS = """
+    organization_id, project_id, source_id, feature_id, attributes,
+    geometry_state, content_revision, schema_revision,
+    ST_SRID(geometry) AS native_srid,
+    CASE WHEN ST_Zmflag(geometry)=0 AND ST_NPoints(geometry) BETWEEN 1 AND 4096
+        AND NOT ST_IsEmpty(geometry) THEN ST_IsValid(geometry)
+        ELSE false END AS valid_geometry,
+    CASE WHEN ST_Zmflag(geometry)=0 AND ST_NPoints(geometry) BETWEEN 1 AND 4096
+        AND NOT ST_IsEmpty(geometry) THEN ST_AsBinary(geometry, 'NDR')
+        ELSE NULL END AS native_wkb
+"""
+_FEATURE_SCOPE = "organization_id=:organization AND project_id=:project AND source_id=:source"
 
 
 def _source_from_row(row: RowMapping) -> DataSource:
@@ -747,6 +840,184 @@ class SqlSpatialRepository:
                 params,
             ).scalar_one()
         )
+
+    def _pinned_source(
+        self,
+        *,
+        context: AuthorizationContext,
+        source_id: UUID,
+        content_revision: str,
+        schema_revision: str,
+    ) -> DataSource:
+        self._scope(context, permission=Permission.PROJECT_READ)
+        source = self.get_source(context=context, source_id=source_id, lock=True)
+        if source is None or source.lifecycle != Lifecycle.ACTIVE:
+            raise TenantResourceNotFoundError("resource not found")
+        if not source.readable:
+            raise SpatialSourceNotReadyError("source not ready")
+        validate_revision_token(content_revision)
+        validate_revision_token(schema_revision)
+        if (source.content_revision, source.schema_revision) != (content_revision, schema_revision):
+            raise SpatialStaleReadPinError("read pins are stale; reload the current catalog")
+        return source
+
+    def read_features(
+        self,
+        *,
+        context: AuthorizationContext,
+        source_id: UUID,
+        content_revision: str,
+        schema_revision: str,
+        after_feature_id: str | None,
+        limit: int,
+    ) -> list[ReferenceFeature]:
+        source = self._pinned_source(
+            context=context,
+            source_id=source_id,
+            content_revision=content_revision,
+            schema_revision=schema_revision,
+        )
+        if type(limit) is not int or not 1 <= limit <= 100:
+            raise SpatialValidationError("feature page limit out of bounds")
+        params = self._scope(context, permission=Permission.PROJECT_READ) | {"source": source.id}
+        if after_feature_id is not None:
+            validate_feature_id(after_feature_id)
+            cursor = self._session.execute(
+                text(
+                    "SELECT content_revision, schema_revision FROM spatial.reference_features "
+                    "WHERE " + _FEATURE_SCOPE + " AND feature_id=:after"
+                ),
+                params | {"after": after_feature_id},
+            ).one_or_none()
+            if cursor is None:
+                raise SpatialInvalidCursorError("cursor is not part of the pinned source")
+            if tuple(cursor) != (content_revision, schema_revision):
+                raise SpatialValidationError("stored cursor pins disagree")
+        query = (
+            "SELECT "
+            + _FEATURE_COLUMNS
+            + " FROM spatial.reference_features WHERE "
+            + _FEATURE_SCOPE
+            + (' AND feature_id COLLATE "C" > :after' if after_feature_id is not None else "")
+            + ' ORDER BY feature_id COLLATE "C" LIMIT :maximum'
+        )
+        rows = self._session.execute(
+            text(query), params | {"after": after_feature_id, "maximum": limit + 1}
+        ).mappings()
+        result = [_feature_from_row(row) for row in rows]
+        if any(
+            (row.content_revision, row.schema_revision) != (content_revision, schema_revision)
+            for row in result
+        ):
+            raise SpatialValidationError("stored feature pins disagree")
+        return result
+
+    def get_feature(
+        self,
+        *,
+        context: AuthorizationContext,
+        source_id: UUID,
+        feature_id: str,
+        content_revision: str,
+        schema_revision: str,
+    ) -> ReferenceFeature | None:
+        source = self._pinned_source(
+            context=context,
+            source_id=source_id,
+            content_revision=content_revision,
+            schema_revision=schema_revision,
+        )
+        validate_feature_id(feature_id)
+        row = (
+            self._session.execute(
+                text(
+                    "SELECT "
+                    + _FEATURE_COLUMNS
+                    + " FROM spatial.reference_features WHERE "
+                    + _FEATURE_SCOPE
+                    + " AND feature_id=:feature"
+                ),
+                self._scope(context, permission=Permission.PROJECT_READ)
+                | {"source": source.id, "feature": feature_id},
+            )
+            .mappings()
+            .one_or_none()
+        )
+        if row is None:
+            return None
+        feature = _feature_from_row(row)
+        if (feature.content_revision, feature.schema_revision) != (
+            content_revision,
+            schema_revision,
+        ):
+            raise SpatialValidationError("stored feature pins disagree")
+        return feature
+
+    def refresh_reference_fixture_for_test(
+        self, *, context: AuthorizationContext, source: DataSource, variant: str, now: datetime
+    ) -> DataSource:
+        # Not exposed in any route or SDK; hard-deny outside synthetic test settings.
+        if get_settings().environment != "test":
+            raise SpatialScopeError("controlled fixture refresh is test-only")
+        params = self._scope(context, permission=Permission.PROJECT_EDIT) | {"source": source.id}
+        self._assert_owner(context, source)
+        if source.reference_key != "reference_points_5899":
+            raise SpatialValidationError("unsupported controlled fixture binding")
+        locked = self.get_source(context=context, source_id=source.id, lock=True)
+        if locked != source:
+            raise SpatialRevisionConflictError("stale controlled fixture")
+        fields = tuple(self.get_fields(context=context, source_id=source.id))
+
+        def read_records() -> tuple[ReferenceFeature, ...]:
+            query = (
+                "SELECT "
+                + _FEATURE_COLUMNS
+                + " FROM spatial.reference_features WHERE "
+                + _FEATURE_SCOPE
+                + ' ORDER BY feature_id COLLATE "C" LIMIT 5'
+            )
+            return tuple(
+                _feature_from_row(row)
+                for row in self._session.execute(text(query), params).mappings()
+            )
+
+        features = read_records()
+        refreshed = derive_test_fixture_refresh(
+            PinnedSource(source, fields, features), variant=variant, now=now
+        )
+        self.update_source(
+            refreshed.source, context=context, expected_revision=source.catalog_revision
+        )
+        if variant == "content":
+            first = refreshed.features[0]
+            updated = self._session.execute(
+                text(
+                    "UPDATE spatial.reference_features SET attributes=CAST(:attributes AS jsonb) "
+                    "WHERE " + _FEATURE_SCOPE + " AND feature_id=:feature RETURNING feature_id"
+                ),
+                params
+                | {"feature": first.feature_id, "attributes": json.dumps(dict(first.attributes))},
+            )
+        else:
+            field = next(field for field in refreshed.fields if field.field_id == "fld_name")
+            updated = self._session.execute(
+                text(
+                    "UPDATE spatial.source_fields SET name=:name WHERE "
+                    + _FEATURE_SCOPE
+                    + " AND field_id=:field RETURNING field_id"
+                ),
+                params | {"field": field.field_id, "name": field.name},
+            )
+        if updated.scalar_one_or_none() is None:
+            raise SpatialValidationError("controlled fixture change did not persist")
+        persisted = self.get_source(context=context, source_id=source.id)
+        if (
+            persisted != refreshed.source
+            or tuple(self.get_fields(context=context, source_id=source.id)) != refreshed.fields
+            or read_records() != refreshed.features
+        ):
+            raise SpatialValidationError("controlled fixture snapshot disagrees")
+        return refreshed.source
 
     def append_change(
         self, change: CatalogChange, audit: AuditEvent, *, context: AuthorizationContext

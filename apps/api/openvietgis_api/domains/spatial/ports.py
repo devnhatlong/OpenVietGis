@@ -33,6 +33,30 @@ class SpatialSourceNotReadyError(ValueError):
     """A current scoped source cannot support layer creation or feature reads."""
 
 
+class SpatialStaleReadPinError(ValueError):
+    """A feature read no longer describes the current source snapshot."""
+
+
+class SpatialInvalidFeatureRequestError(ValueError):
+    """A feature request combines incompatible geometry options."""
+
+
+class SpatialInvalidCursorError(ValueError):
+    """The stable cursor is not a feature of this pinned source."""
+
+
+class SpatialUnsupportedCRSError(ValueError):
+    """The requested CRS is not a readable finite registry profile."""
+
+
+class SpatialUnsupportedTransformationError(ValueError):
+    """No direct approved transformation edge exists."""
+
+
+class SpatialTransformationUnavailableError(ValueError):
+    """The operation is approved but has no validated execution runtime yet."""
+
+
 class SpatialProjectReadOnlyError(ValueError):
     """An archived project may be inspected but not changed."""
 
@@ -155,8 +179,8 @@ class SpatialLayerRepository(SpatialSourceRepository, Protocol):
     ) -> None: ...
 
 
-class SpatialRepository(SpatialLayerRepository, Protocol):
-    """Full R003 port, including pinned feature reads."""
+class SpatialFeatureRepository(SpatialLayerRepository, Protocol):
+    """Authorized pinned feature reads and controlled fixture refresh."""
 
     def read_features(
         self,
@@ -180,6 +204,16 @@ class SpatialRepository(SpatialLayerRepository, Protocol):
         content_revision: str,
         schema_revision: str,
     ) -> ReferenceFeature | None: ...
+
+    def refresh_reference_fixture_for_test(
+        self, *, context: AuthorizationContext, source: DataSource, variant: str, now: datetime
+    ) -> DataSource:
+        """Apply a finite test-only content or schema variant in this transaction."""
+        ...
+
+
+class SpatialRepository(SpatialFeatureRepository, Protocol):
+    """Full R003 port, including catalog history."""
 
     def list_changes(
         self, *, context: AuthorizationContext, after_id: UUID | None, limit: int

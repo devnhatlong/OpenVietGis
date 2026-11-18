@@ -11,7 +11,7 @@ from datetime import datetime
 from typing import Annotated, Literal, Self
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Path, Query
 from pydantic import (
     BaseModel,
     ConfigDict,
@@ -46,6 +46,7 @@ from openvietgis_api.domains.spatial.service import (
     SourceDetail,
     SourceMutationResult,
     SpatialCatalogService,
+    SpatialFeatureService,
     SpatialLayerService,
 )
 
@@ -469,5 +470,70 @@ def retire_layer(
     return _layer_mutation(
         _layer_service(session).retire_layer(
             context=context, layer_id=layer_id, expected_revision=payload.expected_revision
+        )
+    )
+
+
+_FEATURE_PATH = _LAYER_PATH + "/{layer_id}/features"
+_ReadPin = Annotated[str, Query(pattern=r"^[a-f0-9]{64}$")]
+_ResponseCRS = Annotated[int, Query(ge=1, le=2147483647)]
+_AfterFeature = Annotated[str, Query(min_length=1, max_length=128, pattern=r"^[A-Za-z0-9_-]+$")]
+_FeatureID = Annotated[str, Path(min_length=1, max_length=128, pattern=r"^[A-Za-z0-9_-]+$")]
+
+
+@router.get(_FEATURE_PATH, operation_id="pageSpatialFeatures")
+def read_features(
+    organization_id: UUID,
+    project_id: UUID,
+    layer_id: UUID,
+    authentication: Annotated[AuthenticatedRequest, Depends(authenticate_request)],
+    session: Annotated[Session, Depends(get_db_session, scope="function")],
+    content_revision: _ReadPin,
+    schema_revision: _ReadPin,
+    include_geometry: bool = True,
+    response_crs: _ResponseCRS | None = None,
+    after_feature_id: _AfterFeature | None = None,
+    limit: Annotated[int, Query(ge=1, le=100)] = 100,
+) -> dict[str, object]:
+    context = context_for(authentication, organization_id=organization_id, project_id=project_id)
+    service = SpatialFeatureService(SqlSpatialRepository(session))
+    return dict(
+        service.read_features(
+            context=context,
+            layer_id=layer_id,
+            content_revision=content_revision,
+            schema_revision=schema_revision,
+            include_geometry=include_geometry,
+            response_crs=response_crs,
+            after_feature_id=after_feature_id,
+            limit=limit,
+        )
+    )
+
+
+@router.get(_FEATURE_PATH + "/{feature_id}", operation_id="getSpatialFeature")
+def get_feature(
+    organization_id: UUID,
+    project_id: UUID,
+    layer_id: UUID,
+    feature_id: _FeatureID,
+    authentication: Annotated[AuthenticatedRequest, Depends(authenticate_request)],
+    session: Annotated[Session, Depends(get_db_session, scope="function")],
+    content_revision: _ReadPin,
+    schema_revision: _ReadPin,
+    include_geometry: bool = True,
+    response_crs: _ResponseCRS | None = None,
+) -> dict[str, object]:
+    context = context_for(authentication, organization_id=organization_id, project_id=project_id)
+    service = SpatialFeatureService(SqlSpatialRepository(session))
+    return dict(
+        service.get_feature(
+            context=context,
+            layer_id=layer_id,
+            feature_id=feature_id,
+            content_revision=content_revision,
+            schema_revision=schema_revision,
+            include_geometry=include_geometry,
+            response_crs=response_crs,
         )
     )

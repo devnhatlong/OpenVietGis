@@ -1409,3 +1409,99 @@ def validate_reference_correction(
     ):
         raise _unverified()
     return corrected.source
+
+
+def derive_test_fixture_refresh(
+    pinned: PinnedSource, *, variant: str, now: datetime
+) -> PinnedSource:
+    """Finite test-only mutation; never accepts arbitrary geometry or attributes.
+
+    Only the bounded four-record 5899 control fixture is permitted. Coordinates,
+    stable IDs and field interpretation remain immutable; each variant changes
+    exactly one revision domain. The adapter enforces the test environment.
+    """
+    source = pinned.source
+    if (
+        source.reference_key != "reference_points_5899"
+        or not source.readable
+        or len(pinned.features) != 4
+        or variant not in ("content", "schema")
+    ):
+        raise SpatialValidationError("unsupported controlled fixture refresh")
+    verify_source_pins(source, pinned.fields, pinned.features)
+    original = materialize_reference_fixture(
+        source.reference_key,
+        organization_id=source.organization_id,
+        project_id=source.project_id,
+        source_id=source.id,
+        name=source.name,
+        now=source.created_at,
+    )
+    if (
+        source.manifest_digest,
+        source.fixture_version,
+        source.source_crs,
+        source.stored_crs,
+    ) != (
+        original.source.manifest_digest,
+        original.source.fixture_version,
+        original.source.source_crs,
+        original.source.stored_crs,
+    ):
+        raise SpatialValidationError("unexpected controlled fixture binding")
+    # Allow only the original trusted manifest or a prior deterministic test
+    # variant. Preserve all geometry, IDs and other attribute values.
+    if [row.feature_id for row in pinned.features] != [row.feature_id for row in original.features]:
+        raise SpatialValidationError("unexpected controlled fixture identities")
+    first = pinned.features[0]
+    original_first = original.features[0]
+    old_name = first.attributes["fld_name"]
+    original_name = original_first.attributes["fld_name"]
+    alternate_name = "Controlled test refresh"
+    if old_name not in (original_name, alternate_name):
+        raise SpatialValidationError("unexpected controlled fixture attribute")
+    for index, (actual, trusted) in enumerate(zip(pinned.features, original.features, strict=True)):
+        attrs = dict(actual.attributes)
+        if index == 0:
+            attrs["fld_name"] = original_name
+        if (
+            attrs != dict(trusted.attributes)
+            or actual.geometry != trusted.geometry
+            or actual.geometry_state != trusted.geometry_state
+        ):
+            raise SpatialValidationError("unexpected controlled fixture content")
+    fields = list(pinned.fields)
+    features = list(pinned.features)
+    alternate_field = "Name (controlled test refresh)"
+    if len(fields) != len(original.fields):
+        raise SpatialValidationError("unexpected controlled fixture schema")
+    for index, (actual_field, trusted_field) in enumerate(
+        zip(fields, original.fields, strict=True)
+    ):
+        if actual_field.field_id == "fld_name":
+            if actual_field.name not in (trusted_field.name, alternate_field):
+                raise SpatialValidationError("unexpected controlled fixture field name")
+            if variant == "schema":
+                name = (
+                    alternate_field
+                    if actual_field.name == trusted_field.name
+                    else trusted_field.name
+                )
+                fields[index] = replace(actual_field, name=name)
+        elif actual_field.name != trusted_field.name:
+            raise SpatialValidationError("unexpected controlled fixture field name")
+        if (
+            replace(
+                actual_field, name=trusted_field.name, schema_revision=trusted_field.schema_revision
+            )
+            != trusted_field
+        ):
+            raise SpatialValidationError("unexpected controlled fixture field interpretation")
+    if variant == "content":
+        new_name = alternate_name if old_name == original_name else original_name
+        features[0] = replace(first, attributes=dict(first.attributes) | {"fld_name": new_name})
+    return derive_source_pins(
+        replace(source, catalog_revision=source.catalog_revision + 1, updated_at=now),
+        fields,
+        features,
+    )

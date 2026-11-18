@@ -15,6 +15,8 @@ from openvietgis_api.domains.authorization.service import (
 from openvietgis_api.domains.spatial.ports import (
     SpatialActiveLayerDependenciesError,
     SpatialCrsCorrectionUnverifiedError,
+    SpatialInvalidCursorError,
+    SpatialInvalidFeatureRequestError,
     SpatialLayerRevisionConflictError,
     SpatialNoChangesError,
     SpatialProjectReadOnlyError,
@@ -22,7 +24,11 @@ from openvietgis_api.domains.spatial.ports import (
     SpatialScopeError,
     SpatialSourceAlreadyRegisteredError,
     SpatialSourceNotReadyError,
+    SpatialStaleReadPinError,
+    SpatialTransformationUnavailableError,
     SpatialUnknownReferenceKeyError,
+    SpatialUnsupportedCRSError,
+    SpatialUnsupportedTransformationError,
 )
 from openvietgis_api.domains.tenancy.service import (
     CrossOrganizationWorkspaceError,
@@ -50,6 +56,23 @@ _SPATIAL_ERRORS: dict[type[Exception], tuple[int, str, str]] = {
         409,
         "STALE_LAYER_REVISION",
         "Layer revision changed; read current metadata and retry.",
+    ),
+    SpatialStaleReadPinError: (
+        409,
+        "STALE_READ_PIN",
+        "Read pins changed; reload the source and start a new traversal.",
+    ),
+    SpatialInvalidCursorError: (422, "INVALID_CURSOR", "Cursor is not part of the current source."),
+    SpatialUnsupportedCRSError: (422, "UNSUPPORTED_CRS", "Select a readable supported CRS."),
+    SpatialUnsupportedTransformationError: (
+        422,
+        "UNSUPPORTED_TRANSFORMATION",
+        "No approved direct operation exists.",
+    ),
+    SpatialTransformationUnavailableError: (
+        422,
+        "TRANSFORMATION_UNAVAILABLE",
+        "The requested operation is unavailable.",
     ),
     SpatialSourceNotReadyError: (409, "SOURCE_NOT_READY", "The source is not ready."),
     SpatialProjectReadOnlyError: (409, "PROJECT_NOT_WRITABLE", "The project is read-only."),
@@ -93,10 +116,11 @@ def install_error_handlers(app: FastAPI) -> None:
     async def spatial_scope_denied_handler(_: Request, exc: Exception) -> JSONResponse:
         return JSONResponse(status_code=403, content={"detail": "permission denied"})
 
+    @app.exception_handler(SpatialInvalidFeatureRequestError)
     @app.exception_handler(RequestValidationError)
     async def request_validation_handler(
         _: Request,
-        exc: RequestValidationError,
+        exc: RequestValidationError | SpatialInvalidFeatureRequestError,
     ) -> JSONResponse:
         # FastAPI's default validation body echoes raw input. Authentication/invitation
         # requests can include one-time secrets, so expose no input, loc or context.
