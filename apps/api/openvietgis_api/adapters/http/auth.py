@@ -76,6 +76,14 @@ async def begin_login(
         "return_to": _safe_return_to(return_to),
     }
     if mode == "link":
+        # A top-level cross-site navigation can carry SameSite=Lax cookies.
+        # Only a same-origin, user-activated browser navigation is valid link intent.
+        if (
+            request.headers.get("sec-fetch-site") != "same-origin"
+            or request.headers.get("sec-fetch-mode") != "navigate"
+            or request.headers.get("sec-fetch-user") != "?1"
+        ):
+            raise HTTPException(status_code=403, detail="explicit identity link intent required")
         authentication = authenticate_request(request, session, settings)
         if authentication.actor.actor_id is None or authentication.session_id is None:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED)

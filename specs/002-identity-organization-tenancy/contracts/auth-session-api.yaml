@@ -38,6 +38,7 @@ paths:
         "302": { description: Redirect to configured OIDC provider }
         "400": { description: Unknown provider or invalid return target }
         "401": { description: Link mode requires an existing human session }
+        "403": { description: Link mode requires explicit same-origin user-activated browser navigation }
   /auth/callback/{provider}:
     get:
       operationId: completeOidcLogin

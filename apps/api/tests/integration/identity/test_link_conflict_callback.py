@@ -72,6 +72,11 @@ def test_oidc_callback_preserves_denied_audit_and_does_not_change_links(
             response = client.get(
                 "/api/v1/auth/login/keycloak",
                 params={"mode": "link"},
+                headers={
+                    "Sec-Fetch-Site": "same-origin",
+                    "Sec-Fetch-Mode": "navigate",
+                    "Sec-Fetch-User": "?1",
+                },
                 follow_redirects=False,
             )
             assert response.status_code == 302

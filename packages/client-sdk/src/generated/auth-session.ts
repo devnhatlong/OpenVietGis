@@ -233,6 +233,13 @@ export interface operations {
                 };
                 content?: never;
             };
+            /** @description Link mode requires explicit same-origin user-activated browser navigation */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     completeOidcLogin: {
