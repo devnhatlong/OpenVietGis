@@ -211,13 +211,15 @@ def _primary_records(
         elif family == GeometryFamily.POLYGON:
             geometry = NativeGeometry(
                 family.value,
-                ((
-                    _microdegrees(x, y),
-                    _microdegrees(x + 600, y),
-                    _microdegrees(x + 600, y + 400),
-                    _microdegrees(x, y + 400),
-                    _microdegrees(x, y),
-                ),),
+                (
+                    (
+                        _microdegrees(x, y),
+                        _microdegrees(x + 600, y),
+                        _microdegrees(x + 600, y + 400),
+                        _microdegrees(x, y + 400),
+                        _microdegrees(x, y),
+                    ),
+                ),
                 4326,
             )
         else:
@@ -305,8 +307,10 @@ def _point_fixture(
         declared_crs=srid,
         stored_crs=srid,
         expected_native_bounds=(
-            min(xy[0] for _, xy in controls), min(xy[1] for _, xy in controls),
-            max(xy[0] for _, xy in controls), max(xy[1] for _, xy in controls),
+            min(xy[0] for _, xy in controls),
+            min(xy[1] for _, xy in controls),
+            max(xy[0] for _, xy in controls),
+            max(xy[1] for _, xy in controls),
         ),
         provenance=provenance,
     )
@@ -335,14 +339,38 @@ _CIRCULAR: tuple[tuple[str, DMS, DMS, DMS, DMS], ...] = (
 # MAE EIA (July 2025), printed p.45 Table 1.4 and QH-04 drawing:
 # X=northing, Y=easting in source; stored API XY = (easting, northing).
 _HVS: tuple[tuple[str, XY, DMS, DMS, DMS, DMS], ...] = (
-    ("HVS-QN1", (438442.69, 2291039.83),
-     (107, 9, 3244), (20, 42, 4209), (107, 9, 3919), (20, 42, 3848)),
-    ("HVS-QN2", (437957.55, 2291878.33),
-     (107, 9, 1556), (20, 43, 930), (107, 9, 2231), (20, 43, 569)),
-    ("HVS-QN3", (438891.96, 2292185.83),
-     (107, 9, 4782), (20, 43, 1941), (107, 9, 5457), (20, 43, 1580)),
-    ("HVS-QN4", (439365.92, 2291378.72),
-     (107, 10, 430), (20, 42, 5322), (107, 10, 1105), (20, 42, 4961)),
+    (
+        "HVS-QN1",
+        (438442.69, 2291039.83),
+        (107, 9, 3244),
+        (20, 42, 4209),
+        (107, 9, 3919),
+        (20, 42, 3848),
+    ),
+    (
+        "HVS-QN2",
+        (437957.55, 2291878.33),
+        (107, 9, 1556),
+        (20, 43, 930),
+        (107, 9, 2231),
+        (20, 43, 569),
+    ),
+    (
+        "HVS-QN3",
+        (438891.96, 2292185.83),
+        (107, 9, 4782),
+        (20, 43, 1941),
+        (107, 9, 5457),
+        (20, 43, 1580),
+    ),
+    (
+        "HVS-QN4",
+        (439365.92, 2291378.72),
+        (107, 10, 430),
+        (20, 42, 5322),
+        (107, 10, 1105),
+        (20, 42, 4961),
+    ),
 )
 _HVS_WGS = tuple((name, _lonlat(wlon, wlat)) for name, _, _, _, wlon, wlat in _HVS)
 _HVS_QN1_WGS = _HVS_WGS[0][1]
@@ -352,16 +380,35 @@ _GOOD_LINE = NativeGeometry("LineString", ((106.6, 10.7), (106.601, 10.701)), 43
 # For this fixture-only registry, negative expected reasons are evidence
 # predicates used by T020, not a claim that the database has verified the rows.
 _FIXTURES: tuple[ReferenceFixture, ...] = (
-    _primary("reference_points_4326", GeometryFamily.POINT, "point", "Point", 4000,
-             (106.6, 10.7, 106.699, 10.739)),
-    _primary("reference_lines_4326", GeometryFamily.LINE_STRING, "line", "Line", 3000,
-             (106.6, 10.7, 106.6996, 10.7292)),
-    _primary("reference_polygons_4326", GeometryFamily.POLYGON, "polygon", "Polygon", 3000,
-             (106.6, 10.7, 106.6996, 10.7294)),
+    _primary(
+        "reference_points_4326",
+        GeometryFamily.POINT,
+        "point",
+        "Point",
+        4000,
+        (106.6, 10.7, 106.699, 10.739),
+    ),
+    _primary(
+        "reference_lines_4326",
+        GeometryFamily.LINE_STRING,
+        "line",
+        "Line",
+        3000,
+        (106.6, 10.7, 106.6996, 10.7292),
+    ),
+    _primary(
+        "reference_polygons_4326",
+        GeometryFamily.POLYGON,
+        "polygon",
+        "Polygon",
+        3000,
+        (106.6, 10.7, 106.6996, 10.7294),
+    ),
     # Independent Pseudo-Mercator formula evaluated at WGS controls
     # (106.6,10.7), (106.6996,10.7294), (107.157,20.715).
     _point_fixture(
-        "reference_points_3857", 3857,
+        "reference_points_3857",
+        3857,
         (
             ("merc-000001", (11866657.718562961, 1198103.040560261)),
             ("merc-000002", (11877745.139845973, 1201433.906852360)),
@@ -370,57 +417,78 @@ _FIXTURES: tuple[ReferenceFixture, ...] = (
         FixtureProvenance.ANALYTIC_WEB_MERCATOR,
     ),
     _point_fixture(
-        "reference_points_4756", 4756,
+        "reference_points_4756",
+        4756,
         tuple((name, _lonlat(vlon, vlat)) for name, vlon, vlat, _, _ in _CIRCULAR),
         FixtureProvenance.QUANG_NINH_CIRCULAR,
     ),
     _point_fixture(
-        "reference_points_4326_quang_ninh", 4326,
+        "reference_points_4326_quang_ninh",
+        4326,
         tuple((name, _lonlat(wlon, wlat)) for name, _, _, wlon, wlat in _CIRCULAR),
         FixtureProvenance.QUANG_NINH_CIRCULAR,
     ),
     _point_fixture(
-        "reference_points_4756_hvs", 4756,
+        "reference_points_4756_hvs",
+        4756,
         tuple((name, _lonlat(vlon, vlat)) for name, _, vlon, vlat, _, _ in _HVS),
         FixtureProvenance.QUANG_NINH_HVS,
     ),
     _point_fixture(
-        "reference_points_4326_hvs", 4326, _HVS_WGS, FixtureProvenance.QUANG_NINH_HVS,
+        "reference_points_4326_hvs",
+        4326,
+        _HVS_WGS,
+        FixtureProvenance.QUANG_NINH_HVS,
     ),
     _point_fixture(
-        "reference_points_5899", 5899,
+        "reference_points_5899",
+        5899,
         tuple((name, xy) for name, xy, _, _, _, _ in _HVS),
         FixtureProvenance.QUANG_NINH_HVS,
     ),
     # Valid WGS84 native point, negative for 4326 -> 3857 (not invalid source).
     _point_fixture(
-        "reference_points_4326_webmerc_out_of_area", 4326,
-        (("point-000001", (0.0, 86.0)),), FixtureProvenance.SYNTHETIC,
+        "reference_points_4326_webmerc_out_of_area",
+        4326,
+        (("point-000001", (0.0, 86.0)),),
+        FixtureProvenance.SYNTHETIC,
     ),
     _fixed("reference_empty_4326", ()),
     _fixed(
-        "reference_unknown_crs", (_record("point-000001", _point((106.6, 10.7), None)),),
-        declared_crs=None, stored_crs=None, expected_reason=ValidationReasonCode.MISSING_CRS,
+        "reference_unknown_crs",
+        (_record("point-000001", _point((106.6, 10.7), None)),),
+        declared_crs=None,
+        stored_crs=None,
+        expected_reason=ValidationReasonCode.MISSING_CRS,
     ),
     _fixed(
-        "reference_conflicting_metadata", (_record("line-000001", _GOOD_LINE),),
+        "reference_conflicting_metadata",
+        (_record("line-000001", _GOOD_LINE),),
         expected_family=GeometryFamily.LINE_STRING,
         expected_reason=ValidationReasonCode.GEOMETRY_FAMILY_MISMATCH,
     ),
     _fixed(
         "reference_unsupported_dimensions",
-        (_record("point-000001", NativeGeometry("Point", (106.6, 10.7, 5.0), 4326,
-                                                GeometryDimensions.XYZ),
-                 state=GeometryState.UNSUPPORTED),),
+        (
+            _record(
+                "point-000001",
+                NativeGeometry("Point", (106.6, 10.7, 5.0), 4326, GeometryDimensions.XYZ),
+                state=GeometryState.UNSUPPORTED,
+            ),
+        ),
         declared_dimensions=GeometryDimensions.XYZ,
         expected_dimensions=GeometryDimensions.XYZ,
         expected_reason=ValidationReasonCode.UNSUPPORTED_DIMENSIONS,
     ),
     _fixed(
         "reference_unsupported_dimensions_m",
-        (_record("point-000001", NativeGeometry("Point", (106.6, 10.7, 7.0), 4326,
-                                                GeometryDimensions.XYM),
-                 state=GeometryState.UNSUPPORTED),),
+        (
+            _record(
+                "point-000001",
+                NativeGeometry("Point", (106.6, 10.7, 7.0), 4326, GeometryDimensions.XYM),
+                state=GeometryState.UNSUPPORTED,
+            ),
+        ),
         declared_dimensions=GeometryDimensions.XYM,
         expected_dimensions=GeometryDimensions.XYM,
         expected_reason=ValidationReasonCode.UNSUPPORTED_DIMENSIONS,
@@ -434,9 +502,13 @@ _FIXTURES: tuple[ReferenceFixture, ...] = (
     ),
     _fixed(
         "reference_unsupported_family",
-        (_record("multipoint-000001",
-                 NativeGeometry("MultiPoint", ((106.6, 10.7), (106.601, 10.701)), 4326),
-                 state=GeometryState.UNSUPPORTED),),
+        (
+            _record(
+                "multipoint-000001",
+                NativeGeometry("MultiPoint", ((106.6, 10.7), (106.601, 10.701)), 4326),
+                state=GeometryState.UNSUPPORTED,
+            ),
+        ),
         declared_family=GeometryFamily.UNSUPPORTED,
         expected_family=GeometryFamily.UNSUPPORTED,
         expected_reason=ValidationReasonCode.UNSUPPORTED_GEOMETRY,
@@ -456,18 +528,36 @@ _FIXTURES: tuple[ReferenceFixture, ...] = (
     ),
     _fixed(
         "reference_invalid_geometry",
-        (_record("polygon-000001", NativeGeometry(
-            "Polygon", (((106.6, 10.7), (106.601, 10.701), (106.6, 10.701),
-                         (106.601, 10.7), (106.6, 10.7)),), 4326,
-        ), state=GeometryState.INVALID),),
+        (
+            _record(
+                "polygon-000001",
+                NativeGeometry(
+                    "Polygon",
+                    (
+                        (
+                            (106.6, 10.7),
+                            (106.601, 10.701),
+                            (106.6, 10.701),
+                            (106.601, 10.7),
+                            (106.6, 10.7),
+                        ),
+                    ),
+                    4326,
+                ),
+                state=GeometryState.INVALID,
+            ),
+        ),
         declared_family=GeometryFamily.POLYGON,
         expected_family=GeometryFamily.POLYGON,
         expected_reason=ValidationReasonCode.INVALID_GEOMETRY,
     ),
     _fixed(
         "reference_axis_conflict",
-        (_record("HVS-QN1", _point((_HVS_QN1_WGS[1], _HVS_QN1_WGS[0])),
-                 state=GeometryState.INVALID),),
+        (
+            _record(
+                "HVS-QN1", _point((_HVS_QN1_WGS[1], _HVS_QN1_WGS[0])), state=GeometryState.INVALID
+            ),
+        ),
         provenance=FixtureProvenance.QUANG_NINH_HVS,
         expected_reason=ValidationReasonCode.AXIS_CONFLICT,
         axis_control_xy=_HVS_QN1_WGS,
@@ -480,12 +570,17 @@ _FIXTURES: tuple[ReferenceFixture, ...] = (
     _fixed(
         "reference_definition_only_crs",
         (_record("point-000001", _point((500000.0, 1200000.0), 3405)),),
-        declared_crs=3405, stored_crs=3405, expected_reason=ValidationReasonCode.UNSUPPORTED_CRS,
+        declared_crs=3405,
+        stored_crs=3405,
+        expected_reason=ValidationReasonCode.UNSUPPORTED_CRS,
     ),
     _fixed(
         "reference_wrapping_extent",
-        (_record("line-000001", NativeGeometry("LineString", ((179.9, 10.0), (-179.9, 10.0)),
-                                              4326)),),
+        (
+            _record(
+                "line-000001", NativeGeometry("LineString", ((179.9, 10.0), (-179.9, 10.0)), 4326)
+            ),
+        ),
         declared_family=GeometryFamily.LINE_STRING,
         expected_family=GeometryFamily.LINE_STRING,
         expected_reason=ValidationReasonCode.EXTENT_WRAP_UNSUPPORTED,
@@ -535,8 +630,15 @@ def materialize_reference_fixture(
         raise SpatialValidationError("unknown reference fixture")
     fields = tuple(
         SourceField(
-            organization_id, project_id, source_id, field.field_id, field.name,
-            ordinal, field.type, field.nullable, _PROVISIONAL_PIN,
+            organization_id,
+            project_id,
+            source_id,
+            field.field_id,
+            field.name,
+            ordinal,
+            field.type,
+            field.nullable,
+            _PROVISIONAL_PIN,
         )
         for ordinal, field in enumerate(fixture.fields)
     )
@@ -552,8 +654,15 @@ def materialize_reference_fixture(
         }
         features.append(
             ReferenceFeature(
-                organization_id, project_id, source_id, record.feature_id, attributes,
-                record.geometry, record.geometry_state, _PROVISIONAL_PIN, _PROVISIONAL_PIN,
+                organization_id,
+                project_id,
+                source_id,
+                record.feature_id,
+                attributes,
+                record.geometry,
+                record.geometry_state,
+                _PROVISIONAL_PIN,
+                _PROVISIONAL_PIN,
             )
         )
     source = DataSource(
@@ -592,25 +701,27 @@ def materialize_reference_fixture(
     # Include canonical geometry/attribute/schema pins rather than merely a
     # generator label. The immutable original manifest also pins declaration,
     # provenance, independent expected metadata and correction/axis evidence.
-    manifest_digest = canonical_manifest_digest({
-        "manifest_type": "r003-reference-fixture-v1",
-        "key": fixture.key,
-        "version": fixture.version,
-        "declared_crs": fixture.declared_crs,
-        "stored_crs": fixture.stored_crs,
-        "declared_family": fixture.declared_family.value,
-        "declared_dimensions": fixture.declared_dimensions.value,
-        "expected_family": fixture.expected_family.value,
-        "expected_dimensions": fixture.expected_dimensions.value,
-        "expected_count": fixture.expected_count,
-        "expected_native_bounds": fixture.expected_native_bounds,
-        "provenance": fixture.provenance.value,
-        "expected_reason": fixture.expected_reason.value if fixture.expected_reason else None,
-        "axis_control_xy": fixture.axis_control_xy,
-        "correctable_to_crs": fixture.correctable_to_crs,
-        "schema_revision": pinned.source.schema_revision,
-        "content_revision": pinned.source.content_revision,
-    })
+    manifest_digest = canonical_manifest_digest(
+        {
+            "manifest_type": "r003-reference-fixture-v1",
+            "key": fixture.key,
+            "version": fixture.version,
+            "declared_crs": fixture.declared_crs,
+            "stored_crs": fixture.stored_crs,
+            "declared_family": fixture.declared_family.value,
+            "declared_dimensions": fixture.declared_dimensions.value,
+            "expected_family": fixture.expected_family.value,
+            "expected_dimensions": fixture.expected_dimensions.value,
+            "expected_count": fixture.expected_count,
+            "expected_native_bounds": fixture.expected_native_bounds,
+            "provenance": fixture.provenance.value,
+            "expected_reason": fixture.expected_reason.value if fixture.expected_reason else None,
+            "axis_control_xy": fixture.axis_control_xy,
+            "correctable_to_crs": fixture.correctable_to_crs,
+            "schema_revision": pinned.source.schema_revision,
+            "content_revision": pinned.source.content_revision,
+        }
+    )
     return PinnedSource(
         replace(pinned.source, manifest_digest=manifest_digest), pinned.fields, pinned.features
     )
@@ -640,9 +751,7 @@ def _scope_params(
     session: Session, context: AuthorizationContext, source: DataSource
 ) -> dict[str, UUID]:
     require_project_context(session, context, permission=Permission.PROJECT_EDIT)
-    if (source.organization_id, source.project_id) != (
-        context.organization_id, context.project_id
-    ):
+    if (source.organization_id, source.project_id) != (context.organization_id, context.project_id):
         raise SpatialScopeError("reference fixture scope mismatch")
     return {
         "org": source.organization_id,
@@ -657,8 +766,12 @@ def _checked_manifest(fixture: ReferenceFixture, pinned: PinnedSource) -> Pinned
     if get_reference_fixture(fixture.key) is not fixture:
         raise _integrity()
     original = materialize_reference_fixture(
-        fixture.key, organization_id=source.organization_id, project_id=source.project_id,
-        source_id=source.id, name=source.name, now=source.created_at,
+        fixture.key,
+        organization_id=source.organization_id,
+        project_id=source.project_id,
+        source_id=source.id,
+        name=source.name,
+        now=source.created_at,
     )
     if (
         replace(
@@ -669,7 +782,8 @@ def _checked_manifest(fixture: ReferenceFixture, pinned: PinnedSource) -> Pinned
             extent=original.source.extent,
             catalog_revision=1,
             updated_at=source.created_at,
-        ) != original.source
+        )
+        != original.source
         or pinned.fields != original.fields
         or pinned.features != original.features
     ):
@@ -681,64 +795,51 @@ def _checked_manifest(fixture: ReferenceFixture, pinned: PinnedSource) -> Pinned
     return original
 
 
-def _position_wkt(tree: float | CoordinateTree) -> str:
-    if (
-        not isinstance(tree, tuple) or not tree
-        or not all(isinstance(value, float) for value in tree)
-    ):
-        raise _integrity()
-    return " ".join(repr(value) for value in tree)
-
-
-def _sequence_wkt(tree: float | CoordinateTree) -> str:
-    if not isinstance(tree, tuple) or not tree:
-        raise _integrity()
-    return "(" + ",".join(_position_wkt(position) for position in tree) + ")"
-
-
 def native_geometry_parameters(geometry: NativeGeometry | None) -> tuple[str | None, int | None]:
-    """Exact SQL insertion transport for the finite fixture geometry vocabulary."""
+    """Exact SQL insertion transport for the finite trusted fixture vocabulary."""
     if geometry is None:
         return None, None
-    marker = {
-        GeometryDimensions.XY: "",
-        GeometryDimensions.XYZ: " Z",
-        GeometryDimensions.XYM: " M",
-        GeometryDimensions.XYZM: " ZM",
-    }.get(geometry.dimensions)
-    if marker is None or geometry.members or geometry.type not in (
-        "Point", "LineString", "Polygon", "MultiPoint"
+    if (
+        geometry.dimensions
+        not in (
+            GeometryDimensions.XY,
+            GeometryDimensions.XYZ,
+            GeometryDimensions.XYM,
+            GeometryDimensions.XYZM,
+        )
+        or geometry.members
+        or geometry.type
+        not in (
+            "Point",
+            "LineString",
+            "Polygon",
+            "MultiPoint",
+        )
     ):
         raise _integrity()
-    head = geometry.type.upper() + marker
-    tree = geometry.coordinates
-    if geometry.is_empty:
-        return head + " EMPTY", geometry.srid
-    if geometry.type == "Point":
-        body = "(" + _position_wkt(tree) + ")"
-    elif geometry.type == "LineString":
-        body = _sequence_wkt(tree)
-    elif geometry.type == "Polygon":
-        body = "(" + ",".join(_sequence_wkt(ring) for ring in tree) + ")"
-    else:
-        body = "(" + ",".join("(" + _position_wkt(point) + ")" for point in tree) + ")"
-    return head + " " + body, geometry.srid
+    try:
+        return geometry.to_wkt(), geometry.srid
+    except SpatialValidationError:
+        raise _integrity() from None
 
 
 def _native_input(pinned: PinnedSource) -> str:
-    return json.dumps([
-        {
-            "feature_id": row.feature_id,
-            "attributes": dict(row.attributes),
-            "geometry_state": row.geometry_state.value,
-            "content_revision": row.content_revision,
-            "schema_revision": row.schema_revision,
-            "wkt": wkt,
-            "srid": srid,
-        }
-        for row in pinned.features
-        for wkt, srid in (native_geometry_parameters(row.geometry),)
-    ], allow_nan=False)
+    return json.dumps(
+        [
+            {
+                "feature_id": row.feature_id,
+                "attributes": dict(row.attributes),
+                "geometry_state": row.geometry_state.value,
+                "content_revision": row.content_revision,
+                "schema_revision": row.schema_revision,
+                "wkt": wkt,
+                "srid": srid,
+            }
+            for row in pinned.features
+            for wkt, srid in (native_geometry_parameters(row.geometry),)
+        ],
+        allow_nan=False,
+    )
 
 
 # The geometry construction is exactly the insertion transport, without any
@@ -777,26 +878,38 @@ _OBSERVE_SQL = """
            ) AS positions
 """
 
-_CANDIDATE_SQL = _EXPECTED_SQL + _OBSERVE_SQL + """
+_CANDIDATE_SQL = (
+    _EXPECTED_SQL
+    + _OBSERVE_SQL
+    + """
     FROM expected AS a JOIN expected AS e ON e.feature_id=a.feature_id
     ORDER BY a.feature_id COLLATE "C"
 """
-_PERSISTED_SQL = _EXPECTED_SQL + _OBSERVE_SQL + """
+)
+_PERSISTED_SQL = (
+    _EXPECTED_SQL
+    + _OBSERVE_SQL
+    + """
     FROM spatial.reference_features AS a
     LEFT JOIN expected AS e ON e.feature_id=a.feature_id
     WHERE a.organization_id=:org AND a.project_id=:project AND a.source_id=:source
     ORDER BY a.feature_id COLLATE "C"
 """
+)
 
 
 def _observe(
     session: Session, pinned: PinnedSource, scope: Mapping[str, UUID] | None = None
 ) -> Sequence[RowMapping]:
     try:
-        return session.execute(
-            text(_CANDIDATE_SQL if scope is None else _PERSISTED_SQL),
-            dict(scope or {}) | {"records": _native_input(pinned)},
-        ).mappings().all()
+        return (
+            session.execute(
+                text(_CANDIDATE_SQL if scope is None else _PERSISTED_SQL),
+                dict(scope or {}) | {"records": _native_input(pinned)},
+            )
+            .mappings()
+            .all()
+        )
     except SQLAlchemyError:
         # Unexpected engine/parser/SQL faults are not an accepted negative
         # fixture. Caller owns transaction rollback; never expose raw SQL.
@@ -808,19 +921,29 @@ def _verify_persisted_metadata(
 ) -> None:
     """Read actual current metadata, fields and pins, under the verified RLS scope."""
     try:
-        source = session.execute(
-            text("""
+        source = (
+            session.execute(
+                text("""
                 SELECT * FROM spatial.data_sources
                 WHERE organization_id=:org AND project_id=:project AND id=:source
-            """), scope,
-        ).mappings().one_or_none()
-        fields = session.execute(
-            text("""
+            """),
+                scope,
+            )
+            .mappings()
+            .one_or_none()
+        )
+        fields = (
+            session.execute(
+                text("""
                 SELECT * FROM spatial.source_fields
                 WHERE organization_id=:org AND project_id=:project AND source_id=:source
                 ORDER BY ordinal
-            """), scope,
-        ).mappings().all()
+            """),
+                scope,
+            )
+            .mappings()
+            .all()
+        )
     except SQLAlchemyError:
         raise ReferenceFixtureQueryError("Reference native verification unavailable.") from None
     if (
@@ -935,26 +1058,50 @@ def _verified_observations(
         if geometry is None:
             if (
                 row["absent"] is not True
-                or any(row[key] is not None for key in (
-                    "family", "srid", "zm", "ndims", "empty", "valid", "point_count", "positions"
-                ))
+                or any(
+                    row[key] is not None
+                    for key in (
+                        "family",
+                        "srid",
+                        "zm",
+                        "ndims",
+                        "empty",
+                        "valid",
+                        "point_count",
+                        "positions",
+                    )
+                )
                 or feature.geometry_state != GeometryState.ABSENT
             ):
                 raise _integrity()
-            result.append(_NativeObservation(
-                None, GeometryFamily.UNKNOWN, GeometryDimensions.UNKNOWN, None,
-                (), False, False, GeometryState.ABSENT,
-            ))
+            result.append(
+                _NativeObservation(
+                    None,
+                    GeometryFamily.UNKNOWN,
+                    GeometryDimensions.UNKNOWN,
+                    None,
+                    (),
+                    False,
+                    False,
+                    GeometryState.ABSENT,
+                )
+            )
             continue
         raw = tuple(tuple(position) for position in row["positions"] or ())
         dims = _ZM_DIMENSIONS.get(row["zm"])
         srid = row["srid"] or None
         if (
-            row["absent"] is not False or row["family"] != "ST_" + geometry.type
-            or dims is None or dims != geometry.dimensions or srid != geometry.srid
-            or row["ndims"] != {
-                GeometryDimensions.XY: 2, GeometryDimensions.XYZ: 3,
-                GeometryDimensions.XYM: 3, GeometryDimensions.XYZM: 4,
+            row["absent"] is not False
+            or row["family"] != "ST_" + geometry.type
+            or dims is None
+            or dims != geometry.dimensions
+            or srid != geometry.srid
+            or row["ndims"]
+            != {
+                GeometryDimensions.XY: 2,
+                GeometryDimensions.XYZ: 3,
+                GeometryDimensions.XYM: 3,
+                GeometryDimensions.XYZM: 4,
             }[dims]
             or row["empty"] != geometry.is_empty
             or row["point_count"] != len(raw)
@@ -964,7 +1111,8 @@ def _verified_observations(
             raise _integrity()
         family = (
             GeometryFamily(geometry.type)
-            if geometry.type in SUPPORTED_FAMILIES else GeometryFamily.UNSUPPORTED
+            if geometry.type in SUPPORTED_FAMILIES
+            else GeometryFamily.UNSUPPORTED
         )
         xy = tuple((point[0], point[1]) for point in raw)
         if row["empty"]:
@@ -977,18 +1125,16 @@ def _verified_observations(
             state = GeometryState.PRESENT
         if state != feature.geometry_state:
             raise _integrity()
-        result.append(_NativeObservation(
-            geometry, family, dims, srid, xy, row["empty"], row["valid"], state
-        ))
+        result.append(
+            _NativeObservation(geometry, family, dims, srid, xy, row["empty"], row["valid"], state)
+        )
     return tuple(result)
 
 
 def _wrapping(geometry: NativeGeometry) -> bool:
     if geometry.srid not in (4326, 4756) or geometry.type == "Point":
         return False
-    parts = (
-        (geometry.coordinates,) if geometry.type == "LineString" else geometry.coordinates
-    )
+    parts = (geometry.coordinates,) if geometry.type == "LineString" else geometry.coordinates
     for part in parts:
         if not isinstance(part, tuple):
             raise _integrity()
@@ -1032,12 +1178,11 @@ def _validation_reason(
             return code.AXIS_CONFLICT
     if any(
         _coordinate_out_of_domain(x, y, stored_crs)
-        for row in observations for x, y in row.positions
+        for row in observations
+        for x, y in row.positions
     ):
         return code.COORDINATE_OUT_OF_DOMAIN
-    if any(
-        row.geometry is not None and _wrapping(row.geometry) for row in observations
-    ):
+    if any(row.geometry is not None and _wrapping(row.geometry) for row in observations):
         return code.EXTENT_WRAP_UNSUPPORTED
     if any(len(row.positions) > MAX_POSITIONS for row in observations):
         return code.BOUNDS_EXCEEDED
@@ -1053,21 +1198,23 @@ def _validation_reason(
     return None
 
 
-_REASON_MESSAGES: Mapping[ValidationReasonCode, str] = MappingProxyType({
-    ValidationReasonCode.NULL_GEOMETRY: "The reference contains absent geometry.",
-    ValidationReasonCode.EMPTY_GEOMETRY: "The reference contains an empty geometry.",
-    ValidationReasonCode.MISSING_CRS: "Native CRS metadata is missing.",
-    ValidationReasonCode.UNSUPPORTED_CRS: "The native CRS is not readable in this release.",
-    ValidationReasonCode.CRS_MISMATCH: "Declared CRS differs from verified native CRS.",
-    ValidationReasonCode.UNSUPPORTED_GEOMETRY: "The inspected geometry family is unsupported.",
-    ValidationReasonCode.UNSUPPORTED_DIMENSIONS: "Only XY geometry is readable.",
-    ValidationReasonCode.GEOMETRY_FAMILY_MISMATCH: "Declared and inspected families differ.",
-    ValidationReasonCode.INVALID_GEOMETRY: "Native geometry failed topology validation.",
-    ValidationReasonCode.AXIS_CONFLICT: "Native axes conflict with the independent control.",
-    ValidationReasonCode.COORDINATE_OUT_OF_DOMAIN: "Native coordinates exceed their CRS domain.",
-    ValidationReasonCode.EXTENT_WRAP_UNSUPPORTED: "Wrapped geographic extents are unsupported.",
-    ValidationReasonCode.BOUNDS_EXCEEDED: "Native geometry exceeds the position limit.",
-})
+_REASON_MESSAGES: Mapping[ValidationReasonCode, str] = MappingProxyType(
+    {
+        ValidationReasonCode.NULL_GEOMETRY: "The reference contains absent geometry.",
+        ValidationReasonCode.EMPTY_GEOMETRY: "The reference contains an empty geometry.",
+        ValidationReasonCode.MISSING_CRS: "Native CRS metadata is missing.",
+        ValidationReasonCode.UNSUPPORTED_CRS: "The native CRS is not readable in this release.",
+        ValidationReasonCode.CRS_MISMATCH: "Declared CRS differs from verified native CRS.",
+        ValidationReasonCode.UNSUPPORTED_GEOMETRY: "The inspected geometry family is unsupported.",
+        ValidationReasonCode.UNSUPPORTED_DIMENSIONS: "Only XY geometry is readable.",
+        ValidationReasonCode.GEOMETRY_FAMILY_MISMATCH: "Declared and inspected families differ.",
+        ValidationReasonCode.INVALID_GEOMETRY: "Native geometry failed topology validation.",
+        ValidationReasonCode.AXIS_CONFLICT: "Native axes conflict with the independent control.",
+        ValidationReasonCode.COORDINATE_OUT_OF_DOMAIN: "Native coordinates outside CRS domain.",
+        ValidationReasonCode.EXTENT_WRAP_UNSUPPORTED: "Wrapped geographic extents are unsupported.",
+        ValidationReasonCode.BOUNDS_EXCEEDED: "Native geometry exceeds the position limit.",
+    }
+)
 
 
 def _verified_metadata(
@@ -1096,7 +1243,8 @@ def _verified_metadata(
         stored_crs = next(iter(srids))
     if (
         len(observations) != fixture.expected_count
-        or family != fixture.expected_family or dimensions != fixture.expected_dimensions
+        or family != fixture.expected_family
+        or dimensions != fixture.expected_dimensions
         or stored_crs != fixture.stored_crs
     ):
         raise _integrity()
@@ -1126,23 +1274,32 @@ def _verified_metadata(
         else:
             raise _integrity()
     return replace(
-        source, schema_state=SchemaState.KNOWN, geometry_family=family, dimensions=dimensions,
-        stored_crs=stored_crs, feature_count_state=FeatureCountState.KNOWN,
+        source,
+        schema_state=SchemaState.KNOWN,
+        geometry_family=family,
+        dimensions=dimensions,
+        stored_crs=stored_crs,
+        feature_count_state=FeatureCountState.KNOWN,
         feature_count=len(observations),
         validation_state=(
-            ValidationState.READY if reason is None
-            else ValidationState.NOT_READY if reason == ValidationReasonCode.MISSING_CRS
+            ValidationState.READY
+            if reason is None
+            else ValidationState.NOT_READY
+            if reason == ValidationReasonCode.MISSING_CRS
             else ValidationState.INVALID
         ),
         validation_reason=(
             ValidationReason(reason, _REASON_MESSAGES[reason]) if reason is not None else None
         ),
-        extent_state=extent_state, extent=extent,
+        extent_state=extent_state,
+        extent=extent,
     )
 
 
 def _verify_native(
-    session: Session, fixture: ReferenceFixture, pinned: PinnedSource,
+    session: Session,
+    fixture: ReferenceFixture,
+    pinned: PinnedSource,
     scope: Mapping[str, UUID] | None,
 ) -> tuple[PinnedSource, tuple[_NativeObservation, ...]]:
     observations = _verified_observations(pinned, _observe(session, pinned, scope))
@@ -1167,8 +1324,11 @@ def validate_reference_candidate(
 
 
 def validate_persisted_reference_source(
-    session: Session, fixture: ReferenceFixture, pinned: PinnedSource,
-    *, context: AuthorizationContext,
+    session: Session,
+    fixture: ReferenceFixture,
+    pinned: PinnedSource,
+    *,
+    context: AuthorizationContext,
 ) -> PinnedSource:
     """Reverify actual scoped storage in the same outer registration transaction.
 
@@ -1185,8 +1345,12 @@ def validate_persisted_reference_source(
 
 
 def validate_reference_correction(
-    session: Session, source: DataSource, *, context: AuthorizationContext,
-    declared_crs: int, now: datetime,
+    session: Session,
+    source: DataSource,
+    *,
+    context: AuthorizationContext,
+    declared_crs: int,
+    now: datetime,
 ) -> DataSource:
     """Return corrected interpretation only after exact actual persisted proof.
 
@@ -1197,8 +1361,10 @@ def validate_reference_correction(
     scope = _scope_params(session, context, source)
     fixture = get_reference_fixture(source.reference_key)
     if (
-        fixture is None or fixture.correctable_to_crs is None
-        or declared_crs != fixture.correctable_to_crs or type(declared_crs) is not int
+        fixture is None
+        or fixture.correctable_to_crs is None
+        or declared_crs != fixture.correctable_to_crs
+        or type(declared_crs) is not int
         or fixture.axis_control_xy is None
         or source.lifecycle != Lifecycle.ACTIVE
         or source.validation_state != ValidationState.INVALID
@@ -1208,8 +1374,12 @@ def validate_reference_correction(
     ):
         raise _unverified()
     original = materialize_reference_fixture(
-        fixture.key, organization_id=source.organization_id, project_id=source.project_id,
-        source_id=source.id, name=source.name, now=source.created_at,
+        fixture.key,
+        organization_id=source.organization_id,
+        project_id=source.project_id,
+        source_id=source.id,
+        name=source.name,
+        now=source.created_at,
     )
     actual = PinnedSource(source, original.fields, original.features)
     try:
@@ -1228,7 +1398,8 @@ def validate_reference_correction(
     result = _verified_metadata(fixture, proposal, observations, corrected=True)
     corrected = derive_source_pins(
         replace(result, catalog_revision=source.catalog_revision + 1, updated_at=now),
-        actual.fields, actual.features,
+        actual.fields,
+        actual.features,
     )
     if (
         corrected.source.validation_state != ValidationState.READY
