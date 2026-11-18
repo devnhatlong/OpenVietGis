@@ -2,8 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main, "001-platform-foundation"]
+    branches: [main, "001-platform-foundation", "takeover/002-identity-tenancy"]
   pull_request:
+  workflow_dispatch:
 
 jobs:
   validate:
