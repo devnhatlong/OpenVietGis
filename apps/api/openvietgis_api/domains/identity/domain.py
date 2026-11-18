@@ -11,6 +11,12 @@ class UserStatus(StrEnum):
     DISABLED = "disabled"
 
 
+class UnlinkIdentityResult(StrEnum):
+    UNLINKED = "unlinked"
+    LAST_IDENTITY = "last_identity"
+    NOT_FOUND = "not_found"
+
+
 @dataclass(frozen=True, slots=True)
 class User:
     id: UUID

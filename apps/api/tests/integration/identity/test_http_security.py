@@ -93,6 +93,7 @@ def test_cookie_session_authentication_and_csrf(migrated_database: None) -> None
         get_request = _request(method="GET", cookie=token)
         authentication = authenticate_request(get_request, session, settings)
         assert authentication.actor.actor_id == user_id
+        assert authentication.identity_link_id == identity_link_id
 
         csrf_secret = settings.csrf_secret
         assert csrf_secret is not None

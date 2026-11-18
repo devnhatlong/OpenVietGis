@@ -5,11 +5,14 @@ from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import text
+from sqlalchemy import create_engine, text
+from sqlalchemy.orm import Session
+from tools.test_database import assert_safe_test_target
 
 from openvietgis_api.adapters.persistence.audit_repository import SqlAuditRepository
-from openvietgis_api.adapters.persistence.db import get_session_factory
 from openvietgis_api.adapters.persistence.identity_repository import SqlIdentityRepository
+from openvietgis_api.adapters.persistence.rls import set_request_context
+from openvietgis_api.config import get_settings
 from openvietgis_api.domains.identity.domain import User, UserStatus
 from openvietgis_api.domains.identity.service import (
     ExternalIdentityClaims,
@@ -46,7 +49,10 @@ def test_oidc_authorization_redirect_contains_state_nonce_and_pkce() -> None:
 def test_identity_link_conflict_and_link_unlink_are_audited(
     migrated_database: None,
 ) -> None:
-    session = get_session_factory()()
+    migration_url = get_settings().migration_db_url
+    assert_safe_test_target(migration_url)
+    engine = create_engine(migration_url)
+    session = Session(engine)
     try:
         repository = SqlIdentityRepository(session)
         audit = SqlAuditRepository(session)
@@ -59,6 +65,7 @@ def test_identity_link_conflict_and_link_unlink_are_audited(
             email_verified=True,
         )
         login = service.login(primary, session_ttl_seconds=3600)
+        set_request_context(session, organization_id=None, actor_user_id=login.user.id)
         second = ExternalIdentityClaims(
             issuer="https://issuer.example",
             subject=f"second-{uuid4()}",
@@ -120,3 +127,4 @@ def test_identity_link_conflict_and_link_unlink_are_audited(
         session.commit()
     finally:
         session.close()
+        engine.dispose()

@@ -6,7 +6,13 @@ from uuid import UUID, uuid4
 
 from openvietgis_api.domains.audit.domain import AuditEvent, AuditOutcome
 from openvietgis_api.domains.audit.ports import AuditRepository
-from openvietgis_api.domains.identity.domain import IdentityLink, User, UserStatus, WebSession
+from openvietgis_api.domains.identity.domain import (
+    IdentityLink,
+    UnlinkIdentityResult,
+    User,
+    UserStatus,
+    WebSession,
+)
 from openvietgis_api.domains.identity.ports import IdentityRepository
 from openvietgis_api.domains.tenancy.domain import ActorType
 from openvietgis_api.security.sessions import issue_session_token
@@ -114,7 +120,7 @@ class IdentityService:
     ) -> IdentityLink:
         now = now or datetime.now(UTC)
         user = self._repository.get_user(user_id)
-        if user is None:
+        if user is None or user.status != UserStatus.ACTIVE:
             raise IdentityConflictError("user not found")
         existing = self._repository.find_by_external_identity(
             issuer=claims.issuer,
@@ -166,12 +172,13 @@ class IdentityService:
         user = self._repository.get_user(user_id)
         if user is None:
             raise IdentityConflictError("user not found")
-        if self._repository.count_identity_links(user_id) <= 1:
-            raise CannotUnlinkLastIdentityError("cannot unlink the last usable identity")
-        if not self._repository.unlink_identity(
+        result = self._repository.unlink_identity(
             user_id=user_id,
             identity_link_id=identity_link_id,
-        ):
+        )
+        if result == UnlinkIdentityResult.LAST_IDENTITY:
+            raise CannotUnlinkLastIdentityError("cannot unlink the last usable identity")
+        if result != UnlinkIdentityResult.UNLINKED:
             raise IdentityConflictError("identity link not found")
         self._audit_repository.append(
             AuditEvent(

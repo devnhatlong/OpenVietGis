@@ -23,6 +23,7 @@ class AuthenticatedRequest:
     actor: Actor
     session_id: UUID | None
     raw_session_token: str | None
+    identity_link_id: UUID | None = None
 
 
 def get_db_session() -> Iterator[Session]:
@@ -69,7 +70,7 @@ def authenticate_request(
         session.execute(
             text(
                 """
-                SELECT s.id, s.secret_hash, s.expires_at, s.revoked_at,
+                SELECT s.id, s.secret_hash, s.expires_at, s.revoked_at, s.identity_link_id,
                        u.id AS user_id, u.display_name, u.status AS user_status
                 FROM identity.web_sessions AS s
                 JOIN identity.users AS u ON u.id = s.user_id
@@ -110,6 +111,7 @@ def authenticate_request(
         actor=actor,
         session_id=row["id"],
         raw_session_token=token,
+        identity_link_id=row["identity_link_id"],
     )
 
 

@@ -7,7 +7,13 @@ from sqlalchemy import text
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.orm import Session
 
-from openvietgis_api.domains.identity.domain import IdentityLink, User, UserStatus, WebSession
+from openvietgis_api.domains.identity.domain import (
+    IdentityLink,
+    UnlinkIdentityResult,
+    User,
+    UserStatus,
+    WebSession,
+)
 
 
 def _user_from_row(mapping: RowMapping) -> User:
@@ -154,30 +160,33 @@ class SqlIdentityRepository:
             ).scalar_one()
         )
 
-    def unlink_identity(self, *, user_id: UUID, identity_link_id: UUID) -> bool:
-        self._session.execute(
+    def unlink_identity(
+        self, *, user_id: UUID, identity_link_id: UUID
+    ) -> UnlinkIdentityResult:
+        # One guarded database operation owns the count/delete invariant.
+        result = self._session.execute(
+            text("SELECT identity.unlink_identity(:user_id, :identity_link_id)"),
+            {"user_id": user_id, "identity_link_id": identity_link_id},
+        ).scalar_one()
+        return UnlinkIdentityResult(result)
+
+    def lock_active_web_session(self, *, user_id: UUID, session_id: UUID) -> bool:
+        # Serialize the OIDC link mutation with logout or unlinking its login identity.
+        locked_id = self._session.execute(
             text(
                 """
-                UPDATE identity.web_sessions
-                SET revoked_at = now()
-                WHERE user_id = :user_id
-                  AND identity_link_id = :identity_link_id
+                SELECT id
+                FROM identity.web_sessions
+                WHERE id = :session_id
+                  AND user_id = :user_id
                   AND revoked_at IS NULL
+                  AND expires_at > clock_timestamp()
+                FOR UPDATE
                 """
             ),
-            {"user_id": user_id, "identity_link_id": identity_link_id},
-        )
-        deleted_id = self._session.execute(
-            text(
-                """
-                DELETE FROM identity.identity_links
-                WHERE id = :identity_link_id AND user_id = :user_id
-                RETURNING id
-                """
-            ),
-            {"user_id": user_id, "identity_link_id": identity_link_id},
+            {"session_id": session_id, "user_id": user_id},
         ).scalar_one_or_none()
-        return deleted_id is not None
+        return locked_id is not None
 
     def touch_identity_login(self, identity_link_id: UUID) -> None:
         self._session.execute(

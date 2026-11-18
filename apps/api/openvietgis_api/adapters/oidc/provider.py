@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import Any, Protocol, cast
 
 from authlib.integrations.starlette_client import OAuth  # type: ignore[import-untyped]
+from joserfc.errors import JoseError
 from starlette.requests import Request
 from starlette.responses import Response
 
@@ -22,16 +23,20 @@ class OidcProviderNotFoundError(LookupError):
     pass
 
 
+class OidcInvalidResponseError(ValueError):
+    pass
+
+
 class _OidcClient(Protocol):
     async def authorize_redirect(
         self,
         request: Request,
         redirect_uri: str,
+        *,
+        state: str,
     ) -> Response: ...
 
     async def authorize_access_token(self, request: Request) -> Mapping[str, Any]: ...
-
-    async def userinfo(self, *, token: Mapping[str, Any]) -> Mapping[str, Any]: ...
 
 
 class OidcProviderRegistry:
@@ -76,9 +81,10 @@ class OidcProviderRegistry:
         *,
         provider_name: str,
         redirect_uri: str,
+        state: str,
     ) -> Response:
         client = self._get_client(provider_name)
-        return await client.authorize_redirect(request, redirect_uri)
+        return await client.authorize_redirect(request, redirect_uri, state=state)
 
     async def complete_login(
         self,
@@ -90,12 +96,21 @@ class OidcProviderRegistry:
         if provider is None:
             raise OidcProviderNotFoundError(provider_name)
         client = self._get_client(provider_name)
-        token = await client.authorize_access_token(request)
+        try:
+            token = await client.authorize_access_token(request)
+        except JoseError as exc:
+            raise OidcInvalidResponseError("invalid OIDC ID token") from exc
+        # Authlib supplies userinfo here only after parsing the OIDC ID token,
+        # including the nonce stored for this authorization state. Do not fall back
+        # to an OAuth userinfo request lacking the transaction-bound ID token.
         userinfo = token.get("userinfo")
-        if userinfo is None:
-            userinfo = await client.userinfo(token=token)
-
-        subject = str(userinfo["sub"])
+        if not token.get("id_token") or not isinstance(userinfo, Mapping):
+            raise OidcInvalidResponseError("missing validated OIDC identity")
+        subject = userinfo.get("sub")
+        if not isinstance(subject, str) or not subject:
+            raise OidcInvalidResponseError("invalid provider subject")
+        if userinfo.get("iss") != provider.issuer:
+            raise OidcInvalidResponseError("invalid provider issuer")
         email = userinfo.get("email")
         display_name = (
             userinfo.get("name")
@@ -104,9 +119,9 @@ class OidcProviderRegistry:
             or subject
         )
         return ExternalIdentityClaims(
-            issuer=provider.issuer.rstrip("/"),
+            issuer=provider.issuer,
             subject=subject,
             display_name=str(display_name),
             email=str(email) if email is not None else None,
-            email_verified=bool(userinfo.get("email_verified", False)),
+            email_verified=userinfo.get("email_verified") is True,
         )

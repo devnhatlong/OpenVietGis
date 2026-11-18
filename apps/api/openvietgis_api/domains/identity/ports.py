@@ -3,7 +3,12 @@ from __future__ import annotations
 from typing import Protocol
 from uuid import UUID
 
-from openvietgis_api.domains.identity.domain import IdentityLink, User, WebSession
+from openvietgis_api.domains.identity.domain import (
+    IdentityLink,
+    UnlinkIdentityResult,
+    User,
+    WebSession,
+)
 
 
 class IdentityRepository(Protocol):
@@ -26,7 +31,9 @@ class IdentityRepository(Protocol):
 
     def count_identity_links(self, user_id: UUID) -> int: ...
 
-    def unlink_identity(self, *, user_id: UUID, identity_link_id: UUID) -> bool: ...
+    def unlink_identity(
+        self, *, user_id: UUID, identity_link_id: UUID
+    ) -> UnlinkIdentityResult: ...
 
     def touch_identity_login(self, identity_link_id: UUID) -> None: ...
 
