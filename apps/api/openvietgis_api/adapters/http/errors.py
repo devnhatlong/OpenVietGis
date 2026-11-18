@@ -12,6 +12,16 @@ from openvietgis_api.domains.authorization.service import (
     ServicePrincipalNotFoundError,
     TenantResourceNotFoundError,
 )
+from openvietgis_api.domains.spatial.ports import (
+    SpatialActiveLayerDependenciesError,
+    SpatialCrsCorrectionUnverifiedError,
+    SpatialNoChangesError,
+    SpatialProjectReadOnlyError,
+    SpatialRevisionConflictError,
+    SpatialScopeError,
+    SpatialSourceAlreadyRegisteredError,
+    SpatialUnknownReferenceKeyError,
+)
 from openvietgis_api.domains.tenancy.service import (
     CrossOrganizationWorkspaceError,
     InvalidInvitationError,
@@ -27,8 +37,54 @@ from openvietgis_api.domains.tenancy.service import (
     WorkspaceNotFoundError,
 )
 
+# Fixed customer-safe descriptions; never forward exception text or SQL details.
+_SPATIAL_ERRORS: dict[type[Exception], tuple[int, str, str]] = {
+    SpatialRevisionConflictError: (
+        409,
+        "STALE_CATALOG_REVISION",
+        "Source revision changed; read current metadata and retry.",
+    ),
+    SpatialProjectReadOnlyError: (409, "PROJECT_NOT_WRITABLE", "The project is read-only."),
+    SpatialSourceAlreadyRegisteredError: (
+        409,
+        "SOURCE_ALREADY_REGISTERED",
+        "This reference source is already registered.",
+    ),
+    SpatialActiveLayerDependenciesError: (
+        409,
+        "ACTIVE_LAYER_DEPENDENCIES",
+        "Retire active Layers before retiring the source.",
+    ),
+    SpatialNoChangesError: (422, "NO_CHANGES", "The request does not change source metadata."),
+    SpatialUnknownReferenceKeyError: (
+        422,
+        "UNKNOWN_REFERENCE_KEY",
+        "Select a supported platform reference fixture.",
+    ),
+    SpatialCrsCorrectionUnverifiedError: (
+        422,
+        "CRS_CORRECTION_UNVERIFIED",
+        "The requested CRS correction cannot be verified.",
+    ),
+}
+
+
+async def _spatial_error_handler(_: Request, exc: Exception) -> JSONResponse:
+    status, code, detail = _SPATIAL_ERRORS[type(exc)]
+    return JSONResponse(status_code=status, content={"code": code, "detail": detail})
+
 
 def install_error_handlers(app: FastAPI) -> None:
+    # Exceptions propagate out of function-scoped database dependencies first
+    # (rollback), then are rendered by FastAPI. A route must not swallow them
+    # and return a normal response that would commit an interrupted mutation.
+    for exception_type in _SPATIAL_ERRORS:
+        app.add_exception_handler(exception_type, _spatial_error_handler)
+
+    @app.exception_handler(SpatialScopeError)
+    async def spatial_scope_denied_handler(_: Request, exc: Exception) -> JSONResponse:
+        return JSONResponse(status_code=403, content={"detail": "permission denied"})
+
     @app.exception_handler(RequestValidationError)
     async def request_validation_handler(
         _: Request,
@@ -39,9 +95,7 @@ def install_error_handlers(app: FastAPI) -> None:
         return JSONResponse(
             status_code=422,
             content={
-                "detail": [
-                    {"loc": [], "msg": "invalid request payload", "type": "value_error"}
-                ]
+                "detail": [{"loc": [], "msg": "invalid request payload", "type": "value_error"}]
             },
         )
 
