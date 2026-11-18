@@ -67,7 +67,7 @@ description: "Dependency-ordered implementation tasks for R003"
 - [X] T030 [US2] Implement lifecycle/CAS and capability support/availability/authorization distinction in apps/api/openvietgis_api/domains/spatial/service.py per data-model.md Layer.name, Layer.lifecycle, Layer.layer_revision, Layer.retired_at and CatalogChange.operation.
 - [X] T031 [US2] Implement Layer HTTP routes and nested bounded source metadata in apps/api/openvietgis_api/adapters/http/spatial.py and SDK in packages/client-sdk/src/spatial.ts.
 - [X] T032 [US2] Implement Layer listing/detail and create/rename/retire controls in apps/web/src/features/spatial/SpatialCatalogPage.tsx; unsupported operations not actionable.
-- [ ] T033 [US2] Verify US2 multi-Layer storage, capability, source retirement and no cross-link tests in apps/api/tests/integration/spatial/test_layers.py; record SC-002.
+- [X] T033 [US2] Verify US2 multi-Layer storage, capability, source retirement and no cross-link tests in apps/api/tests/integration/spatial/test_layers.py; record SC-002.
 
 ---
 
