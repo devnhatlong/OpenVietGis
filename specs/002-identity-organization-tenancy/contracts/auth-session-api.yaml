@@ -131,6 +131,7 @@ paths:
           application/json:
             schema:
               type: object
+              additionalProperties: false
               required: [identity_link_id]
               properties:
                 identity_link_id: { type: string, format: uuid }
@@ -138,6 +139,8 @@ paths:
         "204": { description: Identity unlinked when another usable identity remains }
         "400": { description: Cannot unlink required/last usable identity }
         "403": { description: CSRF validation failed }
+        "404": { description: Identity link not found }
+        "422": { description: Invalid identity link request }
 components:
   securitySchemes:
     sessionCookie:

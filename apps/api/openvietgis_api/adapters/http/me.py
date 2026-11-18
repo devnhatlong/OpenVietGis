@@ -4,6 +4,7 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
 from openvietgis_api.adapters.http.security import (
@@ -22,6 +23,12 @@ from openvietgis_api.domains.identity.service import (
 )
 
 router = APIRouter(tags=["identity"])
+
+
+class UnlinkIdentityRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    identity_link_id: UUID
 
 
 def _user_id(authentication: AuthenticatedRequest) -> UUID:
@@ -87,11 +94,10 @@ def list_identity_links(
 
 @router.delete("/me/identity-links", status_code=204)
 def unlink_identity(
-    payload: dict[str, str],
+    payload: UnlinkIdentityRequest,
     authentication: Annotated[AuthenticatedRequest, Depends(require_csrf)],
     session: Annotated[Session, Depends(get_db_session, scope="function")],
 ) -> None:
-    identity_link_id = UUID(payload["identity_link_id"])
     service = IdentityService(
         SqlIdentityRepository(session),
         SqlAuditRepository(session),
@@ -99,7 +105,7 @@ def unlink_identity(
     try:
         service.unlink_identity(
             user_id=_user_id(authentication),
-            identity_link_id=identity_link_id,
+            identity_link_id=payload.identity_link_id,
         )
     except CannotUnlinkLastIdentityError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

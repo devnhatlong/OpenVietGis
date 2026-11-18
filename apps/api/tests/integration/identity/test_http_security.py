@@ -103,3 +103,15 @@ def test_cookie_session_authentication_and_csrf(migrated_database: None) -> None
         assert verified.session_id == session_id
     finally:
         session.close()
+
+def test_unlink_identity_invalid_payload_is_safe_422(migrated_database: None) -> None:
+    from tests.fixtures.identity_tenancy import seed_access_world
+    from tests.integration.rls.test_cross_tenant_api import client_for_user
+
+    world = seed_access_world()
+    with client_for_user(world.owner_user_id) as client:
+        for payload in ({}, {"identity_link_id": "not-a-uuid"}, {"extra": "synthetic-input"}):
+            response = client.request("DELETE", "/api/v1/me/identity-links", json=payload)
+            assert response.status_code == 422
+            assert "synthetic-input" not in response.text
+            assert "not-a-uuid" not in response.text

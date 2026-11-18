@@ -445,6 +445,20 @@ export interface operations {
                 };
                 content?: never;
             };
+            /** @description Identity link not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid identity link request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
 }
