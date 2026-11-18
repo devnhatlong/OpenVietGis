@@ -94,6 +94,10 @@ class InvalidInvitationError(ValueError):
     pass
 
 
+class ExpiredInvitationError(InvalidInvitationError):
+    """A verified invitation expired; persist only its terminal state."""
+
+
 class InvitationTargetMismatchError(PermissionError):
     pass
 
@@ -418,7 +422,7 @@ class TenancyService:
         if project.status == ProjectStatus.DELETED:
             raise InvalidLifecycleTransitionError("deleted project cannot be mutated")
         if project.status == ProjectStatus.ARCHIVED and (
-            name is not None or workspace_supplied
+            name is not None or (workspace_supplied and status != ProjectStatus.ACTIVE)
         ):
             raise InvalidLifecycleTransitionError(
                 "archived project must be restored before normal mutation"
@@ -441,8 +445,17 @@ class TenancyService:
                         "deleted workspace cannot receive projects"
                     )
 
-        now = now or datetime.now(UTC)
         new_status = status or project.status
+        if new_status == ProjectStatus.ACTIVE and target_workspace_id is not None:
+            target_workspace = self._repository.get_workspace(
+                organization_id=organization_id,
+                workspace_id=target_workspace_id,
+            )
+            if target_workspace is None or target_workspace.status == WorkspaceStatus.DELETED:
+                raise InvalidLifecycleTransitionError(
+                    "restore project with an explicit valid workspace or ungroup it"
+                )
+        now = now or datetime.now(UTC)
         updated = replace(
             project,
             name=_clean_name(name) if name is not None else project.name,
@@ -882,16 +895,16 @@ class InvitationService:
         now = now or datetime.now(UTC)
         if invitation.status != InvitationStatus.PENDING:
             raise InvalidInvitationError("invitation is no longer pending")
-        if invitation.expires_at <= now:
-            expired = replace(invitation, status=InvitationStatus.EXPIRED)
-            self._tenancy_repository.update_invitation(expired)
-            raise InvalidInvitationError("invitation has expired")
         if not verify_secret(secret, invitation.token_hash):
             raise InvalidInvitationError("invalid invitation secret")
         if not self._target_matches(
             invitation, user_id=user_id, identity_link_id=identity_link_id
         ):
             raise InvitationTargetMismatchError("invitation target does not match identity")
+        if invitation.expires_at <= now:
+            expired = replace(invitation, status=InvitationStatus.EXPIRED)
+            self._tenancy_repository.update_invitation(expired)
+            raise ExpiredInvitationError("invitation has expired")
 
         # Assigning Owner requires a currently active Owner inviter. This also
         # invalidates outstanding Owner invitations after the inviter loses authority.
@@ -967,27 +980,45 @@ class InvitationService:
                 created_by_actor_id=actor.actor_id,
                 revoked_at=None,
             )
-            self._grant_repository.create(grant)
-            self._audit_repository.append(
-                AuditEvent(
-                    id=uuid4(),
-                    organization_id=organization_id,
-                    actor_type=_actor_type(actor),
-                    actor_id=actor.actor_id,
-                    actor_display_snapshot=actor.display_name,
-                    action="authorization.grant.create",
-                    resource_type="resource_grant",
-                    resource_id=grant.id,
-                    outcome=AuditOutcome.SUCCESS,
-                    metadata={
-                        "scope_kind": grant.scope_kind.value,
-                        "role": grant.role.value,
-                        "membership_id": str(membership.id),
-                        "invitation_id": str(invitation.id),
-                    },
-                    created_at=now,
-                )
+            # Under the organization lock, reuse an identical active grant instead
+            # of violating the active-grant uniqueness constraint on invitation retry.
+            existing_grant = next(
+                (
+                    item
+                    for item in self._grant_repository.list_for_organization(organization_id)
+                    if item.membership_id == membership.id
+                    and item.scope_kind == grant.scope_kind
+                    and item.workspace_id == grant.workspace_id
+                    and item.project_id == grant.project_id
+                    and item.role == grant.role
+                    and item.revoked_at is None
+                ),
+                None,
             )
+            if existing_grant is not None:
+                grant = existing_grant
+            else:
+                self._grant_repository.create(grant)
+                self._audit_repository.append(
+                    AuditEvent(
+                        id=uuid4(),
+                        organization_id=organization_id,
+                        actor_type=_actor_type(actor),
+                        actor_id=actor.actor_id,
+                        actor_display_snapshot=actor.display_name,
+                        action="authorization.grant.create",
+                        resource_type="resource_grant",
+                        resource_id=grant.id,
+                        outcome=AuditOutcome.SUCCESS,
+                        metadata={
+                            "scope_kind": grant.scope_kind.value,
+                            "role": grant.role.value,
+                            "membership_id": str(membership.id),
+                            "invitation_id": str(invitation.id),
+                        },
+                        created_at=now,
+                    )
+                )
 
         accepted = replace(
             invitation,

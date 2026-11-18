@@ -4,6 +4,7 @@ from typing import Annotated, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi.responses import JSONResponse
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
@@ -36,6 +37,7 @@ from openvietgis_api.domains.tenancy.domain import (
     ResourceScopeKind,
 )
 from openvietgis_api.domains.tenancy.service import (
+    ExpiredInvitationError,
     InvalidInvitationError,
     InvitationNotFoundError,
     InvitationService,
@@ -166,12 +168,12 @@ def revoke_invitation(
     return Response(status_code=204)
 
 
-@router.post("/invitations/accept")
+@router.post("/invitations/accept", response_model=None)
 def accept_invitation(
     payload: AcceptInvitationRequest,
     authentication: Annotated[AuthenticatedRequest, Depends(require_csrf)],
     session: Annotated[Session, Depends(get_db_session, scope="function")],
-) -> dict[str, object]:
+) -> dict[str, object] | JSONResponse:
     user_id = human_actor_id(authentication)
     # This is the intentional pre-membership exception. The domain service must verify the
     # one-time secret AND the intended identity before granting any membership.
@@ -205,6 +207,9 @@ def accept_invitation(
             # No invitation can demote an active Owner. Raising rolls back the
             # invitation/membership/grant/audit transaction as a single unit.
             raise InvalidInvitationError("invitation cannot change existing Owner authority")
+    except ExpiredInvitationError:
+        # Only verified expired invitations reach this path; commit terminal state.
+        return JSONResponse(status_code=400, content={"detail": "invalid invitation"})
     except (
         InvitationNotFoundError,
         InvalidInvitationError,

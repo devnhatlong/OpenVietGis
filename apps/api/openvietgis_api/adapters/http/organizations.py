@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import Annotated, Self
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -30,6 +32,7 @@ from openvietgis_api.adapters.persistence.authorization_repository import (
 )
 from openvietgis_api.adapters.persistence.platform_repository import SqlPlatformRepository
 from openvietgis_api.adapters.persistence.tenancy_repository import SqlTenancyRepository
+from openvietgis_api.domains.audit.domain import AuditEvent, AuditOutcome
 from openvietgis_api.domains.authorization.permissions import Permission
 from openvietgis_api.domains.authorization.roles import ORGANIZATION_ROLE_PERMISSIONS
 from openvietgis_api.domains.authorization.service import (
@@ -38,6 +41,7 @@ from openvietgis_api.domains.authorization.service import (
     TenantResourceNotFoundError,
 )
 from openvietgis_api.domains.tenancy.domain import (
+    ActorType,
     MembershipRole,
     MembershipStatus,
     OrganizationStatus,
@@ -223,20 +227,38 @@ def update_organization_membership(
     return serialize_membership(updated)
 
 
-@router.post("/organizations/{organization_id}/ownership-transfer")
+@router.post("/organizations/{organization_id}/ownership-transfer", response_model=None)
 def transfer_organization_ownership(
     organization_id: UUID,
     payload: TransferOwnershipRequest,
     authentication: Annotated[AuthenticatedRequest, Depends(require_csrf)],
     session: Annotated[Session, Depends(get_db_session, scope="function")],
-) -> dict[str, object]:
-    require_human_permission(
-        session,
-        authentication,
-        organization_id,
-        Permission.ORGANIZATION_OWNER_TRANSFER,
-        lock=True,
+) -> dict[str, object] | JSONResponse:
+    _, member = human_tenant(session, authentication, organization_id, lock=True)
+    target = SqlTenancyRepository(session).get_membership(
+        organization_id=organization_id, membership_id=payload.target_membership_id
     )
+    if target is None:
+        raise MembershipNotFoundError("membership not found")
+    if Permission.ORGANIZATION_OWNER_TRANSFER not in ORGANIZATION_ROLE_PERMISSIONS[member.role]:
+        # Known tenant, known actor, no target identifiers or request secrets in the denial.
+        SqlAuditRepository(session).append(
+            AuditEvent(
+                id=uuid4(),
+                organization_id=organization_id,
+                actor_type=ActorType.HUMAN,
+                actor_id=authentication.actor.actor_id,
+                actor_display_snapshot=authentication.actor.display_name,
+                action="organization.owner.transfer",
+                resource_type="organization",
+                resource_id=organization_id,
+                outcome=AuditOutcome.DENIED,
+                metadata={"reason": "insufficient_owner_authority"},
+                created_at=datetime.now(UTC),
+            )
+        )
+        # No mutation has occurred; normal response allows the denial audit to commit.
+        return JSONResponse(status_code=403, content={"detail": "Owner authority required"})
     previous, new = _service(session).transfer_ownership(
         actor=authentication.actor,
         organization_id=organization_id,
