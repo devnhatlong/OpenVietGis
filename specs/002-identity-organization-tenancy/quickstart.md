@@ -378,3 +378,31 @@ pnpm.cmd validate:e2e
 ```
 
 Run each step only if its prerequisite succeeds. Confirm local synthetic test OIDC provider and dedicated test database before browser execution; do not log OAuth secrets. Capture actual results and independent review against all T080 requirements. P2 remains gated.
+
+## 20. P1 runtime evidence and performance checkpoint — 2026-11-18
+
+Code HEAD **872c4ad** (takeover/002-identity-tenancy). P1 remains open pending genuine browser acceptance; P2 has not started.
+
+| Check | Observed result |
+| --- | --- |
+| Python static, unit, contract, tools, architecture | 134 passed; Ruff, mypy (60 files), contract/scope/architecture/docs guards pass on final code HEAD after test-only cookie patch |
+| Restricted-runtime integration and performance | 64 passed, 1 opt-in test skipped in default run (63 integration + one benchmark) |
+| Real Keycloak authorization-code + PKCE backend flow, separately opted in | 1 passed, 6.54s; two real logins stable internal User ID, actual token exchange, opaque session/hashed persistence, /me, CSRF logout and replay denial |
+| RequestedActorContext | actual JSON boundary for human, service envelope, system; no cached authority restored |
+| Authorization benchmark | 63 grants (3 relevant, 60 irrelevant), 150 fresh transactions; p95 5.225ms combined, worst phase 5.746ms; independent targeted repeat 7.954ms combined, worst 9.053ms |
+| P1 HTTP acceptance | next-request grant revoke and membership suspend/revoke, inherited access disappears on move and direct grant survives move, foreign payload non-disclosure; 5 added integration tests pass |
+| Browser | 3 tests collected and independently strict typechecked with policy-eligible Playwright/TS; measured SC-001/SC-004 paths implemented, NOT executed |
+| T080 / P2 / T115 / main integration | NOT accepted or executed |
+
+Before optimization, the benchmark failed with p95 80.235ms. The permission resolver now obtains live membership, valid tenant placement and applicable grants in one SQL statement after the unchanged mandatory repository context checks. No permission cache or RLS relaxation. The same benchmark and threshold passed twice; independent static review and complete runtime regression passed. T106 is checked; root `validate:integration` now includes performance tests.
+
+The opt-in backend test uses the tracked synthetic local Keycloak fixture and dedicated test DB; it does not launch the frontend or use a mocked token exchange. Test-only cookie handling emulates loopback browser behavior for Secure provider cookies exclusively on the exact pinned local realm, checked against other hosts/ports/realms. No change to production cookie security. Run with:
+
+```bat
+set "OPENVIETGIS_LIVE_OIDC=1"
+uv run --offline --project apps/api python -m tools.run_with_test_database pytest apps/api/tests/integration/identity/test_live_keycloak_oidc.py -o addopts= -q --show-capture=no
+```
+
+Reference Keycloak discovery and real login work on existing synthetic container; its Docker health status was unhealthy because the management health endpoint was disabled. Compose configuration now enables health and binds provider publishing to loopback only; config validation passed, no existing container was recreated. Verify runtime health at the next safe test-fixture startup without disrupting another active user/container. The E2E seed now refuses non-test or mismatched DB targets before connecting. Browser timing assertions cover three actual organization switches (<10s each) and intended invite acceptance (<180s). Do not claim these timings until browser execution. Section 5 explicitly separates FR-051 P1 synthetic initialized fixture from mandatory P2 bootstrap acceptance.
+
+Next: normal age-gated frozen pnpm install on signed Node 26 when eligible (as section 19); verify actual Chromium/Keycloak, run full frontend lint/typecheck/test/build and E2E; record timings, independent review and all T080 evidence. Do not begin P2, retire sample, or promote main before gates.

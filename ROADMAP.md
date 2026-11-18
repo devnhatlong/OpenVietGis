@@ -127,7 +127,7 @@ Dữ liệu mẫu của 001 không trở thành Project, Layer hay mô hình ngh
 ### R002
 
 [Identity, Organization & Tenancy](specs/002-identity-organization-tenancy/spec.md).
-Đang triển khai P1 trên nhánh takeover/002-identity-tenancy; [checkpoint](specs/002-identity-organization-tenancy/quickstart.md#19-p1-backend-verification--2026-11-18) ghi 121 backend test và 58 PostgreSQL integration test đã qua, chưa qua P1 browser gate hoặc convergence. Chưa tích hợp vào main. Phạm vi và tiến độ chi tiết do artifacts 002 quyết định.
+Đang triển khai P1 trên nhánh takeover/002-identity-tenancy; [checkpoint](specs/002-identity-organization-tenancy/quickstart.md#20-p1-runtime-evidence-and-performance-checkpoint--2026-11-18) ghi 134 backend/static test, 63 PostgreSQL integration test, benchmark và đăng nhập OIDC backend thật đã qua, chưa qua P1 browser gate hoặc convergence. Chưa tích hợp vào main. Phạm vi và tiến độ chi tiết do artifacts 002 quyết định.
 
 ### R003
 

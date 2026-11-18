@@ -442,3 +442,9 @@ Code HEAD **830dea5**; 76/115 implementation tasks checked (39 open). P1 is not 
 - 121 backend unit/contract/tool/architecture tests pass; Ruff, mypy (60 files), contract/scope/architecture/docs guards pass. 20 SDK and protected-query tests pass in isolated Node 26 validation.
 - T062/T069/T079 remain open pending real browser evidence; T080 remains open pending all P1 gates. Portable signed Node 26.13.1 resolves the previous runtime blocker, but frozen dependency minimumReleaseAge remains in force. See quickstart section 19 for resumption.
 - Do not begin P2 or retire FoundationSampleRecord until T080 passes. Do not promote R002 to main before T115 convergence.
+
+## P1 runtime and performance checkpoint — 2026-11-18
+
+Code HEAD **872c4ad**, **77/115 tasks checked**, 38 remaining. T106 measured against restricted-runtime PostgreSQL: benchmark initially failed p95 80.235ms; after one live SQL snapshot optimization, passed 7.954ms and 5.225ms on unchanged 63-grant/150-sample benchmark. Full integration+performance rerun: 64 passed (63 integration and benchmark), one opt-in OIDC test skipped then separately passed using the live local provider. 134 unit/contract/tools/architecture tests, static and guard checks pass. See quickstart §20. No lower-level RLS optimization included; no authorization cache.
+
+T062/T069/T079/T080 remain open until actual frontend/browser acceptance. Browser scripts and timings prepared, not executed. T080 P1 uses FR-051 preinitialized synthetic fixture; bootstrap-specific acceptance still P2. No P2 implementation, convergence or main merge performed.
