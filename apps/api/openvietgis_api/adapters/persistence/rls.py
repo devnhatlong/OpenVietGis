@@ -12,9 +12,24 @@ from openvietgis_api.domains.authorization.context import (
     InvitationAcceptanceContext,
     TenantContext,
 )
-from openvietgis_api.domains.authorization.service import TenantResourceNotFoundError
+from openvietgis_api.domains.authorization.permissions import Permission
+from openvietgis_api.domains.authorization.service import (
+    AuthorizationDeniedError,
+    TenantResourceNotFoundError,
+)
 
 _STATE_KEY = "openvietgis.transaction_authorization"
+
+
+@dataclass(frozen=True, slots=True)
+class _ProjectClaim:
+    organization_id: UUID
+    project_id: UUID
+    workspace_id: UUID | None
+    actor_type: str
+    actor_id: UUID
+    credential_id: UUID | None
+    permission: Permission
 
 
 @dataclass(slots=True)
@@ -29,6 +44,14 @@ class _TransactionScope:
     actor_user_id: UUID | None = None
     member_verified: bool = False
     invitation_id: UUID | None = None
+    project_claim: _ProjectClaim | None = None
+
+
+def _clear_project_claim(session: Session, state: _TransactionScope) -> None:
+    # Clear the application proof before SQL. If SQL fails, the failed
+    # transaction cannot carry an application authorization to another query.
+    state.project_claim = None
+    session.execute(text("SELECT set_config('openvietgis.project_id', '', true)"))
 
 
 def _state(session: Session) -> _TransactionScope:
@@ -48,6 +71,9 @@ def _state(session: Session) -> _TransactionScope:
         current.actor_user_id = None
         current.member_verified = False
         current.invitation_id = None
+        # A savepoint rollback may restore an older project GUC even when the
+        # nested proof was cleared. Never accept that restored authorization.
+        _clear_project_claim(session, current)
     return current
 
 
@@ -60,16 +86,20 @@ def set_request_context(
     """Low-level transaction-local RLS primitive; it does not authorize repositories."""
     state = _state(session)
     if state.authenticated_user_id is not None and actor_user_id != state.authenticated_user_id:
+        _clear_project_claim(session, state)
         raise PermissionError("transaction actor mismatch")
     if state.authenticated_organization_id is not None and organization_id not in (
         None,
         state.authenticated_organization_id,
     ):
+        _clear_project_claim(session, state)
         raise TenantResourceNotFoundError("resource not found")
+    state.project_claim = None
     session.execute(
         text(
             "SELECT set_config('openvietgis.organization_id', :organization, true), "
-            "set_config('openvietgis.actor_user_id', :actor, true)"
+            "set_config('openvietgis.actor_user_id', :actor, true), "
+            "set_config('openvietgis.project_id', '', true)"
         ),
         {
             "organization": str(organization_id) if organization_id else "",
@@ -294,3 +324,162 @@ def bind_new_organization_context(session: Session, context: AuthorizationContex
 
 def clear_request_context(session: Session) -> None:
     set_request_context(session, organization_id=None, actor_user_id=None)
+
+
+_PROJECT_PERMISSIONS = frozenset(
+    {Permission.PROJECT_READ, Permission.PROJECT_EDIT, Permission.PROJECT_MANAGE}
+)
+
+
+def clear_project_context(session: Session) -> None:
+    """Invalidate the spatial proof/GUC without changing the existing R002 tenant pin."""
+    _clear_project_claim(session, _state(session))
+
+
+def _require_authenticated_project_actor(
+    state: _TransactionScope, context: AuthorizationContext
+) -> UUID:
+    actor = context.actor
+    if actor.actor_id is None:
+        raise PermissionError("authenticated project actor required")
+    if actor.actor_type == "human":
+        if state.authenticated_user_id != actor.actor_id or context.credential_id is not None:
+            raise PermissionError("authenticated human project actor required")
+        if state.authenticated_organization_id not in (None, context.organization_id):
+            raise TenantResourceNotFoundError("resource not found")
+    elif actor.actor_type == "service_principal":
+        if (
+            context.credential_id is None
+            or state.authenticated_service_principal_id != actor.actor_id
+            or state.authenticated_credential_id != context.credential_id
+        ):
+            raise PermissionError("authenticated service project actor required")
+        if state.authenticated_organization_id != context.organization_id:
+            raise TenantResourceNotFoundError("resource not found")
+    else:
+        raise PermissionError("authenticated project actor required")
+    return actor.actor_id
+
+
+def bind_verified_project_context(
+    session: Session, context: AuthorizationContext, *, permission: Permission
+) -> None:
+    """Bind one exact, currently authorized project in the request transaction.
+
+    Context is requested scope, never its authorization. A human/session or
+    service/credential must already be authenticated by R002. Mutation callers
+    lock the organization then project before invoking this independent check.
+    """
+    state = _state(session)
+    _clear_project_claim(session, state)
+    if not isinstance(context, AuthorizationContext) or context.project_id is None:
+        raise PermissionError("project authorization context required")
+    if not isinstance(permission, Permission) or permission not in _PROJECT_PERMISSIONS:
+        raise PermissionError("spatial project permission required")
+    actor_id = _require_authenticated_project_actor(state, context)
+    require_member_context(session, context, context.organization_id)
+
+    lifecycle = (
+        session.execute(
+            text(
+                """
+            SELECT p.status AS project_status, o.status AS organization_status
+            FROM workspace.projects AS p
+            JOIN org.organizations AS o ON o.id = p.organization_id
+            WHERE p.organization_id = :organization_id AND p.id = :project_id
+              AND (
+                  CAST(:workspace_id AS uuid) IS NULL
+                  OR p.workspace_id = CAST(:workspace_id AS uuid)
+              )
+            """
+            ),
+            {
+                "organization_id": context.organization_id,
+                "project_id": context.project_id,
+                "workspace_id": context.workspace_id,
+            },
+        )
+        .mappings()
+        .one_or_none()
+    )
+    if lifecycle is None or lifecycle["project_status"] == "deleted":
+        raise TenantResourceNotFoundError("resource not found")
+    if lifecycle["organization_status"] != "active":
+        raise AuthorizationDeniedError("organization is not active")
+    if lifecycle["project_status"] not in ("active", "archived"):
+        raise TenantResourceNotFoundError("resource not found")
+    if permission is not Permission.PROJECT_READ and lifecycle["project_status"] != "active":
+        raise AuthorizationDeniedError("project is not writable")
+
+    # Local import avoids a module-level cycle: the R002 provider itself uses
+    # require_member_context here, and resolves live grants/credential ceilings.
+    from openvietgis_api.adapters.persistence.authorization_repository import (
+        SqlEffectivePermissionProvider,
+    )
+
+    granted = SqlEffectivePermissionProvider(session).resolve(context)
+    if permission not in granted:
+        raise AuthorizationDeniedError(f"missing permission: {permission.value}")
+    state = _state(session)
+    session.execute(
+        text("SELECT set_config('openvietgis.project_id', :project, true)"),
+        {"project": str(context.project_id)},
+    )
+    state.project_claim = _ProjectClaim(
+        context.organization_id,
+        context.project_id,
+        context.workspace_id,
+        context.actor.actor_type,
+        actor_id,
+        context.credential_id,
+        permission,
+    )
+
+
+def require_project_context(
+    session: Session, context: AuthorizationContext, *, permission: Permission | None = None
+) -> Permission:
+    """Require the exact project proof and GUC from the current transaction/savepoint.
+
+    Return the bound permission so repositories distinguish internal mutation
+    validation reads from public project.read operations. A request for a
+    different permission must go through current authorization again.
+    """
+    state = _state(session)
+    claim = state.project_claim
+    try:
+        if (
+            not isinstance(context, AuthorizationContext)
+            or claim is None
+            or context.project_id is None
+        ):
+            raise PermissionError("verified project scope required")
+        if permission is not None and (
+            not isinstance(permission, Permission) or claim.permission is not permission
+        ):
+            raise PermissionError("project permission proof mismatch")
+        actor_id = _require_authenticated_project_actor(state, context)
+        if (
+            claim.organization_id != context.organization_id
+            or claim.project_id != context.project_id
+            or claim.workspace_id != context.workspace_id
+            or claim.actor_type != context.actor.actor_type
+            or claim.actor_id != actor_id
+            or claim.credential_id != context.credential_id
+            or state.organization_id != context.organization_id
+        ):
+            raise PermissionError("project scope proof mismatch")
+        actual = session.execute(
+            text("""
+            SELECT nullif(current_setting('openvietgis.organization_id', true), ''),
+                   nullif(current_setting('openvietgis.project_id', true), ''),
+                   nullif(current_setting('openvietgis.actor_user_id', true), '')
+        """)
+        ).one()
+        expected_actor = str(actor_id) if context.actor.actor_type == "human" else None
+        if tuple(actual) != (str(context.organization_id), str(context.project_id), expected_actor):
+            raise PermissionError("project database scope mismatch")
+        return claim.permission
+    except (PermissionError, TenantResourceNotFoundError):
+        _clear_project_claim(session, state)
+        raise
