@@ -467,3 +467,17 @@ T081-T090 are implemented and locally validated on the dedicated `takeover/002-p
 - Local shell currently provides Node 24, while the repository requires Node 26. Node-26 root validation remains a CI/final-gate responsibility under T114; this checkpoint does not claim T114.
 
 Task evidence: **T081-T090 checked**. Audit T091-T096, bootstrap T097-T105, and final convergence remain open.
+
+
+---
+
+## 2026-11-18 P2 Audit read checkpoint
+
+T091-T094 and T096 are implemented on the dedicated audit worktree. Evidence:
+
+- Audit redaction unit tests: **2 passed** for session, OIDC/provider token, invitation, service credential and bootstrap secret surfaces, including nested metadata.
+- Restricted-runtime PostgreSQL audit read/snapshot integration: **2 passed**, proving tenant filtering/RLS, permission denial, stable newest-first ordering/limit, and human/service/system display snapshots after human/service revocation.
+- P1 audit + Service Identity regression: **7 passed** after the repository/read changes.
+- Ruff and strict mypy: **passed**.
+
+Task evidence: **T091-T094 and T096 checked**. T095 remains open until bootstrap audit wiring is implemented and verified.

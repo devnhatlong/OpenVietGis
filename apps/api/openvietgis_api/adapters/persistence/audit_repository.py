@@ -1,12 +1,33 @@
 from __future__ import annotations
 
+import json
+from uuid import UUID
+
 from sqlalchemy import text
+from sqlalchemy.engine import RowMapping
 from sqlalchemy.orm import Session
 
 from openvietgis_api.adapters.persistence.rls import require_member_context
-from openvietgis_api.domains.audit.domain import AuditEvent
+from openvietgis_api.domains.audit.domain import AuditEvent, AuditOutcome
+from openvietgis_api.domains.audit.service import redact_audit_metadata
 from openvietgis_api.domains.authorization.context import Actor, AuthorizationContext
 from openvietgis_api.domains.tenancy.domain import ActorType
+
+
+def _event_from_row(row: RowMapping) -> AuditEvent:
+    return AuditEvent(
+        id=row["id"],
+        organization_id=row["organization_id"],
+        actor_type=ActorType(row["actor_type"]),
+        actor_id=row["actor_id"],
+        actor_display_snapshot=row["actor_display_snapshot"],
+        action=row["action"],
+        resource_type=row["resource_type"],
+        resource_id=row["resource_id"],
+        outcome=AuditOutcome(row["outcome"]),
+        metadata=dict(row["metadata"]),
+        created_at=row["created_at"],
+    )
 
 
 class SqlAuditRepository:
@@ -16,7 +37,9 @@ class SqlAuditRepository:
     def append(self, event: AuditEvent) -> None:
         if event.organization_id is not None:
             if event.actor_type != ActorType.HUMAN:
-                raise PermissionError("P1 tenant audit requires human actor context")
+                raise PermissionError(
+                    "tenant audit append requires an authenticated human actor"
+                )
             context = AuthorizationContext(
                 actor=Actor("human", event.actor_id, event.actor_display_snapshot),
                 organization_id=event.organization_id,
@@ -46,7 +69,34 @@ class SqlAuditRepository:
                 "resource_type": event.resource_type,
                 "resource_id": event.resource_id,
                 "outcome": event.outcome.value,
-                "metadata": __import__("json").dumps(event.metadata),
+                "metadata": json.dumps(redact_audit_metadata(event.metadata)),
                 "created_at": event.created_at,
             },
         )
+
+    def list_for_organization(
+        self,
+        organization_id: UUID,
+        *,
+        context: AuthorizationContext,
+        limit: int,
+    ) -> list[AuditEvent]:
+        require_member_context(self._session, context, organization_id)
+        rows = (
+            self._session.execute(
+                text(
+                    """
+                    SELECT id, organization_id, actor_type, actor_id, actor_display_snapshot,
+                           action, resource_type, resource_id, outcome, metadata, created_at
+                    FROM audit.audit_events
+                    WHERE organization_id = :organization_id
+                    ORDER BY created_at DESC, id DESC
+                    LIMIT :limit
+                    """
+                ),
+                {"organization_id": organization_id, "limit": limit},
+            )
+            .mappings()
+            .all()
+        )
+        return [_event_from_row(row) for row in rows]

@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 
 from openvietgis_api.adapters.http import (
+    audit,
     auth,
     foundation,
     grants,
@@ -47,6 +48,7 @@ def create_app() -> FastAPI:
     api_v1.include_router(health.router)
     api_v1.include_router(foundation.router)
     api_v1.include_router(auth.router)
+    api_v1.include_router(audit.router)
     api_v1.include_router(me.router)
     api_v1.include_router(organizations.router)
     api_v1.include_router(workspaces.router)

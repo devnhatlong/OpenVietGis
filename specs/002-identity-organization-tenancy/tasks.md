@@ -223,15 +223,15 @@
 
 ### Tests first
 
-- [ ] T091 [P] [US6] Add authorized audit-read filtering/RLS tests on the foundational AuditEvent table in `apps/api/tests/integration/service_identity/test_audit_storage.py`
-- [ ] T092 [P] [US6] Add actor snapshot-after-revocation tests for human/service/system actors in `apps/api/tests/integration/service_identity/test_audit_actor_snapshot.py`
-- [ ] T093 [P] [US6] Add audit secret-redaction tests covering session/OIDC/invitation/service/bootstrap secret patterns in `apps/api/tests/unit/authorization/test_audit_redaction.py`
+- [X] T091 [P] [US6] Add authorized audit-read filtering/RLS tests on the foundational AuditEvent table in `apps/api/tests/integration/service_identity/test_audit_storage.py`
+- [X] T092 [P] [US6] Add actor snapshot-after-revocation tests for human/service/system actors in `apps/api/tests/integration/service_identity/test_audit_actor_snapshot.py`
+- [X] T093 [P] [US6] Add audit secret-redaction tests covering session/OIDC/invitation/service/bootstrap secret patterns in `apps/api/tests/unit/authorization/test_audit_redaction.py`
 
 ### Implementation
 
-- [ ] T094 [US6] Extend the foundational T018 audit repository with authorized tenant-scoped query/read behavior and pagination-ready ordering in `apps/api/openvietgis_api/adapters/persistence/audit_repository.py` and `apps/api/openvietgis_api/domains/audit/service.py`
+- [X] T094 [US6] Extend the foundational T018 audit repository with authorized tenant-scoped query/read behavior and pagination-ready ordering in `apps/api/openvietgis_api/adapters/persistence/audit_repository.py` and `apps/api/openvietgis_api/domains/audit/service.py`
 - [ ] T095 [US6] Complete P2 ServicePrincipal/credential/bootstrap audit wiring and actor-after-revocation snapshot behavior on top of the foundational P1 audit port in `apps/api/openvietgis_api/domains/audit/service.py` and relevant P2 domain services
-- [ ] T096 [US6] Implement authorized audit-read endpoint from `contracts/service-admin-api.yaml` in `apps/api/openvietgis_api/adapters/http/audit.py`
+- [X] T096 [US6] Implement authorized audit-read endpoint from `contracts/service-admin-api.yaml` in `apps/api/openvietgis_api/adapters/http/audit.py`
 
 **Checkpoint**: Security actions remain explainable after revoke and audit storage has no mutation/secret path.
 
