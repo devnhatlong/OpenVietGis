@@ -146,7 +146,7 @@
 - [X] T059 [P] [US3] Add Last Owner role/status concurrency plus Owner-vs-Admin Organization suspend/restore/soft-delete lifecycle tests in `apps/api/tests/integration/tenancy/test_last_owner.py` and `test_organization_lifecycle.py`
 - [X] T060 [P] [US3] Add next-request membership/grant revocation tests in `apps/api/tests/integration/tenancy/test_revocation.py`
 - [X] T061 [P] [US3] Add grant/invitation client contract tests in `packages/client-sdk/tests/grants-invitations.test.ts`
-- [ ] T062 [P] [US3] Add Playwright intended-recipient invitation accept + revoke journey to `tests/e2e/invitation-revocation.spec.ts`
+- [X] T062 [P] [US3] Add Playwright intended-recipient invitation accept + revoke journey to `tests/e2e/invitation-revocation.spec.ts`
 
 ### Implementation
 
@@ -156,7 +156,7 @@
 - [X] T066 [US3] Implement invitation issue/accept/revoke service including secret hashing, recipient matching, atomic membership activation/optional grant, and one-time state transition in `apps/api/openvietgis_api/domains/tenancy/service.py`
 - [X] T067 [US3] Implement Organization lifecycle/ownership-transfer/member plus grant/invitation/effective-permission HTTP endpoints from `contracts/tenant-core-api.yaml` in `apps/api/openvietgis_api/adapters/http/organizations.py`, `grants.py`, and `invitations.py`
 - [X] T068 [P] [US3] Implement grants/invitations/effective-permissions client methods in `packages/client-sdk/src/organizations.ts` and `invitations.ts`
-- [ ] T069 [P] [US3] Implement minimal membership/invite/grant UI including suspend/revoke and invitation accept handoff in `apps/web/src/features/membership/` and `apps/web/src/features/invitations/`
+- [X] T069 [P] [US3] Implement minimal membership/invite/grant UI including suspend/revoke and invitation accept handoff in `apps/web/src/features/membership/` and `apps/web/src/features/invitations/`
 - [X] T070 [US3] Ensure Organization creation/lifecycle/ownership, membership, grant, and invitation mutations append foundational AuditEvent records through the T018 audit port before the P1 gate, without requiring the P2 audit-read UI, in `apps/api/openvietgis_api/domains/tenancy/service.py`
 
 **Checkpoint**: P1 collaboration access works, inheritance is dynamic, recipient/token races are safe, and revocation is next-request effective.
@@ -182,8 +182,8 @@
 - [X] T076 [US4] Apply explicit AuthorizationContext + transaction-local RLS context to every P1 protected repository transaction in `apps/api/openvietgis_api/adapters/persistence/db.py` and `rls.py`
 - [X] T077 [US4] Enforce non-disclosing cross-tenant lookup/error semantics across Organization/Workspace/Project/Grant/Invitation HTTP adapters in `apps/api/openvietgis_api/adapters/http/errors.py` and tenant adapters
 - [X] T078 [US4] Add authorization-required repository interfaces so protected repositories cannot be called without explicit tenant/actor context in `apps/api/openvietgis_api/domains/tenancy/ports.py` and `domains/authorization/ports.py`
-- [ ] T079 [US4] Add P1 security E2E with direct URL manipulation across Organizations to `tests/e2e/tenant-core.spec.ts`
-- [ ] T080 [US4] Run and record the P1 Tenant Core checkpoint from quickstart sections 2-10, including foundational AuditEvent/RLS and RequestedActorContext round-trip evidence, in `specs/002-identity-organization-tenancy/quickstart.md` before enabling P2 work
+- [X] T079 [US4] Add P1 security E2E with direct URL manipulation across Organizations to `tests/e2e/tenant-core.spec.ts`
+- [X] T080 [US4] Run and record the P1 Tenant Core checkpoint from quickstart sections 2-10, including foundational AuditEvent/RLS and RequestedActorContext round-trip evidence, in `specs/002-identity-organization-tenancy/quickstart.md` before enabling P2 work
 
 **Checkpoint**: P1 Tenant Core is independently demonstrable and cross-tenant isolation is proven at application + database layers.
 
@@ -268,7 +268,7 @@
 
 - [X] T106 [P] Add authorization benchmark fixture with >=50 mixed relevant/irrelevant grants and dynamic Workspace inheritance in `apps/api/tests/performance/test_authorization_benchmark.py`, enforcing the quickstart p95 <= 50 ms target
 - [ ] T107 [P] Add full security log/audit scan ensuring provider tokens, session secrets, invitation secrets, service secrets, and bootstrap secret never appear in logs/test artifacts in `tools/check_secret_surfaces.py` and `tools/tests/test_secret_surfaces.py`
-- [ ] T108 [P] Extend root CI to start Keycloak reference profile, use migration/runtime DB roles, validate OpenAPI/generated types, and run Spec 002 E2E in `.github/workflows/ci.yml`
+- [X] T108 [P] Extend root CI to start Keycloak reference profile, use migration/runtime DB roles, validate OpenAPI/generated types, and run Spec 002 E2E in `.github/workflows/ci.yml`
 - [ ] T109 Remove disposable FoundationSampleRecord API/domain/repository/client/UI/tests and drop `foundation.sample_records` in `apps/api/migrations/versions/0005_retire_foundation_sample.py` only after the P1 E2E checkpoint is green
 - [ ] T110 Re-run historical Spec 001 foundation gates after T109 and update architecture/docs references from disposable sample to real tenant slice in `README.md` and `docs/architecture.md` without weakening Spec 001 acceptance
 - [ ] T111 [P] Add backup/migration downgrade/upgrade safety tests for all Spec 002 migrations and runtime-role grants in `apps/api/tests/integration/tenancy/test_identity_tenancy_migration_cycle.py`

@@ -425,3 +425,28 @@ Continue using only eligible signed Node26 dependencies per §19. CI or local br
 The active P1 frontend dependency was changed from `@tanstack/react-query` 5.108.0 to the compatible 5.107.1 line because the newer release was still inside the enforced pnpm `minimumReleaseAge` window. This is not a policy bypass: 5.107.1 was already outside the age cutoff, its matching `@tanstack/query-core` dependency is pinned to 5.107.1, and registry integrity metadata was used for both lockfile entries. The product research decision requires TanStack Query 5.x, not 5.108.0 specifically.
 
 On official Node 26.13.1 with pnpm 12.21.0, `pnpm install --frozen-lockfile` passed the supply-chain policy check for all 204 lockfile entries. Local `validate:runtime`, `validate:ts`, and `validate:contracts` passed: SDK 12 tests, web helper 15 tests, strict TypeScript/lint, production Vite build, and generated OpenAPI freshness. This removes the dependency-age blocker only; real Playwright browser acceptance, T062/T079/T080 and full CI remain open until executed on the exact committed head.
+
+## 23. P1 Tenant Core browser gate — 2026-11-18
+
+Exact source HEAD **f2bd300** passed public GitHub Actions run **44221805527** on Linux after the browser synchronization fixes. This closes the P1 execution gate; it does **not** claim P2, full Spec 002 convergence, or main integration.
+
+Evidence on the exact source line:
+
+- Supply-chain gate: Node 26.13.1; frozen pnpm install succeeded with policy-eligible TanStack Query 5.107.1; no minimum-release-age bypass.
+- Backend/static: Ruff, mypy (60 source files), contracts/scope/architecture/docs; **175 passed** unit/contract/tool/architecture checks.
+- Restricted-runtime PostgreSQL: **67 passed, 1 skipped** integration/performance checks, including tenant/RLS/runtime-role, pool reuse, concurrency, invitation/revocation, audit, migration/restore and authorization benchmark coverage. The opt-in item is exercised separately by the live-provider step.
+- Live reference OIDC: **2 passed** against the synthetic Keycloak realm, including code+PKCE/session flow and private credential non-disclosure monitor.
+- Frontend: SDK **12 passed**, protected-query/web **15 passed**, strict TypeScript/lint, production Vite build and generated OpenAPI freshness all passed.
+- Browser: **8/8 Playwright tests passed in 17.1s** on GitHub Chromium. Local confirmation on the final E2E synchronization diff also passed 8/8 in 19.0s.
+- Secrets: GitHub Gitleaks job passed. Browser invitation handoff remains trace/screenshot/video disabled and is never written to test logs/artifacts by the test.
+
+P1 quickstart mapping:
+
+- §§2–4: CI starts isolated PostGIS + reference Keycloak, verifies discovery, applies guarded migrations with separate migration/runtime roles, then starts real API/web for browser tests.
+- §5A and §9: browser acceptance signs in through Keycloak, creates multiple normal Organizations under one User and performs explicit Organization route/context switches with the SC-001 threshold.
+- §6: browser acceptance creates two Workspaces and a Project, moves/ungroups/archives it while preserving Organization ownership; backend lifecycle/FK tests cover rejected cross-tenant mutations and Owner lifecycle invariants.
+- §7: restricted-runtime integration verifies dynamic Workspace inheritance and next-request permission changes without copied grants.
+- §8: browser acceptance rejects the wrong verified recipient, accepts the intended recipient exactly once, proves only the granted Project is visible, revokes the Membership without replacing the browser session, then confirms the next protected request is denied and stale protected UI data is hidden during refetch.
+- §10: restricted-runtime RLS matrix covers protected tables, A→B→no-context pooled reuse, direct-ID substitution and non-disclosing 403/404 behavior. Foundational AuditEvent RLS and RequestedActorContext serialization/transaction binding are included in the passing backend suites.
+
+Task evidence: **T062, T069, T079, T080 and T108 are checked at this checkpoint.** P1 now unlocks P2 sequencing T081–T105. T107/T111/T112/T113/T114/T115 remain open where their wording requires P2 secrets/migrations/bootstrap, all-scenario evidence, full root validation or convergence. The external Codex reviewer service returned HTTP 429 during the attempted independent read-only review; no independent-agent review is claimed. Coordinator evidence review found no unmet P1 test gate, but a separate independent review should still be attempted before final T115/main promotion.
