@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from datetime import datetime
 from typing import Protocol
 from uuid import UUID
 
@@ -28,7 +29,27 @@ class SpatialProjectReadOnlyError(ValueError):
     """An archived project may be inspected but not changed."""
 
 
-class SpatialRepository(Protocol):
+class SpatialUnknownReferenceKeyError(ValueError):
+    """Reference key is not in the trusted fixture allowlist."""
+
+
+class SpatialCrsCorrectionUnverifiedError(ValueError):
+    """Independent native evidence does not establish the requested declaration."""
+
+
+class SpatialSourceAlreadyRegisteredError(ValueError):
+    """A project already bound the immutable reference key, including retired."""
+
+
+class SpatialNoChangesError(ValueError):
+    """A mutation requested no material changes."""
+
+
+class SpatialActiveLayerDependenciesError(ValueError):
+    """An active layer still depends on this source."""
+
+
+class SpatialSourceRepository(Protocol):
     """Transaction-bound port; implementation never commits or bypasses RLS.
 
     A context is an actor request, not authority on its own. prepare_scope must
@@ -80,6 +101,37 @@ class SpatialRepository(Protocol):
         """CAS catalog revision; synchronize changed pins on current rows atomically."""
         ...
 
+    def prepare_reference_source(
+        self,
+        *,
+        context: AuthorizationContext,
+        reference_key: str,
+        source_id: UUID,
+        name: str,
+        now: datetime,
+    ) -> tuple[DataSource, tuple[SourceField, ...], tuple[ReferenceFeature, ...]]: ...
+
+    def correct_reference_source(
+        self,
+        *,
+        context: AuthorizationContext,
+        source: DataSource,
+        declared_crs: int,
+        now: datetime,
+    ) -> DataSource: ...
+
+    def has_active_layers(self, *, context: AuthorizationContext, source_id: UUID) -> bool: ...
+
+    def append_change(
+        self, change: CatalogChange, audit: AuditEvent, *, context: AuthorizationContext
+    ) -> None:
+        """Persist linked change and R002 event atomically; neither may commit alone."""
+        ...
+
+
+class SpatialRepository(SpatialSourceRepository, Protocol):
+    """Full R003 port, including layer and pinned feature reads."""
+
     def get_layer(
         self, *, context: AuthorizationContext, layer_id: UUID, lock: bool = False
     ) -> Layer | None: ...
@@ -93,8 +145,6 @@ class SpatialRepository(Protocol):
     def update_layer(
         self, layer: Layer, *, context: AuthorizationContext, expected_revision: int
     ) -> None: ...
-
-    def has_active_layers(self, *, context: AuthorizationContext, source_id: UUID) -> bool: ...
 
     def read_features(
         self,
@@ -118,12 +168,6 @@ class SpatialRepository(Protocol):
         content_revision: str,
         schema_revision: str,
     ) -> ReferenceFeature | None: ...
-
-    def append_change(
-        self, change: CatalogChange, audit: AuditEvent, *, context: AuthorizationContext
-    ) -> None:
-        """Persist linked change and R002 event atomically; neither may commit alone."""
-        ...
 
     def list_changes(
         self, *, context: AuthorizationContext, after_id: UUID | None, limit: int

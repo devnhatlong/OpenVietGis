@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
 from dataclasses import asdict, replace
+from datetime import datetime
 from uuid import UUID
 
 from sqlalchemy import text
@@ -16,6 +18,16 @@ from openvietgis_api.adapters.persistence.rls import (
     bind_verified_project_context,
     clear_project_context,
     require_project_context,
+)
+from openvietgis_api.adapters.persistence.spatial_fixtures import (
+    ReferenceCorrectionUnverifiedError,
+    ReferenceFixtureIntegrityError,
+    get_reference_fixture,
+    materialize_reference_fixture,
+    native_geometry_parameters,
+    validate_persisted_reference_source,
+    validate_reference_candidate,
+    validate_reference_correction,
 )
 from openvietgis_api.adapters.persistence.tenancy_repository import SqlTenancyRepository
 from openvietgis_api.domains.audit.domain import AuditEvent, AuditOutcome
@@ -32,12 +44,15 @@ from openvietgis_api.domains.spatial.domain import (
     Extent,
     ExtentState,
     FeatureCountState,
+    FieldType,
     GeometryDimensions,
     GeometryFamily,
     Layer,
     Lifecycle,
+    ReferenceFeature,
     ResourceType,
     SchemaState,
+    SourceField,
     SourceKind,
     SpatialValidationError,
     ValidationReason,
@@ -45,10 +60,14 @@ from openvietgis_api.domains.spatial.domain import (
     ValidationState,
 )
 from openvietgis_api.domains.spatial.ports import (
+    SpatialCrsCorrectionUnverifiedError,
     SpatialProjectReadOnlyError,
     SpatialRevisionConflictError,
     SpatialScopeError,
+    SpatialSourceAlreadyRegisteredError,
+    SpatialUnknownReferenceKeyError,
 )
+from openvietgis_api.domains.spatial.service import PinnedSource, verify_source_pins
 from openvietgis_api.domains.tenancy.domain import OrganizationStatus, ProjectStatus
 
 
@@ -193,6 +212,266 @@ class SqlSpatialRepository:
             .one_or_none()
         )
         return _source_from_row(row) if row is not None else None
+
+    def list_sources(
+        self, *, context: AuthorizationContext, after_id: UUID | None, limit: int
+    ) -> list[DataSource]:
+        if type(limit) is not int or not 1 <= limit <= 101:
+            raise SpatialValidationError("catalog query limit out of bounds")
+        params = self._scope(context, permission=Permission.PROJECT_READ)
+        rows = (
+            self._session.execute(
+                text(
+                    """
+                SELECT * FROM spatial.data_sources
+                WHERE organization_id=:organization AND project_id=:project
+                    AND lifecycle='active'
+                    AND (CAST(:after_id AS uuid) IS NULL OR id > CAST(:after_id AS uuid))
+                ORDER BY id LIMIT :limit FOR SHARE
+                """
+                ),
+                params | {"after_id": after_id, "limit": limit},
+            )
+            .mappings()
+            .all()
+        )
+        return [_source_from_row(row) for row in rows]
+
+    def find_source_by_reference_key(
+        self, *, context: AuthorizationContext, reference_key: str
+    ) -> DataSource | None:
+        params = self._scope(context, permission=Permission.PROJECT_EDIT)
+        row = (
+            self._session.execute(
+                text(
+                    """
+                SELECT * FROM spatial.data_sources
+                WHERE organization_id=:organization AND project_id=:project
+                    AND reference_key=:reference_key FOR UPDATE
+                """
+                ),
+                params | {"reference_key": reference_key},
+            )
+            .mappings()
+            .one_or_none()
+        )
+        return _source_from_row(row) if row is not None else None
+
+    def get_fields(self, *, context: AuthorizationContext, source_id: UUID) -> list[SourceField]:
+        params = self._scope(context) | {"source": source_id}
+        rows = (
+            self._session.execute(
+                text(
+                    """
+                SELECT * FROM spatial.source_fields
+                WHERE organization_id=:organization AND project_id=:project AND source_id=:source
+                ORDER BY ordinal
+                """
+                ),
+                params,
+            )
+            .mappings()
+            .all()
+        )
+        return [
+            SourceField(
+                row["organization_id"],
+                row["project_id"],
+                row["source_id"],
+                row["field_id"],
+                row["name"],
+                row["ordinal"],
+                FieldType(row["type"]),
+                row["nullable"],
+                row["schema_revision"],
+            )
+            for row in rows
+        ]
+
+    def prepare_reference_source(
+        self,
+        *,
+        context: AuthorizationContext,
+        reference_key: str,
+        source_id: UUID,
+        name: str,
+        now: datetime,
+    ) -> tuple[DataSource, tuple[SourceField, ...], tuple[ReferenceFeature, ...]]:
+        params = self._scope(context, permission=Permission.PROJECT_EDIT)
+        fixture = get_reference_fixture(reference_key)
+        if fixture is None:
+            raise SpatialUnknownReferenceKeyError("unknown reference fixture")
+        candidate = materialize_reference_fixture(
+            reference_key,
+            organization_id=params["organization"],
+            project_id=params["project"],
+            source_id=source_id,
+            name=name,
+            now=now,
+        )
+        verified = validate_reference_candidate(self._session, fixture, candidate)
+        return verified.source, verified.fields, verified.features
+
+    def correct_reference_source(
+        self,
+        *,
+        context: AuthorizationContext,
+        source: DataSource,
+        declared_crs: int,
+        now: datetime,
+    ) -> DataSource:
+        self._scope(context, permission=Permission.PROJECT_EDIT)
+        self._assert_owner(context, source)
+        try:
+            return validate_reference_correction(
+                self._session,
+                source,
+                context=context,
+                declared_crs=declared_crs,
+                now=now,
+            )
+        except ReferenceCorrectionUnverifiedError as exc:
+            raise SpatialCrsCorrectionUnverifiedError(
+                "CRS correction could not be verified"
+            ) from exc
+
+    def insert_source(
+        self,
+        source: DataSource,
+        fields: Sequence[SourceField],
+        features: Sequence[ReferenceFeature],
+        *,
+        context: AuthorizationContext,
+    ) -> None:
+        params = self._scope(context, permission=Permission.PROJECT_EDIT)
+        self._assert_owner(context, source)
+        if source.lifecycle != Lifecycle.ACTIVE or source.catalog_revision != 1:
+            raise SpatialValidationError("invalid initial source lifecycle or revision")
+        fixture = get_reference_fixture(source.reference_key)
+        if fixture is None:
+            raise SpatialUnknownReferenceKeyError("unknown reference fixture")
+        verify_source_pins(source, fields, features)
+        inserted = self._session.execute(
+            text("""
+                INSERT INTO spatial.data_sources (
+                    id, organization_id, project_id, name, kind, reference_key,
+                    fixture_version, manifest_digest, source_asset_id, lifecycle,
+                    validation_state, validation_reason, source_crs, stored_crs, schema_state,
+                    geometry_family, dimensions, feature_count_state, feature_count,
+                    extent_state, extent, catalog_revision, content_revision, schema_revision,
+                    created_at, updated_at, retired_at
+                ) VALUES (
+                    :id, :organization, :project, :name, :kind, :reference_key, :fixture_version,
+                    :manifest_digest, NULL, :lifecycle, :validation_state, CAST(:reason AS jsonb),
+                    :source_crs, :stored_crs, :schema_state, :family, :dimensions, :count_state,
+                    :count, :extent_state, CAST(:extent AS jsonb), :revision, :content, :schema,
+                    :created_at, :updated_at, :retired_at
+                ) ON CONFLICT (organization_id, project_id, reference_key) DO NOTHING
+                RETURNING id
+            """),
+            params
+            | {
+                "id": source.id,
+                "name": source.name,
+                "kind": source.kind.value,
+                "reference_key": source.reference_key,
+                "fixture_version": source.fixture_version,
+                "manifest_digest": source.manifest_digest,
+                "lifecycle": source.lifecycle.value,
+                "validation_state": source.validation_state.value,
+                "reason": json.dumps(source.validation_reason.to_wire())
+                if source.validation_reason is not None
+                else None,
+                "source_crs": source.source_crs,
+                "stored_crs": source.stored_crs,
+                "schema_state": source.schema_state.value,
+                "family": source.geometry_family.value,
+                "dimensions": source.dimensions.value,
+                "count_state": source.feature_count_state.value,
+                "count": source.feature_count,
+                "extent_state": source.extent_state.value,
+                "extent": json.dumps(asdict(source.extent)) if source.extent is not None else None,
+                "revision": source.catalog_revision,
+                "content": source.content_revision,
+                "schema": source.schema_revision,
+                "created_at": source.created_at,
+                "updated_at": source.updated_at,
+                "retired_at": source.retired_at,
+            },
+        ).scalar_one_or_none()
+        if inserted is None:
+            raise SpatialSourceAlreadyRegisteredError("reference fixture already registered")
+        # Bounded batch inserts use typed recordsets and preserve native SRID and geometry.
+        self._session.execute(
+            text("""
+                INSERT INTO spatial.source_fields (organization_id, project_id, source_id,
+                    field_id, name, ordinal, type, nullable, schema_revision)
+                SELECT :organization, :project, :source, r.field_id, r.name, r.ordinal,
+                    r.type, r.nullable, :schema
+                FROM jsonb_to_recordset(CAST(:records AS jsonb))
+                    AS r(field_id text, name text, ordinal integer, type text, nullable boolean)
+            """),
+            params
+            | {
+                "source": source.id,
+                "schema": source.schema_revision,
+                "records": json.dumps(
+                    [
+                        {
+                            "field_id": f.field_id,
+                            "name": f.name,
+                            "ordinal": f.ordinal,
+                            "type": f.type.value,
+                            "nullable": f.nullable,
+                        }
+                        for f in fields
+                    ]
+                ),
+            },
+        )
+        self._session.execute(
+            text("""
+                INSERT INTO spatial.reference_features (organization_id, project_id, source_id,
+                    feature_id, attributes, geometry, geometry_state, content_revision,
+                    schema_revision)
+                SELECT :organization, :project, :source, r.feature_id, r.attributes,
+                    CASE WHEN r.wkt IS NULL THEN NULL
+                         ELSE ST_GeomFromText(r.wkt, COALESCE(r.srid,0)) END,
+                    r.geometry_state, :content, :schema
+                FROM jsonb_to_recordset(CAST(:records AS jsonb))
+                    AS r(feature_id text, attributes jsonb, wkt text, srid integer,
+                         geometry_state text)
+            """),
+            params
+            | {
+                "source": source.id,
+                "content": source.content_revision,
+                "schema": source.schema_revision,
+                "records": json.dumps(
+                    [
+                        {
+                            "feature_id": f.feature_id,
+                            "attributes": dict(f.attributes),
+                            "wkt": wkt,
+                            "srid": srid,
+                            "geometry_state": f.geometry_state.value,
+                        }
+                        for f in features
+                        for wkt, srid in (native_geometry_parameters(f.geometry),)
+                    ],
+                    allow_nan=False,
+                ),
+            },
+        )
+        # Verify actual persisted facts under the same scoped runtime transaction.
+        checked = validate_persisted_reference_source(
+            self._session,
+            fixture,
+            PinnedSource(source, tuple(fields), tuple(features)),
+            context=context,
+        )
+        if checked.source != source:
+            raise ReferenceFixtureIntegrityError("persisted source metadata disagrees")
 
     def get_layer(
         self, *, context: AuthorizationContext, layer_id: UUID, lock: bool = False
