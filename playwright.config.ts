@@ -53,7 +53,7 @@ export function makeConfig(bootstrap = false) {
     {
       // Reuse the exact Node runtime already running Playwright. Corepack is not
       // bundled with Node 26 and an old global shim can select a different Node.
-      command: `"${execPath}" node_modules/vite/bin/vite.js --host 127.0.0.1 --port 5178`,
+      command: `"${execPath}" node_modules/vite/bin/vite.js build && "${execPath}" node_modules/vite/bin/vite.js preview --host 127.0.0.1 --port 5178 --strictPort`,
       cwd: "./apps/web",
       // Ensure the SPA proxy can reach the ready API before any real login.
       url: "http://127.0.0.1:5178/api/v1/health/ready",

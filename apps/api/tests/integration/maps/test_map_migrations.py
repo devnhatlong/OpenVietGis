@@ -138,11 +138,16 @@ def test_direct_configuration_write_without_matching_next_evidence_cannot_commit
             connection.execute(
                 text("""
                 UPDATE maps.project_maps SET configuration=jsonb_set(
-                    configuration,'{default_viewpoint}',
-                    '{"longitude":106,"latitude":11,"zoom":8,"bearing":0,"pitch":0,"crs":4326}')
+                    configuration,'{default_viewpoint}',CAST(:viewpoint AS jsonb))
                 WHERE project_id=:project
             """),
-                {"project": world.project_id},
+                {
+                    "project": world.project_id,
+                    "viewpoint": (
+                        '{"longitude":106,"latitude":11,"zoom":8,'
+                        '"bearing":0,"pitch":0,"crs":4326}'
+                    ),
+                },
             )
             connection.execute(text("SET CONSTRAINTS ALL IMMEDIATE"))
         assert failure.value.orig.sqlstate == "23514"

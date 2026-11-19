@@ -165,7 +165,7 @@ function OrganizationProjects({ organizationId, userId }: { organizationId: stri
               <strong>{project.name}</strong> — {project.status} — workspace{" "}
               {project.workspace_id ?? "none"}{" "}
               {project.status !== "deleted" ? (
-                <Link to={"/organizations/" + encodeURIComponent(organizationId) + "/projects/" + encodeURIComponent(project.id) + "/spatial"}>Spatial catalog</Link>
+                <><Link to={"/organizations/" + encodeURIComponent(organizationId) + "/projects/" + encodeURIComponent(project.id) + "/spatial"}>Spatial catalog</Link>{" · "}<Link to={"/organizations/" + encodeURIComponent(organizationId) + "/projects/" + encodeURIComponent(project.id) + "/map"}>Open map</Link></>
               ) : null}
               <div>
                 <label>
