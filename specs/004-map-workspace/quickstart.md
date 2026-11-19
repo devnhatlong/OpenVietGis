@@ -1,14 +1,23 @@
 # R004 validation guide
 
-Status: design, no implementation acceptance evidence yet. Baseline c5cc5a9. Use synthetic dedicated test DB and Keycloak only. Never alter default/production DB or recreate another owner's containers. Local Docker outage: use isolated GitHub CI.
+Status: automated verification green on VPS Debian 13 (`integration/004-on-verified-main`, code SHA `a993542cefa91ea499f4ba8f19ced3e8dcd31513`, baseline `c5cc5a9`). Human usability observation (**SC009 / T046**) remains open until five first-time GIS-capable users are observed.
 
-1. Use verified signed Node26 portable path or CI Node26; pnpm install --frozen-lockfile under ordinary release-age policy. No bypass.
-2. Run pnpm validate:ts; pnpm validate:py; contract generation/check, scope,architecture,docs guards.
-3. Restricted-runtime PostGIS tests: virtual empty map; explicit default revision1; two actors/tenants; reader preview/editor save; edit-only service receipt; CAS/race; same op/same intent; changed/foreign op conflict; precommit rollback; lost acknowledgement after later save; atomic immutable evidence; restart; RLS direct substitution and GUC/pool reuse; archive/delete/suspend/revoke/current ceiling.
-4. Viewport: point/line/polygon fixtures and two Layers sharing source; exact4326 display/control geometry,deterministic limits,position/byte/time budgets; partial vs empty vs unsupported/stale; full transformed extent; source counts/IDs/schema/native coordinates unchanged.
-5. Browser: Core-only grid/no network workspace surfaces; pan/zoom/fit; order/visibility/style; click/modifier/table selection across pages; out-of-view detail/fit; typed null/empty attributes; default viewpoint preserve/set; save/reopen/two-session conflict; lost-ack unresolved/reconcile; clear renderer/cache/delayed results on context/denial.
-6. Benchmark GitHub isolated fixture≤10000 features, desktop1280×900, record runner,Chromium,network disabled,source pins,viewport.5 warmups then100 trials for each open and select→inspector; p95≤3s/1s. Include clear readiness markers after actual renderer/authorized detail completion.
-7. Gitleaks committed intended source inventory, exact-SHA full default CI once, independent code review/convergence and docs evidence. No skipped check treated as full success.
-8. SC009: five real first-time GIS-capable people, one-sentence task,4/5 independently open/inspect/reopen in5min. Record actual outcomes separately. This remains outstanding until observed; never mark from browser automation. R002 SC013 also remains external-release gate.
+## Verified Commands & Actual Results (2026-11-20, VPS `103.77.243.154`)
 
-Mandatory commands: pnpm validate (full); fixture-safe integration/e2e runners already set by package scripts. Record exact successful SHA/run and actual output here only after execution.
+- **Runtime:** `pnpm validate:runtime` → Node `v26.13.1` (accepted baseline)
+- **TypeScript / Web / SDK:** `pnpm validate:ts` → ESLint 0 warnings, `tsc --noEmit` clean, `@openvietgis/client-sdk` 58/58 passed, `@openvietgis/web` 44/44 passed, Vite production build clean
+- **Python static & unit/contract/arch:** `pnpm validate:py` → `ruff` clean, `mypy --strict` clean (79 files), `pytest` 533/533 passed
+- **Contracts, scope, architecture, docs:** `pnpm validate:contracts`, `pnpm validate:scope`, `pnpm validate:arch`, `pnpm validate:docs` → all OK
+- **Restricted-runtime PostGIS integration & performance:** `pnpm validate:integration` → 263 passed (including `test_map_migrations.py`, `test_map_viewport_real.py`, `test_saves.py`, `test_authorization_matrix.py`, `test_wire_contract.py`)
+- **Live Keycloak OIDC:** `OPENVIETGIS_LIVE_OIDC=1 pytest apps/api/tests/integration/identity/test_live_keycloak_oidc.py` → 2/2 passed
+- **Playwright E2E:** `pnpm validate:e2e` → 16/16 passed (4/4 `map-workspace.spec.ts`, 1/1 `map-performance.spec.ts`, 11/11 R001–R003 E2E); `pnpm validate:e2e:bootstrap` → 1/1 passed
+- **Security & tenant timing evidence:** `check_secret_surfaces.py` → 3/3 clean; `check_tenant_timing.py` → `sc-004: 1970 ms`, `sc-001: 297–322 ms`, `sc-011: 1957 ms`
+- **SC007 measured benchmark (100 trials after 5 warmups, 10,000-feature Core profile, external network blocked, `specs/004-map-workspace/evidence/sc007.json`):**
+  - Map open: `p50 = 1922.8 ms`, `p95 = 2254.5 ms` (budget `<= 3000 ms`), `max = 2790.4 ms`
+  - Select → authorized inspector: `p50 = 298.5 ms`, `p95 = 384.2 ms` (budget `<= 1000 ms`), `max = 468.9 ms`
+  - External requests: `0`
+
+## Outstanding Human Acceptance Gates
+
+- **R004 SC009 (T046):** Observe five actual first-time GIS-capable users completing the one-sentence task (4/5 independently open/inspect/reopen within 5 min) and record in `specs/004-map-workspace/evidence/usability.md`.
+- **R002 SC013:** Separate uncoached human evidence remains an external-release gate.
