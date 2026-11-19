@@ -24,3 +24,8 @@ export type {
   components as SpatialCatalogComponents
 } from "./generated/spatial-catalog";
 export * from "./spatial";
+export type {
+  paths as MapWorkspacePaths,
+  components as MapWorkspaceComponents
+} from "./generated/map-workspace";
+export * from "./maps";

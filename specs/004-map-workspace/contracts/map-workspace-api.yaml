@@ -1,0 +1,1660 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "OpenVietGIS Map Workspace API",
+    "version": "0.4.0",
+    "description": "R004 frozen map-workspace.md semantics. Numeric JSON values must be finite and non-boolean; all protected operations freshly authorize. No-store responses. Renderer-neutral logical identities."
+  },
+  "servers": [
+    {
+      "url": "/api/v1"
+    }
+  ],
+  "paths": {
+    "/organizations/{organization_id}/projects/{project_id}/map": {
+      "get": {
+        "operationId": "getMap",
+        "x-required-permission": "project.read",
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "serviceBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/OrganizationId"
+          },
+          {
+            "$ref": "#/components/parameters/ProjectId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful current-authority scoped operation.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectMap"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/R002Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Generic current authorization or CSRF denial.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/R002Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource hidden, absent, inaccessible, wrong scope or foreign actor operation.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/R002Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Revision, operation identity, resource lifecycle or no-change conflict.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MapError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Sanitized invalid request or unsupported geometry/CRS.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/RequestValidationError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/MapError"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Sanitized bounded read failure; never a successful empty view.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MapError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "operationId": "saveMap",
+        "x-required-permission": "project.edit",
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "serviceBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/OrganizationId"
+          },
+          {
+            "$ref": "#/components/parameters/ProjectId"
+          },
+          {
+            "$ref": "#/components/parameters/CsrfHeaderOptionalForBearer"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful current-authority scoped operation.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MapSaveReceipt"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/R002Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Generic current authorization or CSRF denial.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/R002Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource hidden, absent, inaccessible, wrong scope or foreign actor operation.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/R002Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Revision, operation identity, resource lifecycle or no-change conflict.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MapError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Sanitized invalid request or unsupported geometry/CRS.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/RequestValidationError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/MapError"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Sanitized bounded read failure; never a successful empty view.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MapError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveMapInput"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/organizations/{organization_id}/projects/{project_id}/map/operations/{operation_id}": {
+      "get": {
+        "operationId": "getMapOperation",
+        "x-required-permission": "project.edit",
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "serviceBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/OrganizationId"
+          },
+          {
+            "$ref": "#/components/parameters/ProjectId"
+          },
+          {
+            "$ref": "#/components/parameters/OperationId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful current-authority scoped operation.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MapSaveReceipt"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/R002Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Generic current authorization or CSRF denial.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/R002Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource hidden, absent, inaccessible, wrong scope or foreign actor operation.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/R002Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Revision, operation identity, resource lifecycle or no-change conflict.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MapError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Sanitized invalid request or unsupported geometry/CRS.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/RequestValidationError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/MapError"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Sanitized bounded read failure; never a successful empty view.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MapError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/organizations/{organization_id}/projects/{project_id}/map/history": {
+      "get": {
+        "operationId": "listMapHistory",
+        "x-required-permission": "project.read",
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "serviceBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/OrganizationId"
+          },
+          {
+            "$ref": "#/components/parameters/ProjectId"
+          },
+          {
+            "$ref": "#/components/parameters/HistoryLimit"
+          },
+          {
+            "$ref": "#/components/parameters/AfterRevision"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful current-authority scoped operation.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MapHistoryPage"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/R002Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Generic current authorization or CSRF denial.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/R002Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource hidden, absent, inaccessible, wrong scope or foreign actor operation.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/R002Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Revision, operation identity, resource lifecycle or no-change conflict.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MapError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Sanitized invalid request or unsupported geometry/CRS.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/RequestValidationError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/MapError"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Sanitized bounded read failure; never a successful empty view.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MapError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/organizations/{organization_id}/projects/{project_id}/layers/{layer_id}/viewport": {
+      "get": {
+        "operationId": "getMapViewport",
+        "x-required-permission": "project.read",
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "serviceBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/OrganizationId"
+          },
+          {
+            "$ref": "#/components/parameters/ProjectId"
+          },
+          {
+            "$ref": "#/components/parameters/LayerId"
+          },
+          {
+            "$ref": "#/components/parameters/ContentRevision"
+          },
+          {
+            "$ref": "#/components/parameters/SchemaRevision"
+          },
+          {
+            "$ref": "#/components/parameters/West"
+          },
+          {
+            "$ref": "#/components/parameters/South"
+          },
+          {
+            "$ref": "#/components/parameters/East"
+          },
+          {
+            "$ref": "#/components/parameters/North"
+          },
+          {
+            "$ref": "#/components/parameters/ViewportLimit"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful current-authority scoped operation.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MapViewport"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/R002Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Generic current authorization or CSRF denial.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/R002Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource hidden, absent, inaccessible, wrong scope or foreign actor operation.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/R002Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Revision, operation identity, resource lifecycle or no-change conflict.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MapError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Sanitized invalid request or unsupported geometry/CRS.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/RequestValidationError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/MapError"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Sanitized bounded read failure; never a successful empty view.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MapError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/organizations/{organization_id}/projects/{project_id}/layers/{layer_id}/display-extent": {
+      "get": {
+        "operationId": "getMapDisplayExtent",
+        "x-required-permission": "project.read",
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "serviceBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/OrganizationId"
+          },
+          {
+            "$ref": "#/components/parameters/ProjectId"
+          },
+          {
+            "$ref": "#/components/parameters/LayerId"
+          },
+          {
+            "$ref": "#/components/parameters/ContentRevision"
+          },
+          {
+            "$ref": "#/components/parameters/SchemaRevision"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful current-authority scoped operation.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MapDisplayExtent"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/R002Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Generic current authorization or CSRF denial.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/R002Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource hidden, absent, inaccessible, wrong scope or foreign actor operation.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/R002Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Revision, operation identity, resource lifecycle or no-change conflict.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MapError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Sanitized invalid request or unsupported geometry/CRS.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/RequestValidationError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/MapError"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Sanitized bounded read failure; never a successful empty view.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MapError"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "sessionCookie": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "openvietgis_session"
+      },
+      "serviceBearer": {
+        "type": "http",
+        "scheme": "bearer"
+      }
+    },
+    "parameters": {
+      "OrganizationId": {
+        "name": "organization_id",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "format": "uuid"
+        }
+      },
+      "ProjectId": {
+        "name": "project_id",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "format": "uuid"
+        }
+      },
+      "LayerId": {
+        "name": "layer_id",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "format": "uuid"
+        }
+      },
+      "OperationId": {
+        "name": "operation_id",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "format": "uuid"
+        }
+      },
+      "ContentRevision": {
+        "name": "content_revision",
+        "in": "query",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        }
+      },
+      "SchemaRevision": {
+        "name": "schema_revision",
+        "in": "query",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        }
+      },
+      "CsrfHeaderOptionalForBearer": {
+        "name": "X-OpenVietGIS-CSRF",
+        "in": "header",
+        "required": false,
+        "description": "Mandatory for cookie-authenticated mutations; not required for service bearer.",
+        "schema": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "HistoryLimit": {
+        "name": "limit",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100,
+          "default": 100
+        }
+      },
+      "AfterRevision": {
+        "name": "after_revision",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        }
+      },
+      "ViewportLimit": {
+        "name": "limit",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000,
+          "default": 500
+        }
+      },
+      "West": {
+        "name": "west",
+        "in": "query",
+        "required": true,
+        "schema": {
+          "type": "number",
+          "minimum": -180,
+          "maximum": 180
+        }
+      },
+      "South": {
+        "name": "south",
+        "in": "query",
+        "required": true,
+        "schema": {
+          "type": "number",
+          "minimum": -85.05112878,
+          "maximum": 85.05112878
+        }
+      },
+      "East": {
+        "name": "east",
+        "in": "query",
+        "required": true,
+        "schema": {
+          "type": "number",
+          "minimum": -180,
+          "maximum": 180
+        }
+      },
+      "North": {
+        "name": "north",
+        "in": "query",
+        "required": true,
+        "schema": {
+          "type": "number",
+          "minimum": -85.05112878,
+          "maximum": 85.05112878
+        }
+      }
+    },
+    "schemas": {
+      "MapViewpoint": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "longitude",
+          "latitude",
+          "zoom",
+          "bearing",
+          "pitch",
+          "crs"
+        ],
+        "properties": {
+          "longitude": {
+            "type": "number",
+            "minimum": -180,
+            "maximum": 180
+          },
+          "latitude": {
+            "type": "number",
+            "minimum": -85.05112878,
+            "maximum": 85.05112878
+          },
+          "zoom": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 22
+          },
+          "bearing": {
+            "type": "number",
+            "minimum": -180,
+            "maximum": 180
+          },
+          "pitch": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 60
+          },
+          "crs": {
+            "const": 4326
+          }
+        }
+      },
+      "MapStyle": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "color",
+          "opacity",
+          "width",
+          "radius"
+        ],
+        "properties": {
+          "color": {
+            "type": "string",
+            "pattern": "^#[0-9A-Fa-f]{6}$"
+          },
+          "opacity": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "width": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 12
+          },
+          "radius": {
+            "type": "number",
+            "minimum": 2,
+            "maximum": 20
+          }
+        }
+      },
+      "MapLayerReference": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "layer_id",
+          "visible",
+          "style"
+        ],
+        "properties": {
+          "layer_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "visible": {
+            "type": "boolean"
+          },
+          "style": {
+            "$ref": "#/components/schemas/MapStyle"
+          }
+        }
+      },
+      "MapConfiguration": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "layers",
+          "basemap",
+          "default_viewpoint"
+        ],
+        "properties": {
+          "layers": {
+            "type": "array",
+            "minItems": 0,
+            "maxItems": 32,
+            "items": {
+              "$ref": "#/components/schemas/MapLayerReference"
+            },
+            "description": "Layer IDs must be unique; order is render order."
+          },
+          "basemap": {
+            "const": "grid"
+          },
+          "default_viewpoint": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MapViewpoint"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "ProjectMap": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "map_id",
+          "organization_id",
+          "project_id",
+          "configuration_revision",
+          "configuration"
+        ],
+        "properties": {
+          "map_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "organization_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "project_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "configuration_revision": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "configuration": {
+            "$ref": "#/components/schemas/MapConfiguration"
+          }
+        }
+      },
+      "DefaultViewpointIntent": {
+        "oneOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "mode"
+            ],
+            "properties": {
+              "mode": {
+                "const": "preserve"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "mode"
+            ],
+            "properties": {
+              "mode": {
+                "const": "clear"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "mode",
+              "value"
+            ],
+            "properties": {
+              "mode": {
+                "const": "set"
+              },
+              "value": {
+                "$ref": "#/components/schemas/MapViewpoint"
+              }
+            }
+          }
+        ]
+      },
+      "SaveMapInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "operation_id",
+          "expected_revision",
+          "layers",
+          "basemap",
+          "default_viewpoint"
+        ],
+        "properties": {
+          "operation_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "expected_revision": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "layers": {
+            "type": "array",
+            "minItems": 0,
+            "maxItems": 32,
+            "items": {
+              "$ref": "#/components/schemas/MapLayerReference"
+            },
+            "description": "Unique same-Project logical Layer IDs, ordered."
+          },
+          "basemap": {
+            "const": "grid"
+          },
+          "default_viewpoint": {
+            "$ref": "#/components/schemas/DefaultViewpointIntent"
+          }
+        }
+      },
+      "MapSaveReceipt": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "map_id",
+          "operation_id",
+          "configuration_revision"
+        ],
+        "properties": {
+          "map_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "operation_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "configuration_revision": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          }
+        }
+      },
+      "MapRevision": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "map_id",
+          "operation_id",
+          "configuration_revision",
+          "prior_revision",
+          "actor_type",
+          "actor_id",
+          "actor_display_snapshot",
+          "created_at",
+          "before_configuration",
+          "after_configuration"
+        ],
+        "properties": {
+          "map_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "operation_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "configuration_revision": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "prior_revision": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "actor_type": {
+            "type": "string",
+            "enum": [
+              "human",
+              "service_principal"
+            ]
+          },
+          "actor_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "actor_display_snapshot": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "before_configuration": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MapConfiguration"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "after_configuration": {
+            "$ref": "#/components/schemas/MapConfiguration"
+          }
+        }
+      },
+      "MapHistoryPage": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "items",
+          "next_after_revision"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "maxItems": 100,
+            "items": {
+              "$ref": "#/components/schemas/MapRevision"
+            }
+          },
+          "next_after_revision": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "FeatureReadContext": {
+        "$ref": "../../003-spatial-catalog-crs/contracts/spatial-catalog-api.yaml#/components/schemas/FeatureReadContext"
+      },
+      "Geometry": {
+        "$ref": "../../003-spatial-catalog-crs/contracts/spatial-catalog-api.yaml#/components/schemas/Geometry"
+      },
+      "MapViewportFeature": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "feature_id",
+          "geometry"
+        ],
+        "properties": {
+          "feature_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9_-]+$"
+          },
+          "geometry": {
+            "$ref": "#/components/schemas/Geometry"
+          }
+        }
+      },
+      "MapViewport": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "context",
+          "items",
+          "complete",
+          "limitation"
+        ],
+        "properties": {
+          "context": {
+            "$ref": "#/components/schemas/FeatureReadContext"
+          },
+          "items": {
+            "type": "array",
+            "maxItems": 1000,
+            "items": {
+              "$ref": "#/components/schemas/MapViewportFeature"
+            }
+          },
+          "complete": {
+            "type": "boolean"
+          },
+          "limitation": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              null,
+              "feature_limit",
+              "position_limit",
+              "byte_limit"
+            ]
+          }
+        }
+      },
+      "Bounds4326": {
+        "type": "array",
+        "minItems": 4,
+        "maxItems": 4,
+        "prefixItems": [
+          {
+            "type": "number",
+            "minimum": -180,
+            "maximum": 180
+          },
+          {
+            "type": "number",
+            "minimum": -85.05112878,
+            "maximum": 85.05112878
+          },
+          {
+            "type": "number",
+            "minimum": -180,
+            "maximum": 180
+          },
+          {
+            "type": "number",
+            "minimum": -85.05112878,
+            "maximum": 85.05112878
+          }
+        ],
+        "items": false,
+        "description": "Nonwrapping [west,south,east,north]; west<east,south<north for request viewports."
+      },
+      "MapDisplayExtent": {
+        "oneOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "context",
+              "state",
+              "bounds"
+            ],
+            "properties": {
+              "context": {
+                "$ref": "#/components/schemas/FeatureReadContext"
+              },
+              "state": {
+                "const": "available"
+              },
+              "bounds": {
+                "$ref": "#/components/schemas/Bounds4326"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "context",
+              "state",
+              "bounds"
+            ],
+            "properties": {
+              "context": {
+                "$ref": "#/components/schemas/FeatureReadContext"
+              },
+              "state": {
+                "type": "string",
+                "enum": [
+                  "empty",
+                  "unavailable"
+                ]
+              },
+              "bounds": {
+                "type": "null"
+              }
+            }
+          }
+        ]
+      },
+      "MapError": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "code",
+          "detail"
+        ],
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": [
+              "STALE_MAP_REVISION",
+              "OPERATION_INTENT_CONFLICT",
+              "NO_CHANGES",
+              "MAP_READ_UNAVAILABLE",
+              "STALE_READ_PIN",
+              "PROJECT_NOT_WRITABLE",
+              "SOURCE_NOT_READY",
+              "UNSUPPORTED_CRS",
+              "UNSUPPORTED_TRANSFORMATION",
+              "TRANSFORMATION_OUT_OF_AREA",
+              "TRANSFORMATION_UNAVAILABLE",
+              "INVALID_GEOMETRY",
+              "BOUNDS_EXCEEDED"
+            ]
+          },
+          "detail": {
+            "type": "string"
+          }
+        }
+      },
+      "R002Error": {
+        "$ref": "../../003-spatial-catalog-crs/contracts/spatial-catalog-api.yaml#/components/schemas/R002Error"
+      },
+      "RequestValidationError": {
+        "$ref": "../../003-spatial-catalog-crs/contracts/spatial-catalog-api.yaml#/components/schemas/RequestValidationError"
+      }
+    }
+  }
+}
