@@ -7,7 +7,7 @@ Parent: [R004](../../ROADMAP.md#r004). Verified dependency c5cc5a9; design recon
 Deliver one Core desktop map per Project: bounded actual geometry, layer order/visibility/basic style, synchronized stable-ID selection/table/inspector, explicit shared Save/reopen, conflicts and lost-ack reconciliation. Accepted MapLibre engine sits behind MapEngine. Keep transient camera/active Layer/selection separate. Grid needs no external service. No import/edit/query/cartography/module expansion.
 
 ## Technical Context
-**Language/Version**: Python3.14 baseline; TypeScript6; Node26.
+**Language/Version**: Python3.13 baseline (>=3.13,<3.14); TypeScript6; Node26.
 **Primary Dependencies**: current FastAPI/Pydantic/SQLAlchemy, React19/TanStack Query/Vite; pinned MapLibre eligible under existing pnpm policy.
 **Storage**: existing PostgreSQL/PostGIS, additive map configuration/revision/operation tables with current tenant RLS proof; no new datastore.
 **Testing**: pytest real restricted-runtime integration/migrations/failure injection; Vitest/tsc/eslint; real Playwright+Keycloak; full exact-SHA CI and independent review.

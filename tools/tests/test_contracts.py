@@ -9,10 +9,11 @@ CONTRACTS = {
     "tenant-core": "002-identity-organization-tenancy",
     "service-admin": "002-identity-organization-tenancy",
     "spatial-catalog": "003-spatial-catalog-crs",
+    "map-workspace": "004-map-workspace",
 }
 
 
-def test_contract_validation_covers_r002_and_r003() -> None:
+def test_contract_validation_covers_all_integrated_contracts() -> None:
     expected_specs = {
         ROOT / "specs" / spec / "contracts" / f"{name}-api.yaml"
         for name, spec in CONTRACTS.items()
@@ -26,7 +27,7 @@ def test_contract_validation_covers_r002_and_r003() -> None:
     assert check_contracts.validate_contracts() == []
 
 
-def test_sdk_generator_covers_r002_and_r003() -> None:
+def test_sdk_generator_covers_all_integrated_contracts() -> None:
     package = json.loads(
         (ROOT / "packages/client-sdk/package.json").read_text(encoding="utf-8")
     )

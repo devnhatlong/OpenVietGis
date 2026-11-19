@@ -9,17 +9,20 @@ from openapi_spec_validator.validation.exceptions import OpenAPIValidationError
 ROOT = Path(__file__).resolve().parents[1]
 CONTRACT_DIR = ROOT / "specs" / "002-identity-organization-tenancy" / "contracts"
 SPATIAL_CONTRACT_DIR = ROOT / "specs" / "003-spatial-catalog-crs" / "contracts"
+MAP_CONTRACT_DIR = ROOT / "specs" / "004-map-workspace" / "contracts"
 OPENAPI_FILES = (
     CONTRACT_DIR / "auth-session-api.yaml",
     CONTRACT_DIR / "tenant-core-api.yaml",
     CONTRACT_DIR / "service-admin-api.yaml",
     SPATIAL_CONTRACT_DIR / "spatial-catalog-api.yaml",
+    MAP_CONTRACT_DIR / "map-workspace-api.yaml",
 )
 GENERATED_FILES = (
     ROOT / "packages" / "client-sdk" / "src" / "generated" / "auth-session.ts",
     ROOT / "packages" / "client-sdk" / "src" / "generated" / "tenant-core.ts",
     ROOT / "packages" / "client-sdk" / "src" / "generated" / "service-admin.ts",
     ROOT / "packages" / "client-sdk" / "src" / "generated" / "spatial-catalog.ts",
+    ROOT / "packages" / "client-sdk" / "src" / "generated" / "map-workspace.ts",
 )
 
 
@@ -49,7 +52,7 @@ def main() -> int:
         for error in errors:
             print(f"CONTRACT ERROR: {error}")
         return 1
-    print("Spec 002 and 003 contracts: OK")
+    print("Spec 002, 003 and 004 contracts: OK")
     return 0
 
 
