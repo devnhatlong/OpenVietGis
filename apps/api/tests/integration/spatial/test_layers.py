@@ -107,7 +107,7 @@ def _capabilities(layer) -> None:
     capabilities = {item["name"]: item for item in layer["capabilities"]}
     assert set(capabilities) == expected
     for name, item in capabilities.items():
-        supported = name in {"metadata_read", "feature_read"}
+        supported = name in {"metadata_read", "feature_read", "render", "style"}
         assert item == {
             "name": name,
             "technical_supported": supported,

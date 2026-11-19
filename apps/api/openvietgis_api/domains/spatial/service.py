@@ -14,6 +14,7 @@ from openvietgis_api.domains.authorization.context import AuthorizationContext
 from openvietgis_api.domains.authorization.permissions import Permission
 from openvietgis_api.domains.authorization.service import TenantResourceNotFoundError
 from openvietgis_api.domains.spatial.crs import (
+    WEB_MERCATOR_MAX_LATITUDE,
     CoordinateReferenceWire,
     TransformationProfileWire,
     get_coordinate_reference,
@@ -21,6 +22,7 @@ from openvietgis_api.domains.spatial.crs import (
 )
 from openvietgis_api.domains.spatial.domain import (
     MAX_REVISION,
+    SUPPORTED_FAMILIES,
     AttributeValue,
     CatalogChange,
     CatalogOperation,
@@ -28,12 +30,14 @@ from openvietgis_api.domains.spatial.domain import (
     ChangeValue,
     CoordinateTree,
     DataSource,
+    GeometryDimensions,
     GeometryState,
     Layer,
     Lifecycle,
     ReferenceFeature,
     ResourceType,
     SourceField,
+    SourceKind,
     SpatialValidationError,
     ValidationState,
     canonical_attribute_value,
@@ -569,6 +573,37 @@ class LayerMutationResult:
     change: CatalogChange
 
 
+def source_render_supported(source: DataSource) -> bool:
+    """Pure finite technical profile; actual reads recheck provenance and vertices."""
+    # R004's finite presentation support is separate from current authority.
+    # Readable native4326 at latitude86 remains outside the display profile.
+    native = source.stored_crs
+    provenance_compatible = (
+        native not in (4756, 5899)
+        or source.reference_key in {
+            "reference_points_4756", "reference_points_4756_hvs", "reference_points_5899",
+        }
+    )
+    geographic_extent_compatible = (
+        native != 4326 or source.feature_count == 0
+        or (
+            source.extent is not None
+            and -WEB_MERCATOR_MAX_LATITUDE <= source.extent.min_y
+            <= source.extent.max_y <= WEB_MERCATOR_MAX_LATITUDE
+        )
+    )
+    return (
+        source.kind == SourceKind.REFERENCE_FIXTURE
+        and source.geometry_family in SUPPORTED_FAMILIES
+        and source.dimensions == GeometryDimensions.XY
+        and source.feature_count is not None and source.feature_count <= 10_000
+        and (native == 4326 or (
+            native is not None and get_transformation_profile(native, 4326) is not None
+        ))
+        and provenance_compatible and geographic_extent_compatible
+    )
+
+
 def layer_capabilities(
     layer: Layer, source: DataSource, *, actor_authorized: bool
 ) -> tuple[LayerCapability, ...]:
@@ -580,6 +615,7 @@ def layer_capabilities(
         and source.lifecycle == Lifecycle.ACTIVE
         and (source.validation_state == ValidationState.READY)
     )
+    render_supported = source_render_supported(source)
     return (
         LayerCapability(
             "metadata_read", True, active, Permission.PROJECT_READ.value, actor_authorized
@@ -588,8 +624,16 @@ def layer_capabilities(
             "feature_read", True, ready, Permission.PROJECT_READ.value, actor_authorized
         ),
         *(
+            LayerCapability(
+                name, render_supported, ready and render_supported,
+                Permission.PROJECT_READ.value if render_supported else None,
+                actor_authorized if render_supported else False,
+            )
+            for name in ("render", "style")
+        ),
+        *(
             LayerCapability(name, False, False, None, False)
-            for name in ("render", "edit", "style", "export", "analysis", "offline", "query")
+            for name in ("edit", "export", "analysis", "offline", "query")
         ),
     )
 
