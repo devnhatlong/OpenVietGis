@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -18,6 +19,11 @@ FORBIDDEN_MARKERS = {
     "customrolebuilder": "custom-role builder",
     "publicsharelink": "public/anonymous sharing",
 }
+MAP_UI_ROOT = "apps/web/src/features/map/"
+MAP_ENGINE_ADAPTER = MAP_UI_ROOT + "maplibre-engine.ts"
+RENDERER_IMPORT = re.compile(
+    r"""(?:from\s*|import\s*(?:\(\s*)?)["']maplibre-gl(?:/[^"']*)?["']"""
+)
 
 
 def find_scope_violations(root: Path = ROOT) -> list[str]:
@@ -31,11 +37,21 @@ def find_scope_violations(root: Path = ROOT) -> list[str]:
             if any(part in SKIP_DIRS for part in path.relative_to(runtime_root).parts):
                 continue
             content = path.read_text(encoding="utf-8", errors="ignore").lower()
+            relative = path.relative_to(root).as_posix()
             for marker, label in FORBIDDEN_MARKERS.items():
+                if marker == "maplibre" and (
+                    relative == "apps/web/package.json" or relative.startswith(MAP_UI_ROOT)
+                ):
+                    # R004 permits references in its UI; only the replaceable
+                    # adapter can import renderer APIs, types or CSS.
+                    if relative != MAP_ENGINE_ADAPTER and RENDERER_IMPORT.search(content):
+                        violations.append(
+                            f"{relative} imports renderer APIs outside the MapEngine adapter"
+                        )
+                    continue
                 if marker in content:
                     violations.append(
-                        f"{path.relative_to(root).as_posix()} contains out-of-scope {label} marker "
-                        f"{marker!r}"
+                        f"{relative} contains out-of-scope {label} marker {marker!r}"
                     )
     return violations
 
@@ -46,7 +62,7 @@ def main() -> int:
         for violation in violations:
             print(f"SCOPE VIOLATION: {violation}")
         return 1
-    print("Spec 002 runtime scope: OK")
+    print("Accepted runtime scope and MapEngine boundary: OK")
     return 0
 
 

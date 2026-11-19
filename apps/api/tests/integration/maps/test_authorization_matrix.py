@@ -176,7 +176,7 @@ def test_archived_project_remains_readable_but_denies_save_and_edit_receipts(
         intent = _intent()
         saved = owner.put(root + "/map", json=intent)
         assert saved.status_code == 200, saved.text
-        archived = owner.post(root + "/archive")
+        archived = owner.patch(root, json={"status": "archived"})
         assert archived.status_code == 200, archived.text
         _assert_reads(owner, _reads(root, layer, pins), 200)
         current = owner.get(root + "/map").json()

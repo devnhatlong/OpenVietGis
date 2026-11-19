@@ -21,3 +21,29 @@ def test_scope_checker_rejects_gis_or_vertical_runtime_markers(tmp_path: Path) -
     assert len(violations) == 2
     assert any("map rendering engine" in item for item in violations)
     assert any("house-numbering vertical" in item for item in violations)
+
+
+def test_accepted_renderer_stays_inside_map_engine_adapter(tmp_path: Path) -> None:
+    map_root = tmp_path / "apps/web/src/features/map"
+    map_root.mkdir(parents=True)
+    (map_root / "maplibre-engine.ts").write_text(
+        'import { Map } from "maplibre-gl";\\n', encoding="utf-8"
+    )
+    (map_root / "MapWorkspace.tsx").write_text(
+        'import { createEngine } from "./maplibre-engine";\\n', encoding="utf-8"
+    )
+    assert find_scope_violations(tmp_path) == []
+
+
+def test_business_map_ui_cannot_import_renderer_types_or_dynamic_api(tmp_path: Path) -> None:
+    source = tmp_path / "apps/web/src/features/map/MapWorkspace.tsx"
+    source.parent.mkdir(parents=True)
+    for content in (
+        'import type { Map } from "maplibre-gl";',
+        'const renderer = await import("maplibre-gl");',
+        'import "maplibre-gl/dist/maplibre-gl.css";',
+    ):
+        source.write_text(content, encoding="utf-8")
+        violations = find_scope_violations(tmp_path)
+        assert len(violations) == 1
+        assert "outside the MapEngine adapter" in violations[0]
