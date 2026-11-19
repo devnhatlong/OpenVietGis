@@ -19,6 +19,7 @@ from openvietgis_api.domains.maps.ports import (
     MapReferenceUnavailableError,
     MapRevisionConflictError,
 )
+from openvietgis_api.domains.maps.viewport import MapReadUnavailableError
 from openvietgis_api.domains.spatial.ports import (
     SpatialActiveLayerDependenciesError,
     SpatialCrsCorrectionUnverifiedError,
@@ -72,6 +73,11 @@ _SPATIAL_ERRORS: dict[type[Exception], tuple[int, str, str]] = {
         "A requested map Layer is unavailable.",
     ),
     MapValidationError: (422, "INVALID_MAP_REQUEST", "Invalid map request."),
+    MapReadUnavailableError: (
+        503,
+        "MAP_READ_UNAVAILABLE",
+        "Map read unavailable; retry.",
+    ),
     SpatialRevisionConflictError: (
         409,
         "STALE_CATALOG_REVISION",

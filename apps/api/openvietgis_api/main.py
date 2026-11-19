@@ -9,6 +9,7 @@ from openvietgis_api.adapters.http import (
     grants,
     health,
     invitations,
+    map_viewport,
     maps,
     me,
     organizations,
@@ -60,6 +61,7 @@ def create_app() -> FastAPI:
     api_v1.include_router(service_principals.router)
     api_v1.include_router(spatial.router)
     api_v1.include_router(maps.router)
+    api_v1.include_router(map_viewport.router)
     app.include_router(api_v1)
     install_error_handlers(app)
     return app

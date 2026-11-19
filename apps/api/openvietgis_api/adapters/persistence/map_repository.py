@@ -30,8 +30,8 @@ from openvietgis_api.domains.maps.ports import (
     MapReferenceUnavailableError,
     MapRevisionConflictError,
 )
-from openvietgis_api.domains.spatial.crs import get_transformation_profile
-from openvietgis_api.domains.spatial.domain import SUPPORTED_FAMILIES, GeometryDimensions, Lifecycle
+from openvietgis_api.domains.spatial.domain import Lifecycle
+from openvietgis_api.domains.spatial.service import source_render_supported
 
 
 def _configuration(value: dict[str, Any]) -> Configuration:
@@ -165,13 +165,7 @@ class SqlMapRepository:
                 source is None
                 or source.lifecycle != Lifecycle.ACTIVE
                 or not source.readable
-                or source.stored_crs is None
-            or source.geometry_family not in SUPPORTED_FAMILIES
-                or source.dimensions != GeometryDimensions.XY
-                or (
-                    source.stored_crs != 4326
-                    and get_transformation_profile(source.stored_crs, 4326) is None
-                )
+                or not source_render_supported(source)
             ):
                 raise MapReferenceUnavailableError("map Layer is unavailable")
 
