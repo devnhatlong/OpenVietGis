@@ -4,7 +4,7 @@ Input: [spec](spec.md), [plan](plan.md), [research](research.md), [model](data-m
 Design prerequisite independently reviewed 2026-11-19; implementation evidence is recorded only when actually verified. Full feature acceptance includes SC009 human exercise.
 
 ## Phase 1: Setup
-- [ ] T001 Record dependency acceptance/design review and current ownership in specs/004-map-workspace/upstream-contract-reconciliation.md.
+- [x] T001 Record dependency acceptance/design review and current ownership in specs/004-map-workspace/upstream-contract-reconciliation.md.
 - [ ] T002 Pin eligible MapLibre dependency and frozen lockfile in apps/web/package.json and pnpm-lock.yaml without policy bypass.
 - [ ] T003 Freeze exact API/schema generation and field constraints in specs/004-map-workspace/contracts/map-workspace.md; trace every model field through tasks below.
 

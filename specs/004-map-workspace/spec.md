@@ -4,7 +4,7 @@
 
 **Created**: 2026-11-18
 
-**Status**: Draft — research/specify only; R003 and its prerequisite R002 are not yet accepted
+**Status**: Implementation in progress on verified R003 main c5cc5a9; independently reviewed R004 design. Historical dependency notes below are superseded by upstream-contract-reconciliation.md. No implementation acceptance yet.
 
 **Input**: Parent roadmap: [ROADMAP.md, R004](../../ROADMAP.md#r004). Provide a desktop-class GIS workspace where an authorized user opens one Map per Project, organizes available Layers, navigates and inspects real spatial features, and explicitly saves the shared map configuration. Keep the user's transient exploration separate from shared configuration. Do not implement import, geometry editing, advanced spatial query, cartography outputs, or vertical modules in this slice.
 
