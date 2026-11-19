@@ -12,6 +12,13 @@ from openvietgis_api.domains.authorization.service import (
     ServicePrincipalNotFoundError,
     TenantResourceNotFoundError,
 )
+from openvietgis_api.domains.maps.domain import MapValidationError
+from openvietgis_api.domains.maps.ports import (
+    MapIntentConflictError,
+    MapNoChangesError,
+    MapReferenceUnavailableError,
+    MapRevisionConflictError,
+)
 from openvietgis_api.domains.spatial.ports import (
     SpatialActiveLayerDependenciesError,
     SpatialCrsCorrectionUnverifiedError,
@@ -48,6 +55,23 @@ from openvietgis_api.domains.tenancy.service import (
 
 # Fixed customer-safe descriptions; never forward exception text or SQL details.
 _SPATIAL_ERRORS: dict[type[Exception], tuple[int, str, str]] = {
+    MapRevisionConflictError: (
+        409,
+        "STALE_MAP_REVISION",
+        "Map revision changed; reload the committed configuration.",
+    ),
+    MapIntentConflictError: (
+        409,
+        "OPERATION_INTENT_CONFLICT",
+        "This save operation cannot be reused.",
+    ),
+    MapNoChangesError: (409, "NO_CHANGES", "The map configuration has no material changes."),
+    MapReferenceUnavailableError: (
+        422,
+        "MAP_REFERENCE_UNAVAILABLE",
+        "A requested map Layer is unavailable.",
+    ),
+    MapValidationError: (422, "INVALID_MAP_REQUEST", "Invalid map request."),
     SpatialRevisionConflictError: (
         409,
         "STALE_CATALOG_REVISION",
