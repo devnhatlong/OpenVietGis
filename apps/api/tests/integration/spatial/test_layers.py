@@ -107,12 +107,25 @@ def _capabilities(layer) -> None:
     capabilities = {item["name"]: item for item in layer["capabilities"]}
     assert set(capabilities) == expected
     for name, item in capabilities.items():
-        supported = name in {"metadata_read", "feature_read", "render", "style", "export"}
+        supported = name in {
+            "metadata_read",
+            "feature_read",
+            "render",
+            "style",
+            "export",
+            "query",
+            "analysis",
+        }
+        req_perm = (
+            "project.edit"
+            if name == "analysis"
+            else ("project.read" if supported else None)
+        )
         assert item == {
             "name": name,
             "technical_supported": supported,
             "available": supported,
-            "required_permission": "project.read" if supported else None,
+            "required_permission": req_perm,
             "actor_authorized": supported,
         }
 

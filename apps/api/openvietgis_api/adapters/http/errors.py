@@ -20,6 +20,7 @@ from openvietgis_api.domains.maps.ports import (
     MapRevisionConflictError,
 )
 from openvietgis_api.domains.maps.viewport import MapReadUnavailableError
+from openvietgis_api.domains.platform_errors import PlatformDomainError
 from openvietgis_api.domains.spatial.ports import (
     SpatialActiveLayerDependenciesError,
     SpatialCrsCorrectionUnverifiedError,
@@ -167,6 +168,14 @@ def install_error_handlers(app: FastAPI) -> None:
                 "detail": [{"loc": [], "msg": "invalid request payload", "type": "value_error"}]
             },
         )
+
+    @app.exception_handler(PlatformDomainError)
+    async def platform_domain_error_handler(_: Request, exc: Exception) -> JSONResponse:
+        assert isinstance(exc, PlatformDomainError)
+        payload: dict[str, object] = {"code": exc.code, "message": exc.message}
+        if exc.details:
+            payload["details"] = exc.details
+        return JSONResponse(status_code=exc.status_code, content=payload)
 
     @app.exception_handler(TransferError)
     async def transfer_error_handler(_: Request, exc: Exception) -> JSONResponse:

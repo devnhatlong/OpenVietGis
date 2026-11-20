@@ -160,7 +160,12 @@ class SqlMapViewportRepository(SqlSpatialRepository):
         )
         source = detail.source
         if (
-            source.kind not in (SourceKind.REFERENCE_FIXTURE, SourceKind.IMPORTED_FILE)
+            source.kind
+            not in (
+                SourceKind.REFERENCE_FIXTURE,
+                SourceKind.IMPORTED_FILE,
+                SourceKind.DERIVED_PROCESSING,
+            )
             or source.dimensions != GeometryDimensions.XY
             or source.geometry_family not in SUPPORTED_FAMILIES
             or source.feature_count is None

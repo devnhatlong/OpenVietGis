@@ -6,8 +6,10 @@ requires-python = ">=3.13,<3.14"
 dependencies = [
   "alembic==1.20.1",
   "authlib==1.9.8",
+  "ezdxf>=1.4.5",
   "fastapi==0.163.1",
   "itsdangerous==2.2.0",
+  "pillow>=13.0.0",
   "psycopg[binary]>=3.2",
   "pydantic-settings>=2.10",
   "pyshp>=3.1.9",

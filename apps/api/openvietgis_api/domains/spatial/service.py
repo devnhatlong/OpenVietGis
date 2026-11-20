@@ -600,7 +600,8 @@ def source_render_supported(source: DataSource) -> bool:
         )
     )
     return (
-        source.kind in (SourceKind.REFERENCE_FIXTURE, SourceKind.IMPORTED_FILE)
+        source.kind
+        in (SourceKind.REFERENCE_FIXTURE, SourceKind.IMPORTED_FILE, SourceKind.DERIVED_PROCESSING)
         and source.geometry_family in SUPPORTED_FAMILIES
         and source.dimensions == GeometryDimensions.XY
         and source.feature_count is not None
@@ -641,12 +642,27 @@ def layer_capabilities(
                 Permission.PROJECT_READ.value if render_supported else None,
                 actor_authorized if render_supported else False,
             )
-            for name in ("render", "style", "export")
+            for name in ("render", "style", "export", "query")
         ),
-        *(
-            LayerCapability(name, False, False, None, False)
-            for name in ("edit", "analysis", "offline", "query")
+        LayerCapability(
+            "edit",
+            render_supported and source.kind != SourceKind.REFERENCE_FIXTURE,
+            ready and render_supported and source.kind != SourceKind.REFERENCE_FIXTURE,
+            Permission.PROJECT_EDIT.value
+            if (render_supported and source.kind != SourceKind.REFERENCE_FIXTURE)
+            else None,
+            actor_authorized
+            if (render_supported and source.kind != SourceKind.REFERENCE_FIXTURE)
+            else False,
         ),
+        LayerCapability(
+            "analysis",
+            render_supported,
+            ready and render_supported,
+            Permission.PROJECT_EDIT.value if render_supported else None,
+            actor_authorized if render_supported else False,
+        ),
+        LayerCapability("offline", False, False, None, False),
     )
 
 

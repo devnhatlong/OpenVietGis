@@ -44,6 +44,7 @@ class SpatialValidationError(ValueError):
 class SourceKind(StrEnum):
     REFERENCE_FIXTURE = "reference_fixture"
     IMPORTED_FILE = "imported_file"
+    DERIVED_PROCESSING = "derived_processing"
 
 
 class Lifecycle(StrEnum):
@@ -134,6 +135,8 @@ class ResourceType(StrEnum):
 class CatalogOperation(StrEnum):
     REGISTER_SOURCE = "register_source"
     IMPORT_SOURCE = "import_source"
+    EDIT_FEATURES = "edit_features"
+    PROCESSING_PUBLISH = "processing_publish"
     UPDATE_SOURCE = "update_source"
     CORRECT_SOURCE_CRS = "correct_source_crs"
     RETIRE_SOURCE = "retire_source"
