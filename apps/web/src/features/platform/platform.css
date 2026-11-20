@@ -1,0 +1,172 @@
+.ovg-suite {
+  min-height: 100vh;
+  background: #f8fafc;
+  color: #0f172a;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.ovg-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.75rem 1.25rem;
+  background: #0f172a;
+  color: #f8fafc;
+}
+
+.ovg-toolbar-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.ovg-toolbar a {
+  color: #cbd5e1;
+  text-decoration: none;
+  padding: 0.3rem 0.65rem;
+  border-radius: 6px;
+  font-size: 0.85rem;
+}
+
+.ovg-toolbar a:hover,
+.ovg-toolbar a.active {
+  background: #2563eb;
+  color: #ffffff;
+}
+
+.ovg-suite-body {
+  max-width: 1220px;
+  margin: 0 auto;
+  padding: 1.25rem;
+  display: grid;
+  gap: 1rem;
+}
+
+.ovg-card {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 1rem 1.25rem;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+.ovg-grid-2 {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  gap: 1rem;
+}
+
+.ovg-form-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  align-items: flex-end;
+  margin-top: 0.5rem;
+}
+
+.ovg-form-row label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #334155;
+}
+
+.ovg-form-row input,
+.ovg-form-row select,
+.ovg-form-row textarea {
+  padding: 0.45rem 0.6rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  font-size: 0.88rem;
+  min-width: 150px;
+}
+
+.ovg-btn {
+  background: #2563eb;
+  color: #ffffff;
+  border: none;
+  border-radius: 6px;
+  padding: 0.5rem 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+.ovg-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.ovg-btn-secondary {
+  background: #e2e8f0;
+  color: #0f172a;
+}
+
+.ovg-notice {
+  padding: 0.65rem 0.9rem;
+  border-radius: 8px;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  color: #1e40af;
+  font-size: 0.88rem;
+}
+
+.ovg-error {
+  padding: 0.65rem 0.9rem;
+  border-radius: 8px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #991b1b;
+  font-size: 0.88rem;
+}
+
+.ovg-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.84rem;
+  margin-top: 0.5rem;
+}
+
+.ovg-table th,
+.ovg-table td {
+  border-bottom: 1px solid #e2e8f0;
+  text-align: left;
+  padding: 0.45rem 0.5rem;
+}
+
+.ovg-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.ovg-tab {
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
+  color: #334155;
+  padding: 0.45rem 0.85rem;
+  border-radius: 6px;
+  font-weight: 600;
+  cursor: pointer;
+  font-size: 0.84rem;
+}
+
+.ovg-tab.active {
+  background: #0f172a;
+  color: #ffffff;
+  border-color: #0f172a;
+}
+
+.ovg-badge {
+  display: inline-block;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.74rem;
+  font-weight: 600;
+  background: #dcfce7;
+  color: #166534;
+}

@@ -659,7 +659,7 @@ components:
         organization_id: {"type":"string","format":"uuid"}
         project_id: {"type":"string","format":"uuid"}
         name: {"type":"string","minLength":1,"maxLength":200}
-        kind: {"type":"string","enum":["reference_fixture","imported_file"]}
+        kind: {"type":"string","enum":["reference_fixture","imported_file","derived_processing"]}
         provenance: {"$ref":"#/components/schemas/Provenance"}
         lifecycle: {"type":"string","enum":["active","retired"]}
         validation_state: {"type":"string","enum":["ready","invalid","not_ready"]}
@@ -685,7 +685,7 @@ components:
         name: {"type":"string","enum":["metadata_read","feature_read","render","edit","style","export","analysis","offline","query"]}
         technical_supported: {"type":"boolean"}
         available: {"type":"boolean"}
-        required_permission: {"anyOf":[{"const":"project.read"},{"type":"null"}]}
+        required_permission: {"anyOf":[{"enum":["project.read","project.edit"]},{"type":"null"}]}
         actor_authorized: {"type":"boolean"}
     Layer:
       type: "object"

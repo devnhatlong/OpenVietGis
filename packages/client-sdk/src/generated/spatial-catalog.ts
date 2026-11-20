@@ -293,7 +293,7 @@ export interface components {
             project_id: string;
             name: string;
             /** @enum {string} */
-            kind: "reference_fixture" | "imported_file";
+            kind: "reference_fixture" | "imported_file" | "derived_processing";
             provenance: components["schemas"]["Provenance"];
             /** @enum {string} */
             lifecycle: "active" | "retired";
@@ -323,7 +323,7 @@ export interface components {
             name: "metadata_read" | "feature_read" | "render" | "edit" | "style" | "export" | "analysis" | "offline" | "query";
             technical_supported: boolean;
             available: boolean;
-            required_permission: "project.read" | null;
+            required_permission: ("project.read" | "project.edit") | null;
             actor_authorized: boolean;
         };
         Layer: {

@@ -34,7 +34,15 @@ from openvietgis_api.domains.processing.domain import (
     ProcessingStatus,
     validate_algorithm_parameters,
 )
-from openvietgis_api.domains.spatial.domain import FieldType, Lifecycle, ValidationState
+from openvietgis_api.domains.spatial.domain import (
+    FieldType,
+    GeometryDimensions,
+    GeometryFamily,
+    Lifecycle,
+    SourceField,
+    ValidationState,
+    schema_revision_digest,
+)
 
 
 def _job_from_row(row: RowMapping) -> ProcessingJobRecord:
@@ -440,9 +448,24 @@ class SqlProcessingRepository:
                 sort_keys=True,
             ).encode()
         ).hexdigest()
-        schema_rev = hashlib.sha256(
-            json.dumps([(f[0], f[2].value) for f in output_fields]).encode()
-        ).hexdigest()
+        dummy_rev = "0" * 64
+        schema_fields = [
+            SourceField(
+                organization_id=org_id,
+                project_id=project_id,
+                source_id=out_source_id,
+                field_id=fid,
+                name=fname,
+                ordinal=ordinal,
+                type=ftype,
+                nullable=nullable,
+                schema_revision=dummy_rev,
+            )
+            for ordinal, (fid, fname, ftype, nullable) in enumerate(output_fields)
+        ]
+        schema_rev = schema_revision_digest(
+            schema_fields, GeometryFamily(output_family), GeometryDimensions.XY
+        )
         content_rev = hashlib.sha256(
             f"{out_source_id}:{len(derived_rows)}:{manifest_digest}".encode()
         ).hexdigest()

@@ -26,6 +26,13 @@ from openvietgis_api.domains.platform_errors import (
     PlatformNotFoundError,
     PlatformValidationError,
 )
+from openvietgis_api.domains.spatial.domain import (
+    FieldType,
+    GeometryDimensions,
+    GeometryFamily,
+    SourceField,
+    schema_revision_digest,
+)
 
 
 def _conv_from_row(row: RowMapping) -> CadConversionRecord:
@@ -134,7 +141,25 @@ class SqlCadRepository:
         out_source_id = uuid4()
         out_layer_id = uuid4()
         clean_name = layer_name.strip()[:200] or "CAD DXF Layer"
-        schema_rev = hashlib.sha256(b"cad_layer:text|cad_entity:text").hexdigest()
+        cad_fields = [
+            SourceField(
+                organization_id=org_id,
+                project_id=project_id,
+                source_id=out_source_id,
+                field_id=fid,
+                name=fname,
+                ordinal=ordinal,
+                type=FieldType.TEXT,
+                nullable=False,
+                schema_revision="0" * 64,
+            )
+            for ordinal, (fid, fname) in enumerate(
+                [("cad_layer", "CAD Layer"), ("cad_entity", "CAD Entity")]
+            )
+        ]
+        schema_rev = schema_revision_digest(
+            cad_fields, GeometryFamily(family), GeometryDimensions.XY
+        )
         content_rev = hashlib.sha256(f"{out_source_id}:{sha256_hex}".encode()).hexdigest()
         ref_key = f"cad_dxf_{str(out_source_id).replace('-', '')[:12]}"
 

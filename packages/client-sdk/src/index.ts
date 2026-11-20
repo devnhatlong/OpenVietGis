@@ -34,3 +34,4 @@ export type {
   components as ImportExportComponents
 } from "./generated/import-export";
 export * from "./transfers";
+export * from "./platform";

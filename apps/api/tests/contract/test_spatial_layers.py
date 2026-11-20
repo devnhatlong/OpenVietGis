@@ -68,8 +68,17 @@ BASE = "/organizations/{organization_id}/projects/{project_id}/layers"
 DETAIL = BASE + "/{layer_id}"
 RETIRE = DETAIL + "/retire"
 
-SUPPORTED_CAPABILITIES = {"metadata_read", "feature_read", "render", "style", "export"}
-UNSUPPORTED_CAPABILITIES = {"edit", "analysis", "offline", "query"}
+SUPPORTED_CAPABILITIES = {
+    "metadata_read",
+    "feature_read",
+    "render",
+    "style",
+    "export",
+    "query",
+    "analysis",
+    "offline",
+}
+UNSUPPORTED_CAPABILITIES = {"edit"}
 
 
 def url(template: str = BASE, *, org=ORG, project=PROJECT, layer_id=UNKNOWN) -> str:
@@ -209,9 +218,9 @@ def assert_capabilities(layer: dict, *, feature_available: bool) -> None:
             "name": name,
             "technical_supported": True,
             "available": feature_available
-            if name in {"feature_read", "render", "style", "export"}
+            if name in {"feature_read", "render", "style", "export", "query", "analysis", "offline"}
             else True,
-            "required_permission": "project.read",
+            "required_permission": "project.edit" if name == "analysis" else "project.read",
             "actor_authorized": True,
         }
     for name in UNSUPPORTED_CAPABILITIES:
