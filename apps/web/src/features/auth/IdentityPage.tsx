@@ -114,7 +114,7 @@ function IdentityDetails({ account }: { account: CurrentUser }) {
       ))}
 
       <button type="button" onClick={() => signOut.mutate()} disabled={signOut.isPending || unlink.isPending}>
-        Sign out
+        Đăng xuất
       </button>
       {unlink.error ? <p role="alert">Unable to unlink identity.</p> : null}
       {signOut.error ? <p role="alert">Unable to sign out.</p> : null}

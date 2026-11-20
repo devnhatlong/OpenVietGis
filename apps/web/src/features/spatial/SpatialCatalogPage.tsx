@@ -216,7 +216,7 @@ function LayerPanel({ organizationId, projectId, accountId, source, writable }: 
             <label>Layer name{" "}
               <input value={name} onChange={event => setName(event.target.value)} required maxLength={200} />
             </label>{" "}
-            <button type="submit" disabled={!name.trim()}>Create Layer</button>
+            <button type="submit" disabled={!name.trim()}>Tạo lớp mới</button>
           </fieldset>
         </form>
       ) : null}
@@ -393,7 +393,7 @@ function CatalogView({ organizationId, projectId, accountId }: {
 
   return (
     <main style={{ maxWidth: 1100, margin: "32px auto", padding: "0 16px", fontFamily: "system-ui, sans-serif" }}>
-      <p><Link to={"/organizations/" + encodeURIComponent(organizationId) + "/projects"}>← Projects</Link></p>
+      <p><Link to={"/organizations/" + encodeURIComponent(organizationId) + "/projects"}>← Danh sách Dự án</Link></p>
       <h1>Spatial source catalog</h1>
       <p>Register and inspect trusted reference fixtures. No uploads or external data connections.</p>
       {!project || !hasProjectAccess || !catalog ? (

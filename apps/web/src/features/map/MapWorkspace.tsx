@@ -15,7 +15,7 @@ import { CommandBar } from "./CommandBar";
 import { FeatureInspector } from "./FeatureInspector";
 import { LayerTree } from "./LayerTree";
 import { createCommands,invokeCommand,type MapCommandId } from "./commands";
-import type { MapEngine,RenderLayer } from "./engine";
+import { BASEMAP_OPTIONS,type BasemapId,type MapEngine,type RenderLayer } from "./engine";
 import { createMapLibreEngine } from "./maplibre-engine";
 import { beginSave,markUnresolved,receiptMatches,saveErrorState,type PendingSave } from "./save";
 import { boundsOfGeometry,capability,combineBounds,mapResponseMatches,positionCount,selectionKey,toggleSelection,viewportMatches,type Bounds,type SelectionScope } from "./workspace";
@@ -57,6 +57,8 @@ function Workspace({organizationId,projectId,accountId,project,initial,canEdit}:
  const [pending,setPending]=useState<PendingSave|null>(null),[notice,setNotice]=useState(""),[working,setWorking]=useState(false);
  const [showHistory,setShowHistory]=useState(false),[historyCursor,setHistoryCursor]=useState<number|undefined>();
  const [contextMenu,setContextMenu]=useState(false);
+ const [basemap,setBasemap]=useState<BasemapId>(()=>window.location.protocol==="https:"?"hybrid":"grid");
+ useEffect(()=>{engine.current?.setBasemap(basemap);},[basemap]);
  const initialFit=useRef(false),fitGeneration=useRef(0);
  const writable=canEdit&&project.status==="active";
  const locked=working||pending?.status==="unresolved";
@@ -101,7 +103,7 @@ function Workspace({organizationId,projectId,accountId,project,initial,canEdit}:
  useLayoutEffect(()=>{
   if(!canvas.current)return;
   const map=createMapLibreEngine(canvas.current,{viewport:(bounds,value)=>handlers.current.viewport(bounds,value),pick:(id,multiple)=>handlers.current.pick(id,multiple),ready:setEngineReady,error:()=>setEngineError(true)});
-  engine.current=map;map.setCamera(initial.configuration.default_viewpoint??defaultCamera);
+  engine.current=map;map.setBasemap(window.location.protocol==="https:"?"hybrid":"grid");map.setCamera(initial.configuration.default_viewpoint??defaultCamera);
   return ()=>{map.clear();map.destroy();engine.current=null;};
  },[]);
  const frames:RenderLayer[]=[];
@@ -214,7 +216,7 @@ function Workspace({organizationId,projectId,accountId,project,initial,canEdit}:
   if(id==="map.fit-selection")void fitSelection();
   if(id==="map.clear-selection")setSelection(null);
   if(id==="map.save")void submitSave();
-  if(id==="map.set-default-viewpoint"){const current=engine.current?.getCamera()??camera;setViewpointIntent({mode:"set",value:current});setNotice("Current viewpoint designated. Save map to commit it.");}
+  if(id==="map.set-default-viewpoint"){const current=engine.current?.getCamera()??camera;setViewpointIntent({mode:"set",value:current});setNotice("Đã đánh dấu góc nhìn hiện tại. Bấm Lưu bản đồ để ghi nhận.");}
   if(id==="map.zoom-in")engine.current?.zoom(1);if(id==="map.zoom-out")engine.current?.zoom(-1);
  }
  const commands=createCommands({hasActive:capability(activeLayer,"render"),hasVisible:configuration.layers.some((r,i)=>r.visible&&capability(metadata[i],"render")),hasSelection:selected.length>0&&capability(activeLayer,"render"),canSave:writable,busy:locked},execute);
@@ -224,14 +226,15 @@ function Workspace({organizationId,projectId,accountId,project,initial,canEdit}:
    let id:string|null=null;if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==="s")id="map.save";if(event.key.toLowerCase()==="f")id="map.fit-layer";if(event.key==="Escape")id="map.clear-selection";if(event.key==="+")id="map.zoom-in";if(event.key==="-")id="map.zoom-out";if(id){event.preventDefault();invokeCommand(commandRef.current,id,"shortcut");}};
   window.addEventListener("keydown",key);return()=>window.removeEventListener("keydown",key);
  },[]);
- const readError=activeBlocked?"The selected Layer or feature needs explicit current-access revalidation.":pageQuery.error?errorMessage(pageQuery.error):null;
+ const readError=activeBlocked?"Lớp hoặc đối tượng đang chọn cần xác thực lại quyền truy cập hiện hành.":pageQuery.error?errorMessage(pageQuery.error):null;
  const detailError=activeBlocked?readError:detailQuery.error?errorMessage(detailQuery.error):null;
  const dirty=JSON.stringify(configuration.layers)!==JSON.stringify(saved.configuration.layers)||viewpointIntent.mode!=="preserve"||saved.configuration_revision===0;
  function change(layers:MapLayerReference[]):void {if(locked)return;setConfiguration({...configuration,layers});setPending(null);if(active&&!layers.some(l=>l.layer_id===active))choose(layers[0]?.layer_id??"");}
  return <main className="gis-workspace" data-testid="map-workspace">
   <header className="gis-header"><div><Link to={"/organizations/"+organizationId+"/projects"}>← Dự án</Link><span className="gis-logo">OVG</span><h1>{project.name}<small>Không gian Bản đồ</small></h1></div><div className="gis-header-meta"><span>{project.status==="archived"?"Dự án lưu trữ (chỉ đọc)":writable?"Biên tập dự án":"Xem cục bộ · quyền đọc"}</span><Link to={"/organizations/"+organizationId+"/projects/"+projectId+"/spatial"}>Danh mục GIS</Link><Link to={"/organizations/"+organizationId+"/projects/"+projectId+"/transfers"}>Nhập / Xuất</Link><Link to={"/organizations/"+organizationId+"/projects/"+projectId+"/editing"}>Biên tập (R006)</Link><Link to={"/organizations/"+organizationId+"/projects/"+projectId+"/queries"}>Truy vấn (R007)</Link><Link to={"/organizations/"+organizationId+"/projects/"+projectId+"/processing"}>Xử lý (R008)</Link><Link to={"/organizations/"+organizationId+"/projects/"+projectId+"/cartography"}>In ấn (R009)</Link><Link to={"/organizations/"+organizationId+"/projects/"+projectId+"/platform-hub"}>Trung tâm (R010–R015)</Link></div></header>
-  <div className="map-context"><span>Organization <code>{organizationId}</code></span><span>Project <code>{projectId}</code></span><span>Shared revision {saved.configuration_revision}{dirty?" · Unsaved local changes":""}</span></div>
+  <div className="map-context"><span>Tổ chức <code>{organizationId}</code></span><span>Dự án <code>{projectId}</code></span><span>Phiên bản chung {saved.configuration_revision}{dirty?" · Có thay đổi cục bộ chưa lưu":""}</span></div>
   <CommandBar commands={commands}/>
+  <div className="map-basemap-bar" style={{display:"flex",flexWrap:"wrap",alignItems:"center",gap:"0.4rem",padding:"0.4rem 0.9rem",background:"#f1f5f9",borderBottom:"1px solid #cbd5e1",fontSize:"0.84rem"}}><strong>Bản đồ nền:</strong>{BASEMAP_OPTIONS.map(opt=><button key={opt.id} type="button" data-testid={"basemap-"+opt.id} style={{padding:"0.25rem 0.65rem",borderRadius:6,border:"1px solid #94a3b8",cursor:"pointer",background:basemap===opt.id?"#0f172a":"#ffffff",color:basemap===opt.id?"#ffffff":"#0f172a",fontWeight:600}} onClick={()=>setBasemap(opt.id)}>{opt.label}</button>)}</div>
   <div className="map-body">
    <LayerTree layers={configuration.layers} metadata={metadata} active={active} catalog={catalog?.items} locked={locked} states={states} choose={choose} change={change}
     nextCatalog={catalog?.next_after_id?()=>{setCatalogPages([...catalogPages,catalogCursor]);setCatalogCursor(catalog.next_after_id);}:null}
@@ -246,20 +249,20 @@ function Workspace({organizationId,projectId,accountId,project,initial,canEdit}:
    </section>
    <FeatureInspector layer={activeLayer} detail={detail} focus={focus} count={selected.length} error={detailError}/>
   </div>
-  <div className="map-sessionbar"><span>Shift/Ctrl-click to toggle selection · {selected.length}/100 selected</span><span>Camera {camera.longitude.toFixed(5)}, {camera.latitude.toFixed(5)} · zoom {camera.zoom.toFixed(2)}</span><button onClick={()=>void revalidate()}>Revalidate current access</button></div>
+  <div className="map-sessionbar"><span>Shift/Ctrl-click to toggle selection · {selected.length}/100 đang chọn</span><span>Tọa độ tâm {camera.longitude.toFixed(5)}, {camera.latitude.toFixed(5)} · mức thu phóng {camera.zoom.toFixed(2)}</span><button onClick={()=>void revalidate()}>Kiểm tra lại quyền truy cập</button></div>
   <AttributeTable layer={capability(activeLayer,"feature_read")?activeLayer:undefined} page={page} selected={selected} focus={focus} select={select} pageNumber={pages.length+1} error={readError}
    previous={pages.length?()=>{setCursor(pages[pages.length-1]??null);setPages(pages.slice(0,-1));}:null}
    next={page?.next_after_feature_id?()=>{setPages([...pages,cursor]);setCursor(page.next_after_feature_id);}:null}/>
-  <section className="map-save-panel" aria-label="Shared map configuration"><div><h2>Shared configuration</h2><p data-testid="map-save-status">{pending?.status??(dirty?"dirty":"committed")} · revision {saved.configuration_revision} · default viewpoint {viewpointIntent.mode==="preserve"?(saved.configuration.default_viewpoint?"preserved":"not designated"):viewpointIntent.mode==="clear"?"clear on save":"set on save"}</p></div>
-   <button disabled={!writable||locked} onClick={()=>invokeCommand(commands,"map.set-default-viewpoint","toolbar")}>Set default viewpoint</button>
-   <button disabled={!writable||locked} onClick={()=>{setViewpointIntent({mode:"clear"});setPending(null);}}>Clear default viewpoint</button>
-   <button disabled={!writable||locked} onClick={()=>void submitSave()}>Save map</button>
-   <button disabled={working} onClick={()=>void reloadShared()}>Reload shared map</button>
-   {pending?.status==="unresolved"?<><button disabled={working||!writable} onClick={()=>void reconcile()}>Reconcile save</button><button disabled={working||!writable} onClick={()=>void submitSave(true)}>Retry same save</button></>:null}
-   <button onClick={()=>setShowHistory(!showHistory)}>{showHistory?"Hide":"Show"} map history</button>
+  <section className="map-save-panel" aria-label="Shared map configuration"><div><h2>Cấu hình bản đồ dùng chung</h2><p data-testid="map-save-status">{pending?.status??(dirty?"chưa lưu":"đã lưu")} · phiên bản {saved.configuration_revision} · góc nhìn mặc định: {viewpointIntent.mode==="preserve"?(saved.configuration.default_viewpoint?"giữ nguyên":"chưa đặt"):viewpointIntent.mode==="clear"?"xóa khi lưu":"cập nhật khi lưu"}</p></div>
+   <button disabled={!writable||locked} onClick={()=>invokeCommand(commands,"map.set-default-viewpoint","toolbar")}>Đặt góc nhìn mặc định</button>
+   <button disabled={!writable||locked} onClick={()=>{setViewpointIntent({mode:"clear"});setPending(null);}}>Xóa góc nhìn mặc định</button>
+   <button disabled={!writable||locked} onClick={()=>void submitSave()}>Lưu bản đồ</button>
+   <button disabled={working} onClick={()=>void reloadShared()}>Tải lại bản đồ chung</button>
+   {pending?.status==="unresolved"?<><button disabled={working||!writable} onClick={()=>void reconcile()}>Đối chiếu bản lưu</button><button disabled={working||!writable} onClick={()=>void submitSave(true)}>Thử lưu lại</button></>:null}
+   <button onClick={()=>setShowHistory(!showHistory)}>{showHistory?"Ẩn":"Xem"} lịch sử bản đồ</button>
   </section>
   {notice?<p className="map-notice" role="status">{notice}</p>:null}
-  {showHistory?<section className="map-history" aria-label="Map configuration history"><h2>Configuration history</h2>{history?<><ol>{history.items.map(revision=><li key={revision.configuration_revision}><strong>Revision {revision.configuration_revision}</strong> · {revision.actor_display_snapshot} · {revision.created_at}<details><summary>Configuration before / after</summary><pre>{JSON.stringify({before:revision.before_configuration,after:revision.after_configuration},null,2)}</pre></details></li>)}</ol><button disabled={history.next_after_revision===null} onClick={()=>{if(history.next_after_revision!==null)setHistoryCursor(history.next_after_revision);}}>Older map revisions</button><button disabled={historyCursor===undefined} onClick={()=>setHistoryCursor(undefined)}>Latest map revisions</button></>:<p>{historyQuery.error?"Current history access is unavailable.":"Checking current history access…"}</p>}</section>:null}
+  {showHistory?<section className="map-history" aria-label="Map configuration history"><h2>Lịch sử cấu hình bản đồ</h2>{history?<><ol>{history.items.map(revision=><li key={revision.configuration_revision}><strong>Phiên bản {revision.configuration_revision}</strong> · {revision.actor_display_snapshot} · {revision.created_at}<details><summary>Cấu hình trước / sau</summary><pre>{JSON.stringify({before:revision.before_configuration,after:revision.after_configuration},null,2)}</pre></details></li>)}</ol><button disabled={history.next_after_revision===null} onClick={()=>{if(history.next_after_revision!==null)setHistoryCursor(history.next_after_revision);}}>Các phiên bản cũ hơn</button><button disabled={historyCursor===undefined} onClick={()=>setHistoryCursor(undefined)}>Các phiên bản mới nhất</button></>:<p>{historyQuery.error?"Không thể truy cập lịch sử hiện tại.":"Đang kiểm tra lịch sử bản đồ…"}</p>}</section>:null}
  </main>;
 }
 
@@ -271,12 +274,12 @@ function ProtectedMap({organizationId,projectId,accountId}:{organizationId:strin
  const project=currentProtectedData(projectQuery),permissions=currentProtectedData(permissionQuery),map=currentProtectedData(mapQuery);
  if(!project||!permissions||!map||project.id!==projectId||project.organization_id!==organizationId||project.status==="deleted"||!mapResponseMatches(organizationId,projectId,map)||!permissions.permissions.includes("project.read")){
   const error=projectQuery.error||permissionQuery.error||mapQuery.error;
-  return <main className="map-access"><Link to={"/organizations/"+organizationId+"/projects"}>← Dự án</Link><h1>Map workspace</h1><p role={error?"alert":"status"}>{error?"Current Project map access is unavailable.":"Checking current Project map access…"}</p></main>;
+  return <main className="map-access"><Link to={"/organizations/"+organizationId+"/projects"}>← Dự án</Link><h1>Không gian Bản đồ</h1><p role={error?"alert":"status"}>{error?"Không có quyền truy cập bản đồ dự án này.":"Đang kiểm tra quyền truy cập bản đồ dự án…"}</p></main>;
  }
  return <Workspace key={accountId+":"+organizationId+":"+projectId} organizationId={organizationId} projectId={projectId} accountId={accountId} project={project} initial={map} canEdit={permissions.permissions.includes("project.edit")}/>;
 }
 export function MapWorkspace() {
  const {organizationId,projectId}=useParams();
- if(!organizationId||!projectId)return <p role="alert">Project context is missing.</p>;
+ if(!organizationId||!projectId)return <p role="alert">Thiếu ngữ cảnh dự án.</p>;
  return <FreshAccount key={organizationId+":"+projectId}>{account=><ProtectedMap key={account.id+":"+organizationId+":"+projectId} accountId={account.id} organizationId={organizationId} projectId={projectId}/>}</FreshAccount>;
 }

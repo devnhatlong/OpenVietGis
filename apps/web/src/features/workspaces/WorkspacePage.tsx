@@ -97,9 +97,9 @@ function OrganizationWorkspaces({ organizationId, userId }: { organizationId: st
 
       <form onSubmit={submit}>
         <label>
-          Workspace name
+          Tên không gian làm việc
           <input
-            aria-label="Workspace name"
+            aria-label="Tên không gian làm việc"
             value={name}
             onChange={(event) => {
               setName(event.target.value);
@@ -109,16 +109,16 @@ function OrganizationWorkspaces({ organizationId, userId }: { organizationId: st
           />
         </label>
         <label>
-          Workspace slug
+          Mã định danh
           <input
-            aria-label="Workspace slug"
+            aria-label="Mã định danh"
             value={slug}
             onChange={(event) => setSlug(event.target.value)}
             required
           />
         </label>
         <button type="submit" disabled={create.isPending}>
-          Create workspace
+          Tạo không gian làm việc
         </button>
       </form>
 
