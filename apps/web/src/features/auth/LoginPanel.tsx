@@ -24,14 +24,14 @@ export function LoginPanel() {
 
   return (
     <section aria-labelledby="login-title">
-      <h1 id="login-title">Sign in to OpenVietGIS</h1>
-      <p>Authentication is provided by your configured identity provider.</p>
-      {providers.isLoading ? <p>Loading identity providers…</p> : null}
-      {providers.error ? <p role="alert">Unable to load identity providers.</p> : null}
+      <h1 id="login-title">Đăng nhập OpenVietGIS</h1>
+      <p>Xác thực an toàn thông qua nhà cung cấp định danh đã cấu hình.</p>
+      {providers.isLoading ? <p>Đang tải nhà cung cấp đăng nhập…</p> : null}
+      {providers.error ? <p role="alert">Không thể tải danh sách nhà cung cấp đăng nhập.</p> : null}
       <div>
         {providers.data?.map((provider) => (
           <a key={provider.id} href={loginUrl(provider)}>
-            Continue with {provider.display_name}
+            Đăng nhập với {provider.display_name}
           </a>
         ))}
       </div>

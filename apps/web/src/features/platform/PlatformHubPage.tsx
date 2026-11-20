@@ -107,18 +107,18 @@ export function PlatformHubPage() {
         organizationId={organizationId}
         projectId={projectId}
         active="hub"
-        title="R010–R015 Extended GIS Platform & Ops"
+        title="R010–R015 Trung tâm Nền tảng GIS & Vận hành"
       />
       <main className="ovg-suite-body">
         <div className="ovg-tabs" role="tablist">
           {(
             [
-              ["ops", "R015 Ops Readiness"],
-              ["external", "R010 External Sources"],
-              ["collab", "R011 Collaboration"],
-              ["cad", "R012 CAD & COGO"],
-              ["field", "R013 Field & Offline"],
-              ["extensions", "R014 Extensions"]
+              ["ops", "R015 Vận hành & Sẵn sàng"],
+              ["external", "R010 Nguồn dữ liệu ngoài"],
+              ["collab", "R011 Cộng tác nhóm"],
+              ["cad", "R012 CAD 2D & COGO"],
+              ["field", "R013 Hiện trường & Ngoại tuyến"],
+              ["extensions", "R014 Nền tảng Module"]
             ] as Array<[HubTab, string]>
           ).map(([k, label]) => (
             <button
@@ -139,20 +139,19 @@ export function PlatformHubPage() {
 
         {tab === "ops" && (
           <section className="ovg-card" data-testid="ops-readiness-panel">
-            <h2>R015 Production Operations & Release Capabilities</h2>
+            <h2>R015 Vận hành Production & Năng lực phát hành</h2>
             <p>
-              <strong>Readiness:</strong> {readyQ.data?.status ?? "loading"} ·{" "}
+              <strong>Trạng thái sẵn sàng:</strong> {readyQ.data?.status ?? "loading"} ·{" "}
               <strong>PostGIS:</strong> {readyQ.data?.postgis_version ?? "—"} ·{" "}
-              <strong>Plan Tier:</strong> {entQ.data?.plan_tier ?? "self_host_community"} (distinct
-              from R002 RBAC)
+              <strong>Gói cấu hình:</strong> {entQ.data?.plan_tier ?? "self_host_community"} (tách biệt phân quyền R002)
             </p>
             <table className="ovg-table">
               <thead>
                 <tr>
-                  <th>Release</th>
-                  <th>Capability</th>
-                  <th>Milestone</th>
-                  <th>Status</th>
+                  <th>Phiên bản</th>
+                  <th>Năng lực</th>
+                  <th>Cột mốc</th>
+                  <th>Trạng thái</th>
                 </tr>
               </thead>
               <tbody>
@@ -164,7 +163,7 @@ export function PlatformHubPage() {
                     <td>{c.name}</td>
                     <td>{c.milestone}</td>
                     <td>
-                      <span className="ovg-badge">{c.enabled ? "Enabled" : "Disabled"}</span>
+                      <span className="ovg-badge">{c.enabled ? "Đang bật" : "Đã tắt"}</span>
                     </td>
                   </tr>
                 ))}
@@ -175,10 +174,10 @@ export function PlatformHubPage() {
 
         {tab === "external" && (
           <section className="ovg-card">
-            <h2>R010 External Sources (SSRF-Safe Allowlist)</h2>
+            <h2>R010 Nguồn dữ liệu ngoài (Allowlist chống SSRF)</h2>
             <div className="ovg-form-row">
               <label>
-                Allowlist Hostname
+                Tên miền được phép (Allowlist)
                 <input value={extHost} onChange={(e) => setExtHost(e.target.value)} />
               </label>
               <button
@@ -213,7 +212,7 @@ export function PlatformHubPage() {
                   }
                 }}
               >
-                Allowlist & Connect
+                Thêm Allowlist & Kết nối
               </button>
               <label style={{ flex: 1 }}>
                 Endpoint URL
@@ -233,8 +232,8 @@ export function PlatformHubPage() {
 
         {tab === "collab" && (
           <section className="ovg-card">
-            <h2>R011 Team Collaboration & Post-Commit Reviews</h2>
-            <h3>Assigned Change Reviews ({reviewsQ.data?.items.length ?? 0})</h3>
+            <h2>R011 Cộng tác nhóm & Duyệt thay đổi sau Commit</h2>
+            <h3>Yêu cầu duyệt thay đổi ({reviewsQ.data?.items.length ?? 0})</h3>
             <ul>
               {(reviewsQ.data?.items ?? []).map((r) => (
                 <li key={r.id}>
@@ -262,7 +261,7 @@ export function PlatformHubPage() {
                 </li>
               ))}
             </ul>
-            <h3>Project Activity Stream</h3>
+            <h3>Dòng hoạt động dự án</h3>
             <ul>
               {(actsQ.data?.items ?? []).map((a) => (
                 <li key={a.id}>
@@ -275,22 +274,22 @@ export function PlatformHubPage() {
 
         {tab === "cad" && (
           <section className="ovg-card">
-            <h2>R012 CAD 2D DXF Exchange & Precision COGO</h2>
+            <h2>R012 Trao đổi CAD 2D DXF & Tính toán COGO chính xác</h2>
             <div className="ovg-form-row">
               <label>
-                Origin X
+                Tọa độ gốc X
                 <input value={originX} onChange={(e) => setOriginX(e.target.value)} />
               </label>
               <label>
-                Origin Y
+                Tọa độ gốc Y
                 <input value={originY} onChange={(e) => setOriginY(e.target.value)} />
               </label>
               <label>
-                Distance (m)
+                Khoảng cách (m)
                 <input value={dist} onChange={(e) => setDist(e.target.value)} />
               </label>
               <label>
-                Azimuth (deg)
+                Góc phương vị (độ)
                 <input value={azimuth} onChange={(e) => setAzimuth(e.target.value)} />
               </label>
               <button
@@ -312,14 +311,14 @@ export function PlatformHubPage() {
                       csrf
                     );
                     setCogoOut(
-                      `Computed Endpoint: (${res.endpoint[0].toFixed(4)}, ${res.endpoint[1].toFixed(4)})`
+                      `Tọa độ điểm tính được: (${res.endpoint[0].toFixed(4)}, ${res.endpoint[1].toFixed(4)})`
                     );
                   } catch (err) {
                     setError(err instanceof Error ? err.message : "COGO computation failed.");
                   }
                 }}
               >
-                Compute Traverse
+                Tính tọa độ điểm cuối
               </button>
             </div>
             {cogoOut && <p className="ovg-notice">{cogoOut}</p>}
@@ -337,10 +336,10 @@ export function PlatformHubPage() {
 
         {tab === "field" && (
           <section className="ovg-card">
-            <h2>R013 Field & Offline GeoPackage Bundles</h2>
+            <h2>R013 Gói dữ liệu Hiện trường & Ngoại tuyến (GeoPackage)</h2>
             <div className="ovg-form-row">
               <label>
-                Package Name
+                Tên gói ngoại tuyến
                 <input value={pkgName} onChange={(e) => setPkgName(e.target.value)} />
               </label>
               <button
@@ -372,7 +371,7 @@ export function PlatformHubPage() {
                   }
                 }}
               >
-                Build Offline Package
+                Đóng gói GeoPackage ngoại tuyến
               </button>
             </div>
             <ul>
@@ -394,9 +393,9 @@ export function PlatformHubPage() {
 
         {tab === "extensions" && (
           <section className="ovg-card">
-            <h2>R014 Dynamic Extension Platform (Manifest-Driven)</h2>
+            <h2>R014 Nền tảng Module mở rộng động (Manifest)</h2>
             <p>
-              Registered Organization Extension Manifests:{" "}
+              Số Manifest Module đã đăng ký trong tổ chức:{" "}
               <strong>{extManifestsQ.data?.items.length ?? 0}</strong>
             </p>
             <ul>

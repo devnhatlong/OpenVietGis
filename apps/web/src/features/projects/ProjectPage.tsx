@@ -98,7 +98,7 @@ function OrganizationProjects({ organizationId, userId }: { organizationId: stri
     return (
       <main>
         <Link to="/">← Organizations</Link>
-        <h1>Projects</h1>
+        <h1>Dự án</h1>
         {checking ? <p>Checking project access…</p> : <p role="alert">Unable to load project access.</p>}
       </main>
     );
@@ -108,9 +108,9 @@ function OrganizationProjects({ organizationId, userId }: { organizationId: stri
     <main style={{ maxWidth: 960, margin: "40px auto", fontFamily: "system-ui, sans-serif" }}>
       <p>
         <Link to={"/organizations/" + organizationId}>← Organization</Link>{" "}
-        <Link to={"/organizations/" + organizationId + "/workspaces"}>Workspaces</Link>
+        <Link to={"/organizations/" + organizationId + "/workspaces"}>Không gian làm việc</Link>
       </p>
-      <h1>Projects</h1>
+      <h1>Dự án</h1>
 
       <form onSubmit={submit}>
         <label>
@@ -165,7 +165,7 @@ function OrganizationProjects({ organizationId, userId }: { organizationId: stri
               <strong>{project.name}</strong> — {project.status} — workspace{" "}
               {project.workspace_id ?? "none"}{" "}
               {project.status !== "deleted" ? (
-                <><Link to={"/organizations/" + encodeURIComponent(organizationId) + "/projects/" + encodeURIComponent(project.id) + "/spatial"}>Spatial catalog</Link>{" · "}<Link to={"/organizations/" + encodeURIComponent(organizationId) + "/projects/" + encodeURIComponent(project.id) + "/map"}>Open map</Link></>
+                <><Link to={"/organizations/" + encodeURIComponent(organizationId) + "/projects/" + encodeURIComponent(project.id) + "/spatial"}>Danh mục Dữ liệu</Link>{" · "}<Link to={"/organizations/" + encodeURIComponent(organizationId) + "/projects/" + encodeURIComponent(project.id) + "/map"}>Mở Bản đồ</Link></>
               ) : null}
               <div>
                 <label>

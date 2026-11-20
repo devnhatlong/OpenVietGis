@@ -109,7 +109,7 @@ export function EditingWorkbenchPage() {
       );
       setDraft([]);
       setRedoStack([]);
-      setNotice(`Committed changeset ${cs.id} (rev ${cs.resulting_content_revision.slice(0, 12)}).`);
+      setNotice(`Đã lưu đợt thay đổi ${cs.id} (rev ${cs.resulting_content_revision.slice(0, 12)}).`);
       await qc.invalidateQueries({ queryKey: ["r006", organizationId, projectId] });
     } catch (err) {
       setError(
@@ -145,17 +145,17 @@ export function EditingWorkbenchPage() {
         organizationId={organizationId}
         projectId={projectId}
         active="editing"
-        title="R006 Editing & Change History"
+        title="R006 Biên tập & Lịch sử thay đổi"
       />
       <main className="ovg-suite-body">
         {notice && <div className="ovg-notice">{notice}</div>}
         {error && <div className="ovg-error">{error}</div>}
 
         <section className="ovg-card">
-          <h2>Local Draft Session & Atomic Commit</h2>
+          <h2>Phiên bản nháp cục bộ & Lưu nguyên tử</h2>
           <div className="ovg-form-row">
             <label>
-              Editable Source
+              Nguồn dữ liệu có thể biên tập
               <select
                 value={activeSource?.id ?? ""}
                 onChange={(e) => setSelectedSourceId(e.target.value)}
@@ -168,40 +168,40 @@ export function EditingWorkbenchPage() {
               </select>
             </label>
             <label>
-              Operation
+              Thao tác
               <select
                 value={opType}
                 onChange={(e) => setOpType(e.target.value as "create" | "update" | "delete")}
               >
-                <option value="create">Create Feature</option>
-                <option value="update">Update Feature</option>
-                <option value="delete">Delete Feature</option>
+                <option value="create">Tạo đối tượng mới</option>
+                <option value="update">Cập nhật đối tượng</option>
+                <option value="delete">Xóa đối tượng</option>
               </select>
             </label>
             <label>
-              Feature ID
+              Mã đối tượng (Feature ID)
               <input value={featureId} onChange={(e) => setFeatureId(e.target.value)} />
             </label>
           </div>
           {opType !== "delete" && (
             <div className="ovg-form-row">
               <label style={{ flex: 1 }}>
-                2D GeoJSON Geometry
+                Hình học 2D GeoJSON
                 <input value={geomJson} onChange={(e) => setGeomJson(e.target.value)} />
               </label>
               <label style={{ flex: 1 }}>
-                Typed Properties JSON
+                Thuộc tính JSON có kiểu
                 <input value={propsJson} onChange={(e) => setPropsJson(e.target.value)} />
               </label>
             </div>
           )}
           <div className="ovg-form-row">
             <label style={{ flex: 1 }}>
-              Changeset Summary
+              Mô tả đợt chỉnh sửa
               <input value={summary} onChange={(e) => setSummary(e.target.value)} />
             </label>
             <button type="button" className="ovg-btn ovg-btn-secondary" onClick={stageOperation}>
-              Stage to Draft
+              Đưa vào bản nháp
             </button>
             <button
               type="button"
@@ -209,7 +209,7 @@ export function EditingWorkbenchPage() {
               onClick={undoDraft}
               disabled={draft.length === 0}
             >
-              Undo ({draft.length})
+              Hoàn tác ({draft.length})
             </button>
             <button
               type="button"
@@ -217,7 +217,7 @@ export function EditingWorkbenchPage() {
               onClick={redoDraft}
               disabled={redoStack.length === 0}
             >
-              Redo ({redoStack.length})
+              Làm lại ({redoStack.length})
             </button>
             <button
               type="button"
@@ -225,21 +225,21 @@ export function EditingWorkbenchPage() {
               onClick={() => void saveChangeset()}
               disabled={!activeSource || draft.length === 0}
             >
-              Commit Changeset
+              Lưu thay đổi (Commit)
             </button>
           </div>
         </section>
 
         <section className="ovg-card">
-          <h2>Immutable Change History</h2>
+          <h2>Lịch sử thay đổi bất biến</h2>
           <table className="ovg-table">
             <thead>
               <tr>
-                <th>Summary</th>
-                <th>Actor</th>
-                <th>Ops</th>
-                <th>Result Revision</th>
-                <th>Action</th>
+                <th>Mô tả</th>
+                <th>Người thực hiện</th>
+                <th>Số thao tác</th>
+                <th>Phiên bản mới</th>
+                <th>Thao tác</th>
               </tr>
             </thead>
             <tbody>

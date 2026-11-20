@@ -21,23 +21,23 @@ export function ProjectToolbar({
         <strong>OpenVietGIS</strong> · {title}
       </div>
       <nav className="ovg-toolbar-links" aria-label="GIS Workbenches">
-        <Link to={`${base}/map`}>Map</Link>
-        <Link to={`${base}/spatial`}>Catalog</Link>
-        <Link to={`${base}/transfers`}>Import/Export</Link>
+        <Link to={`${base}/map`}>Bản đồ</Link>
+        <Link to={`${base}/spatial`}>Danh mục</Link>
+        <Link to={`${base}/transfers`}>Nhập/Xuất</Link>
         <Link to={`${base}/editing`} className={active === "editing" ? "active" : ""}>
-          Editing (R006)
+          Biên tập (R006)
         </Link>
         <Link to={`${base}/queries`} className={active === "queries" ? "active" : ""}>
-          Query (R007)
+          Truy vấn (R007)
         </Link>
         <Link to={`${base}/processing`} className={active === "processing" ? "active" : ""}>
-          Processing (R008)
+          Xử lý (R008)
         </Link>
         <Link to={`${base}/cartography`} className={active === "cartography" ? "active" : ""}>
-          Cartography (R009)
+          In ấn (R009)
         </Link>
         <Link to={`${base}/platform-hub`} className={active === "hub" ? "active" : ""}>
-          Platform Hub (R010–R015)
+          Nền tảng (R010–R015)
         </Link>
       </nav>
     </header>

@@ -30,7 +30,7 @@ export function BootstrapPage({ onInitialized }: { onInitialized: () => Promise<
       if (failure instanceof ApiError && failure.status === 409) {
         await onInitialized();
       } else {
-        setError("Initialization failed. Check your session, authority and organization details.");
+        setError("Khởi tạo thất bại. Vui lòng kiểm tra phiên đăng nhập, mã bí mật và thông tin tổ chức.");
       }
     } finally {
       setPending(false);
@@ -39,24 +39,24 @@ export function BootstrapPage({ onInitialized }: { onInitialized: () => Promise<
 
   return (
     <main>
-      <h1>Initialize OpenVietGIS</h1>
-      <p>Create the first organization and its Owner using the installation authority.</p>
+      <h1>Khởi tạo hệ thống OpenVietGIS</h1>
+      <p>Tạo tổ chức đầu tiên và tài khoản Chủ sở hữu bằng mã bí mật cài đặt.</p>
       <form onSubmit={submit}>
         <label>
-          Organization name
+          Tên tổ chức
           <input name="organization_name" required maxLength={200} />
         </label>
         <label>
-          Organization slug
+          Mã định danh (slug)
           <input name="organization_slug" required maxLength={120}
             pattern="[a-z0-9]+(-[a-z0-9]+)*" />
         </label>
         <label>
-          Installation authority
+          Mã bí mật khởi tạo (Bootstrap Secret)
           <input ref={authorityInput} type="password" required autoComplete="off" />
         </label>
         <button type="submit" disabled={pending}>
-          {pending ? "Initializing…" : "Initialize installation"}
+          {pending ? "Đang khởi tạo…" : "Khởi tạo hệ thống"}
         </button>
       </form>
       {error ? <p role="alert">{error}</p> : null}

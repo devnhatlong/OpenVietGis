@@ -41,46 +41,46 @@ test("M2+M3 end-to-end: R006 Editing, R007 Query, R008 Processing, R009 Cartogra
   // 1. R006 Editing Workbench
   await page.goto(`${base}/editing`);
   await expect(page.getByTestId("editing-workbench")).toBeVisible();
-  await page.getByLabel("Typed Properties JSON").fill('{"name":"Point Two"}');
-  await page.getByRole("button", { name: "Stage to Draft" }).click();
-  await page.getByRole("button", { name: "Commit Changeset" }).click();
-  await expect(page.getByText(/Committed changeset/i)).toBeVisible({ timeout: 10000 });
+  await page.getByLabel("Thuộc tính JSON có kiểu").fill('{"name":"Point Two"}');
+  await page.getByRole("button", { name: "Đưa vào bản nháp" }).click();
+  await page.getByRole("button", { name: "Lưu thay đổi (Commit)" }).click();
+  await expect(page.getByText(/Đã lưu đợt thay đổi/i)).toBeVisible({ timeout: 10000 });
 
   // 2. R007 Query Workbench
   await page.goto(`${base}/queries`);
   await expect(page.getByTestId("query-workbench")).toBeVisible();
-  await page.getByRole("button", { name: "Run Query" }).click();
-  await expect(page.getByText(/Results: 2 matched/i)).toBeVisible({ timeout: 10000 });
+  await page.getByRole("button", { name: "Chạy truy vấn" }).click();
+  await expect(page.getByText(/Kết quả: 2 đối tượng phù hợp/i)).toBeVisible({ timeout: 10000 });
 
   // 3. R008 Processing Workbench
   await page.goto(`${base}/processing`);
   await expect(page.getByTestId("processing-workbench")).toBeVisible();
-  await page.getByRole("button", { name: "Run Job" }).click();
-  await expect(page.getByText(/completed \(succeeded, 2 features\)/i)).toBeVisible({
+  await page.getByRole("button", { name: "Chạy tác vụ" }).click();
+  await expect(page.getByText(/hoàn tất \(succeeded, 2 features\)/i)).toBeVisible({
     timeout: 15000
   });
 
   // 4. R009 Cartography Workbench
   await page.goto(`${base}/cartography`);
   await expect(page.getByTestId("cartography-workbench")).toBeVisible();
-  await page.getByRole("button", { name: "Save Style" }).click();
-  await expect(page.getByText(/Saved renderer-neutral style/i)).toBeVisible({ timeout: 10000 });
-  await page.getByRole("button", { name: "Create Layout" }).click();
-  await expect(page.getByText(/Created A4 landscape print layout/i)).toBeVisible({
+  await page.getByRole("button", { name: "Lưu ký hiệu" }).click();
+  await expect(page.getByText(/Đã lưu ký hiệu trung lập/i)).toBeVisible({ timeout: 10000 });
+  await page.getByRole("button", { name: "Tạo bố cục in" }).click();
+  await expect(page.getByText(/Đã tạo bố cục in A4 landscape/i)).toBeVisible({
     timeout: 10000
   });
   await page.getByRole("button", { name: "PNG 150 DPI" }).first().click();
-  await expect(page.getByText(/Generated PNG \(150 DPI/i)).toBeVisible({ timeout: 15000 });
+  await expect(page.getByText(/Đã xuất tệp PNG \(150 DPI/i)).toBeVisible({ timeout: 15000 });
 
   // 5. R010–R015 Platform Hub (Ops Readiness + COGO)
   await page.goto(`${base}/platform-hub`);
   await expect(page.getByTestId("ops-readiness-panel")).toBeVisible();
   await expect(page.getByRole("cell", { name: "R015", exact: true })).toBeVisible({ timeout: 10000 });
-  await expect(page.getByText(/Readiness: ready/i)).toBeVisible({ timeout: 10000 });
+  await expect(page.getByText(/Trạng thái sẵn sàng: ready/i)).toBeVisible({ timeout: 10000 });
 
-  await page.getByRole("tab", { name: /R012 CAD & COGO/i }).click();
-  await page.getByRole("button", { name: "Compute Traverse" }).click();
+  await page.getByRole("tab", { name: /R012 CAD 2D & COGO/i }).click();
+  await page.getByRole("button", { name: "Tính tọa độ điểm cuối" }).click();
   await expect(
-    page.getByText(/Computed Endpoint: \(500100\.0000, 2300000\.0000\)/i)
+    page.getByText(/Tọa độ điểm tính được: \(500100\.0000, 2300000\.0000\)/i)
   ).toBeVisible();
 });

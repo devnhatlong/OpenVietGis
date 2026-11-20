@@ -81,7 +81,7 @@ function OrganizationWorkspaces({ organizationId, userId }: { organizationId: st
     return (
       <main>
         <Link to="/">← Organizations</Link>
-        <h1>Workspaces</h1>
+        <h1>Không gian làm việc</h1>
         {checking ? <p>Checking workspace access…</p> : <p role="alert">Unable to load workspace access.</p>}
       </main>
     );
@@ -91,9 +91,9 @@ function OrganizationWorkspaces({ organizationId, userId }: { organizationId: st
     <main style={{ maxWidth: 880, margin: "40px auto", fontFamily: "system-ui, sans-serif" }}>
       <p>
         <Link to={"/organizations/" + organizationId}>← Organization</Link>{" "}
-        <Link to={"/organizations/" + organizationId + "/projects"}>Projects</Link>
+        <Link to={"/organizations/" + organizationId + "/projects"}>Dự án</Link>
       </p>
-      <h1>Workspaces</h1>
+      <h1>Không gian làm việc</h1>
 
       <form onSubmit={submit}>
         <label>

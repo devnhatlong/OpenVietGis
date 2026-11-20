@@ -557,7 +557,7 @@ function TransfersWorkspace({
         </section>
       </div>
 
-      <section className="transfers-card" aria-label="Durable transfer jobs">
+      <section className="transfers-card" aria-label="Lịch sử tác vụ Nhập / Xuất">
         <h2>Durable Import &amp; Export Jobs</h2>
         {jobs.length === 0 ? (
           <p className="transfers-muted">No transfer jobs recorded in this Project yet.</p>

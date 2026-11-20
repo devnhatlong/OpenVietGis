@@ -58,8 +58,8 @@ function OrganizationList({ organizationId, account }: { organizationId: string 
       (organizations.isPending || organizations.fetchStatus !== "idle");
     return (
       <main>
-        <h1>Organizations</h1>
-        {checking ? <p>Checking organization access…</p> : <p role="alert">Unable to load organization access.</p>}
+        <h1>Tổ chức</h1>
+        {checking ? <p>Đang kiểm tra quyền truy cập tổ chức…</p> : <p role="alert">Không thể tải danh sách tổ chức.</p>}
       </main>
     );
   }
@@ -77,16 +77,16 @@ function OrganizationList({ organizationId, account }: { organizationId: string 
     <main style={{ maxWidth: 880, margin: "40px auto", fontFamily: "system-ui, sans-serif" }}>
       <header>
         <p style={{ textTransform: "uppercase", letterSpacing: "0.12em" }}>OpenVietGIS</p>
-        <h1>{activeOrganization ? activeOrganization.name : "Organizations"}</h1>
+        <h1>{activeOrganization ? activeOrganization.name : "Tổ chức"}</h1>
         <p>
-          Signed in as <strong>{account.display_name}</strong>.{" "}
-          <Link to="/identity">Identity & session</Link>{" "}
-          <Link to="/invitations/accept">Accept invitation</Link>
+          Đăng nhập với tài khoản <strong>{account.display_name}</strong>.{" "}
+          <Link to="/identity">Tài khoản & Phiên</Link>{" "}
+          <Link to="/invitations/accept">Chấp nhận lời mời</Link>
         </p>
       </header>
 
       <section aria-labelledby="organization-switcher-title">
-        <h2 id="organization-switcher-title">Your organizations</h2>
+        <h2 id="organization-switcher-title">Danh sách tổ chức của bạn</h2>
         <ul data-testid="organization-list">
           {visibleOrganizations.map((organization) => (
             <li key={organization.id}>
@@ -103,7 +103,7 @@ function OrganizationList({ organizationId, account }: { organizationId: string 
       </section>
 
       <section aria-labelledby="create-organization-title">
-        <h2 id="create-organization-title">Create organization</h2>
+        <h2 id="create-organization-title">Tạo tổ chức mới</h2>
         <form onSubmit={submit}>
           <label>
             Name
@@ -127,7 +127,7 @@ function OrganizationList({ organizationId, account }: { organizationId: string 
             />
           </label>
           <button type="submit" disabled={create.isPending}>
-            {create.isPending ? "Creating…" : "Create organization"}
+            {create.isPending ? "Đang tạo…" : "Tạo tổ chức"}
           </button>
         </form>
         {create.error instanceof ApiError && create.error.status === 409 ? (
@@ -141,7 +141,7 @@ function OrganizationList({ organizationId, account }: { organizationId: string 
 
       {activeOrganization ? (
         <section aria-labelledby="active-organization-title">
-          <h2 id="active-organization-title">Active organization context</h2>
+          <h2 id="active-organization-title">Tổ chức đang chọn</h2>
           <p>
             <Link to={"/organizations/" + activeOrganization.id + "/workspaces"}>
               Workspaces
@@ -173,8 +173,8 @@ function InstallationGate({ organizationId, account }: { organizationId: string 
   });
   const installation = currentProtectedData(status);
   if (!installation) {
-    return status.error ? <p role="alert">Unable to check installation status.</p> :
-      <p>Checking installation status…</p>;
+    return status.error ? <p role="alert">Không thể kiểm tra trạng thái hệ thống.</p> :
+      <p>Đang kiểm tra trạng thái hệ thống…</p>;
   }
   if (!installation.initialized) {
     return <BootstrapPage onInitialized={async () => { await status.refetch(); }} />;

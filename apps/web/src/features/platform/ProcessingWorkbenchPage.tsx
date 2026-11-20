@@ -70,7 +70,7 @@ export function ProcessingWorkbenchPage() {
         },
         csrf
       );
-      setNotice(`Job ${job.id} completed (${job.status}, ${job.feature_count ?? 0} features).`);
+      setNotice(`Job ${job.id} hoàn tất (${job.status}, ${job.feature_count ?? 0} features).`);
       await qc.invalidateQueries({ queryKey: ["r008", organizationId, projectId] });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Processing failed.");
@@ -83,27 +83,27 @@ export function ProcessingWorkbenchPage() {
         organizationId={organizationId}
         projectId={projectId}
         active="processing"
-        title="R008 Spatial Processing & Durable Jobs"
+        title="R008 Xử lý Không gian & Tác vụ bền vững"
       />
       <main className="ovg-suite-body">
         {notice && <div className="ovg-notice">{notice}</div>}
         {error && <div className="ovg-error">{error}</div>}
         <section className="ovg-card">
-          <h2>Run Registered Spatial Algorithm ({algosQuery.data?.items.length ?? 3})</h2>
+          <h2>Chạy thuật toán phân tích không gian ({algosQuery.data?.items.length ?? 3})</h2>
           <div className="ovg-form-row">
             <label>
-              Algorithm
+              Thuật toán
               <select
                 value={algo}
                 onChange={(e) => setAlgo(e.target.value as "buffer" | "clip" | "dissolve")}
               >
-                <option value="buffer">Buffer</option>
-                <option value="clip">Clip</option>
-                <option value="dissolve">Dissolve</option>
+                <option value="buffer">Vùng đệm (Buffer)</option>
+                <option value="clip">Cắt lớp (Clip)</option>
+                <option value="dissolve">Gộp vùng (Dissolve)</option>
               </select>
             </label>
             <label>
-              Input Layer
+              Lớp đầu vào
               <select value={activeInput} onChange={(e) => setInputLayerId(e.target.value)}>
                 {layers.map((l) => (
                   <option key={l.id} value={l.id}>
@@ -114,7 +114,7 @@ export function ProcessingWorkbenchPage() {
             </label>
             {algo === "clip" && (
               <label>
-                Overlay Layer
+                Lớp phủ cắt (Overlay)
                 <select value={overlayLayerId} onChange={(e) => setOverlayLayerId(e.target.value)}>
                   <option value="">Select overlay</option>
                   {layers.map((l) => (
@@ -127,37 +127,37 @@ export function ProcessingWorkbenchPage() {
             )}
             {algo === "buffer" && (
               <label>
-                Distance (m)
+                Khoảng cách (mét)
                 <input value={distance} onChange={(e) => setDistance(e.target.value)} />
               </label>
             )}
             {algo === "dissolve" && (
               <label>
-                Group Field (optional)
+                Trường gom nhóm (tùy chọn)
                 <input value={groupField} onChange={(e) => setGroupField(e.target.value)} />
               </label>
             )}
             <label>
-              New Output Layer Name
+              Tên lớp kết quả mới
               <input value={outputName} onChange={(e) => setOutputName(e.target.value)} />
             </label>
             <button type="button" className="ovg-btn" disabled={!activeInput} onClick={() => void runProcessing()}>
-              Run Job
+              Chạy tác vụ
             </button>
           </div>
         </section>
 
         <section className="ovg-card">
-          <h2>Processing Jobs History</h2>
+          <h2>Lịch sử tác vụ xử lý</h2>
           <table className="ovg-table">
             <thead>
               <tr>
-                <th>Algorithm</th>
-                <th>Output Layer</th>
-                <th>Status</th>
-                <th>Features</th>
-                <th>Engine</th>
-                <th>Actions</th>
+                <th>Thuật toán</th>
+                <th>Lớp đầu ra</th>
+                <th>Trạng thái</th>
+                <th>Số đối tượng</th>
+                <th>Bộ xử lý</th>
+                <th>Hành động</th>
               </tr>
             </thead>
             <tbody>

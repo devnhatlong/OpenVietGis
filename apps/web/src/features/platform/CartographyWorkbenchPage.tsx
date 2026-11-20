@@ -61,7 +61,7 @@ export function CartographyWorkbenchPage() {
         },
         csrf
       );
-      setNotice(`Saved renderer-neutral style rev ${st.revision} with auto legend.`);
+      setNotice(`Đã lưu ký hiệu trung lập rev ${st.revision} with auto legend.`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save style.");
     }
@@ -87,7 +87,7 @@ export function CartographyWorkbenchPage() {
         },
         csrf
       );
-      setNotice(`Created ${lo.paper_size} ${lo.orientation} print layout.`);
+      setNotice(`Đã tạo bố cục in ${lo.paper_size} ${lo.orientation}.`);
       await qc.invalidateQueries({ queryKey: ["r009", organizationId, projectId, "layouts"] });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create layout.");
@@ -106,7 +106,7 @@ export function CartographyWorkbenchPage() {
         { output_format: format, dpi },
         csrf
       );
-      setNotice(`Generated ${ex.output_format.toUpperCase()} (${ex.dpi} DPI, 1:${ex.scale_denominator}).`);
+      setNotice(`Đã xuất tệp ${ex.output_format.toUpperCase()} (${ex.dpi} DPI, 1:${ex.scale_denominator}).`);
       await qc.invalidateQueries({ queryKey: ["r009", organizationId, projectId, "exports"] });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Export failed.");
@@ -119,7 +119,7 @@ export function CartographyWorkbenchPage() {
         organizationId={organizationId}
         projectId={projectId}
         active="cartography"
-        title="R009 Cartography & Print Output"
+        title="R009 Bản đồ học & Xuất in ấn"
       />
       <main className="ovg-suite-body">
         {notice && <div className="ovg-notice">{notice}</div>}
@@ -127,7 +127,7 @@ export function CartographyWorkbenchPage() {
 
         <div className="ovg-grid-2">
           <section className="ovg-card">
-            <h2>Layer Style & Auto Legend</h2>
+            <h2>Ký hiệu lớp & Chú giải tự động</h2>
             <div className="ovg-form-row">
               <label>
                 Layer
@@ -140,11 +140,11 @@ export function CartographyWorkbenchPage() {
                 </select>
               </label>
               <label>
-                Fill Color
+                Màu tô
                 <input type="color" value={fillColor} onChange={(e) => setFillColor(e.target.value)} />
               </label>
               <label>
-                Stroke Color
+                Màu viền
                 <input
                   type="color"
                   value={strokeColor}
@@ -152,49 +152,49 @@ export function CartographyWorkbenchPage() {
                 />
               </label>
               <button type="button" className="ovg-btn" disabled={!activeLayerId} onClick={() => void saveStyle()}>
-                Save Style
+                Lưu ký hiệu
               </button>
             </div>
           </section>
 
           <section className="ovg-card">
-            <h2>Printable Layout (A4 / A3)</h2>
+            <h2>Bố cục in ấn (A4 / A3)</h2>
             <div className="ovg-form-row">
               <label>
-                Map Title
+                Tiêu đề bản đồ
                 <input value={layoutTitle} onChange={(e) => setLayoutTitle(e.target.value)} />
               </label>
               <label>
-                Paper
+                Khổ giấy
                 <select value={paperSize} onChange={(e) => setPaperSize(e.target.value as "A4" | "A3")}>
                   <option value="A4">A4</option>
                   <option value="A3">A3</option>
                 </select>
               </label>
               <label>
-                Orientation
+                Hướng giấy
                 <select
                   value={orientation}
                   onChange={(e) => setOrientation(e.target.value as "portrait" | "landscape")}
                 >
-                  <option value="landscape">Landscape</option>
-                  <option value="portrait">Portrait</option>
+                  <option value="landscape">Ngang (Landscape)</option>
+                  <option value="portrait">Dọc (Portrait)</option>
                 </select>
               </label>
               <button type="button" className="ovg-btn" disabled={!activeLayerId} onClick={() => void handleCreateLayout()}>
-                Create Layout
+                Tạo bố cục in
               </button>
             </div>
           </section>
         </div>
 
         <section className="ovg-card">
-          <h2>Layouts & Exports</h2>
+          <h2>Danh sách bố cục & Xuất bản</h2>
           <table className="ovg-table">
             <thead>
               <tr>
                 <th>Title</th>
-                <th>Paper</th>
+                <th>Khổ giấy</th>
                 <th>CRS</th>
                 <th>Export</th>
               </tr>
@@ -228,7 +228,7 @@ export function CartographyWorkbenchPage() {
             </tbody>
           </table>
 
-          <h3 style={{ marginTop: "1rem" }}>Generated Print Artifacts</h3>
+          <h3 style={{ marginTop: "1rem" }}>Tệp bản đồ đã xuất</h3>
           <ul>
             {(exportsQuery.data?.items ?? []).map((ex) => (
               <li key={ex.id}>

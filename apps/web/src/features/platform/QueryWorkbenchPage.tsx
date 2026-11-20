@@ -93,15 +93,15 @@ export function QueryWorkbenchPage() {
         organizationId={organizationId}
         projectId={projectId}
         active="queries"
-        title="R007 Attribute & Spatial Query"
+        title="R007 Truy vấn Thuộc tính & Không gian"
       />
       <main className="ovg-suite-body">
         {error && <div className="ovg-error">{error}</div>}
         <section className="ovg-card">
-          <h2>Typed Visual Filter & Bounded Spatial Query</h2>
+          <h2>Bộ lọc Thuộc tính có kiểu & Truy vấn Không gian</h2>
           <div className="ovg-form-row">
             <label>
-              Target Layer
+              Lớp dữ liệu mục tiêu
               <select value={activeLayerId} onChange={(e) => setLayerId(e.target.value)}>
                 {layers.map((l) => (
                   <option key={l.id} value={l.id}>
@@ -111,7 +111,7 @@ export function QueryWorkbenchPage() {
               </select>
             </label>
             <label>
-              Attribute Field
+              Trường thuộc tính
               <input
                 placeholder="optional field_id"
                 value={field}
@@ -119,7 +119,7 @@ export function QueryWorkbenchPage() {
               />
             </label>
             <label>
-              Operator
+              Toán tử
               <select value={op} onChange={(e) => setOp(e.target.value)}>
                 <option value="eq">=</option>
                 <option value="neq">!=</option>
@@ -131,23 +131,23 @@ export function QueryWorkbenchPage() {
               </select>
             </label>
             <label>
-              Value
+              Giá trị
               <input value={val} onChange={(e) => setVal(e.target.value)} />
             </label>
           </div>
           <div className="ovg-form-row">
             <label>
-              Spatial Predicate
+              Quan hệ không gian
               <select value={predicate} onChange={(e) => setPredicate(e.target.value)}>
-                <option value="intersects">Intersects</option>
-                <option value="within">Within</option>
-                <option value="contains">Contains</option>
+                <option value="intersects">Giao nhau (Intersects)</option>
+                <option value="within">Nằm trong (Within)</option>
+                <option value="contains">Chứa (Contains)</option>
               </select>
             </label>
             <label>
-              Reference Layer (optional)
+              Lớp tham chiếu (tùy chọn)
               <select value={refLayerId} onChange={(e) => setRefLayerId(e.target.value)}>
-                <option value="">None</option>
+                <option value="">Không chọn</option>
                 {layers.map((l) => (
                   <option key={l.id} value={l.id}>
                     {l.name}
@@ -156,18 +156,18 @@ export function QueryWorkbenchPage() {
               </select>
             </label>
             <label>
-              Save Name
+              Tên truy vấn lưu
               <input value={queryName} onChange={(e) => setQueryName(e.target.value)} />
             </label>
             <button type="button" className="ovg-btn" disabled={!activeLayerId} onClick={() => void runQuery()}>
-              Run Query
+              Chạy truy vấn
             </button>
             <button
               type="button"
               className="ovg-btn ovg-btn-secondary"
               onClick={() => void saveFilter()}
             >
-              Save Query
+              Lưu truy vấn
             </button>
           </div>
         </section>
@@ -175,14 +175,14 @@ export function QueryWorkbenchPage() {
         {result && (
           <section className="ovg-card">
             <h3>
-              Results: {result.total_count} matched (rev{" "}
+              Kết quả: {result.total_count} đối tượng phù hợp (rev{" "}
               <code>{result.content_revision.slice(0, 12)}</code>)
             </h3>
             <table className="ovg-table">
               <thead>
                 <tr>
-                  <th>Feature ID</th>
-                  <th>Attributes</th>
+                  <th>Mã đối tượng</th>
+                  <th>Thuộc tính</th>
                 </tr>
               </thead>
               <tbody>
@@ -202,7 +202,7 @@ export function QueryWorkbenchPage() {
         )}
 
         <section className="ovg-card">
-          <h3>Saved Queries ({savedQuery.data?.items.length ?? 0})</h3>
+          <h3>Truy vấn đã lưu ({savedQuery.data?.items.length ?? 0})</h3>
           <ul>
             {(savedQuery.data?.items ?? []).map((q) => (
               <li key={q.id}>
