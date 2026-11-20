@@ -283,6 +283,31 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    for table in ("derived_artifacts", "job_attempts", "jobs"):
+        op.drop_table(table, schema="transfers")
+    op.execute("SET CONSTRAINTS ALL IMMEDIATE")
+    op.execute("""
+        DELETE FROM spatial.catalog_changes
+        WHERE operation = 'import_source'
+           OR source_id IN (SELECT id FROM spatial.data_sources WHERE kind = 'imported_file')
+           OR layer_id IN (
+               SELECT id FROM spatial.layers
+               WHERE source_id IN (SELECT id FROM spatial.data_sources WHERE kind = 'imported_file')
+           )
+    """)
+    op.execute("""
+        DELETE FROM spatial.layers
+        WHERE source_id IN (SELECT id FROM spatial.data_sources WHERE kind = 'imported_file')
+    """)
+    op.execute("""
+        DELETE FROM spatial.reference_features
+        WHERE source_id IN (SELECT id FROM spatial.data_sources WHERE kind = 'imported_file')
+    """)
+    op.execute("""
+        DELETE FROM spatial.source_fields
+        WHERE source_id IN (SELECT id FROM spatial.data_sources WHERE kind = 'imported_file')
+    """)
+    op.execute("DELETE FROM spatial.data_sources WHERE kind = 'imported_file'")
     op.execute("ALTER TABLE spatial.catalog_changes DROP CONSTRAINT ck_change_revisions")
     op.execute("ALTER TABLE spatial.catalog_changes DROP CONSTRAINT ck_change_resource")
     op.execute("""
@@ -339,6 +364,5 @@ def downgrade() -> None:
         ALTER TABLE spatial.data_sources ADD CONSTRAINT ck_source_kind
             CHECK (kind='reference_fixture' AND source_asset_id IS NULL)
     """)
-    for table in ("derived_artifacts", "job_attempts", "jobs", "source_assets"):
-        op.drop_table(table, schema="transfers")
+    op.drop_table("source_assets", schema="transfers")
     op.execute("DROP SCHEMA transfers")
