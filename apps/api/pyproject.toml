@@ -10,6 +10,8 @@ dependencies = [
   "itsdangerous==2.2.0",
   "psycopg[binary]>=3.2",
   "pydantic-settings>=2.10",
+  "pyshp>=3.1.9",
+  "python-multipart>=0.0.34",
   "sqlalchemy==2.1.9",
   "uvicorn[standard]>=0.38",
 ]

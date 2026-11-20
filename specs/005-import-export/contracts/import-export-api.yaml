@@ -1,0 +1,551 @@
+openapi: 3.1.0
+info:
+  title: OpenVietGIS Import and Export API
+  version: 0.5.0
+paths:
+  /api/v1/organizations/{organization_id}/projects/{project_id}/imports/upload:
+    post:
+      operationId: uploadImportAsset
+      parameters:
+        - $ref: '#/components/parameters/OrganizationId'
+        - $ref: '#/components/parameters/ProjectId'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        '201':
+          description: Uploaded immutable source asset and initial inspection report
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImportInspectionResponse'
+        '400': { $ref: '#/components/responses/TransferError' }
+        '403': { $ref: '#/components/responses/ErrorDetail' }
+        '404': { $ref: '#/components/responses/ErrorDetail' }
+        '413': { $ref: '#/components/responses/TransferError' }
+        '422': { $ref: '#/components/responses/TransferError' }
+  /api/v1/organizations/{organization_id}/projects/{project_id}/imports/inspect:
+    post:
+      operationId: inspectImportAsset
+      parameters:
+        - $ref: '#/components/parameters/OrganizationId'
+        - $ref: '#/components/parameters/ProjectId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ImportInspectInput'
+      responses:
+        '200':
+          description: Re-inspected asset with explicit member, CRS, encoding and target CRS
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImportInspectionResponse'
+        '403': { $ref: '#/components/responses/ErrorDetail' }
+        '404': { $ref: '#/components/responses/ErrorDetail' }
+        '422': { $ref: '#/components/responses/TransferError' }
+  /api/v1/organizations/{organization_id}/projects/{project_id}/imports/confirm:
+    post:
+      operationId: confirmImport
+      parameters:
+        - $ref: '#/components/parameters/OrganizationId'
+        - $ref: '#/components/parameters/ProjectId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ImportConfirmInput'
+      responses:
+        '200':
+          description: Durable import job outcome (idempotent replay or completed publication)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransferJob'
+        '403': { $ref: '#/components/responses/ErrorDetail' }
+        '404': { $ref: '#/components/responses/ErrorDetail' }
+        '409': { $ref: '#/components/responses/TransferError' }
+        '422': { $ref: '#/components/responses/TransferError' }
+  /api/v1/organizations/{organization_id}/projects/{project_id}/exports/preview:
+    post:
+      operationId: previewExport
+      parameters:
+        - $ref: '#/components/parameters/OrganizationId'
+        - $ref: '#/components/parameters/ProjectId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExportPreviewInput'
+      responses:
+        '200':
+          description: Fixed-revision export preview with schema mapping and required loss disclosures
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExportPreviewResponse'
+        '403': { $ref: '#/components/responses/ErrorDetail' }
+        '404': { $ref: '#/components/responses/ErrorDetail' }
+        '409': { $ref: '#/components/responses/TransferError' }
+        '422': { $ref: '#/components/responses/TransferError' }
+  /api/v1/organizations/{organization_id}/projects/{project_id}/exports/confirm:
+    post:
+      operationId: confirmExport
+      parameters:
+        - $ref: '#/components/parameters/OrganizationId'
+        - $ref: '#/components/parameters/ProjectId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExportConfirmInput'
+      responses:
+        '200':
+          description: Durable fixed-revision export job outcome
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransferJob'
+        '403': { $ref: '#/components/responses/ErrorDetail' }
+        '404': { $ref: '#/components/responses/ErrorDetail' }
+        '409': { $ref: '#/components/responses/TransferError' }
+        '422': { $ref: '#/components/responses/TransferError' }
+  /api/v1/organizations/{organization_id}/projects/{project_id}/jobs:
+    get:
+      operationId: listTransferJobs
+      parameters:
+        - $ref: '#/components/parameters/OrganizationId'
+        - $ref: '#/components/parameters/ProjectId'
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+      responses:
+        '200':
+          description: Scoped durable import/export jobs
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransferJobList'
+        '403': { $ref: '#/components/responses/ErrorDetail' }
+        '404': { $ref: '#/components/responses/ErrorDetail' }
+  /api/v1/organizations/{organization_id}/projects/{project_id}/jobs/{job_id}:
+    get:
+      operationId: getTransferJob
+      parameters:
+        - $ref: '#/components/parameters/OrganizationId'
+        - $ref: '#/components/parameters/ProjectId'
+        - $ref: '#/components/parameters/JobId'
+      responses:
+        '200':
+          description: Durable job detail with attempt history and reports
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransferJob'
+        '403': { $ref: '#/components/responses/ErrorDetail' }
+        '404': { $ref: '#/components/responses/ErrorDetail' }
+  /api/v1/organizations/{organization_id}/projects/{project_id}/jobs/{job_id}/cancel:
+    post:
+      operationId: cancelTransferJob
+      parameters:
+        - $ref: '#/components/parameters/OrganizationId'
+        - $ref: '#/components/parameters/ProjectId'
+        - $ref: '#/components/parameters/JobId'
+      responses:
+        '200':
+          description: Updated job state after cancellation request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransferJob'
+        '403': { $ref: '#/components/responses/ErrorDetail' }
+        '404': { $ref: '#/components/responses/ErrorDetail' }
+        '409': { $ref: '#/components/responses/TransferError' }
+  /api/v1/organizations/{organization_id}/projects/{project_id}/jobs/{job_id}/retry:
+    post:
+      operationId: retryTransferJob
+      parameters:
+        - $ref: '#/components/parameters/OrganizationId'
+        - $ref: '#/components/parameters/ProjectId'
+        - $ref: '#/components/parameters/JobId'
+      responses:
+        '200':
+          description: Updated job state after authorized retry attempt
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransferJob'
+        '403': { $ref: '#/components/responses/ErrorDetail' }
+        '404': { $ref: '#/components/responses/ErrorDetail' }
+        '409': { $ref: '#/components/responses/TransferError' }
+  /api/v1/organizations/{organization_id}/projects/{project_id}/artifacts/{artifact_id}:
+    get:
+      operationId: getDerivedArtifact
+      parameters:
+        - $ref: '#/components/parameters/OrganizationId'
+        - $ref: '#/components/parameters/ProjectId'
+        - $ref: '#/components/parameters/ArtifactId'
+      responses:
+        '200':
+          description: Immutable export artifact metadata and comparison report
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DerivedArtifact'
+        '403': { $ref: '#/components/responses/ErrorDetail' }
+        '404': { $ref: '#/components/responses/ErrorDetail' }
+  /api/v1/organizations/{organization_id}/projects/{project_id}/artifacts/{artifact_id}/download:
+    get:
+      operationId: downloadDerivedArtifact
+      parameters:
+        - $ref: '#/components/parameters/OrganizationId'
+        - $ref: '#/components/parameters/ProjectId'
+        - $ref: '#/components/parameters/ArtifactId'
+      responses:
+        '200':
+          description: Authority-rechecked immutable artifact file stream
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '403': { $ref: '#/components/responses/ErrorDetail' }
+        '404': { $ref: '#/components/responses/ErrorDetail' }
+        '410': { $ref: '#/components/responses/TransferError' }
+components:
+  parameters:
+    OrganizationId:
+      name: organization_id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    ProjectId:
+      name: project_id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    JobId:
+      name: job_id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    ArtifactId:
+      name: artifact_id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+  responses:
+    ErrorDetail:
+      description: Safe error detail
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [detail]
+            properties:
+              detail: { type: string }
+    TransferError:
+      description: Structured transfer validation or state error
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [code, message]
+            properties:
+              code: { type: string }
+              message: { type: string }
+  schemas:
+    TransferFormat:
+      type: string
+      enum: [geopackage, geojson, shapefile_zip]
+    JobKind:
+      type: string
+      enum: [import, export]
+    JobStatus:
+      type: string
+      enum:
+        - accepted
+        - queued
+        - active
+        - awaiting_confirmation
+        - cancel_requested
+        - recoverable_failed
+        - succeeded
+        - failed
+        - denied
+        - cancelled
+    ArtifactState:
+      type: string
+      enum: [ready, expired, unavailable]
+    SourceAsset:
+      type: object
+      required: [id, organization_id, project_id, filename, detected_format, byte_size, sha256, uploaded_by_display, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        organization_id: { type: string, format: uuid }
+        project_id: { type: string, format: uuid }
+        filename: { type: string }
+        detected_format: { $ref: '#/components/schemas/TransferFormat' }
+        byte_size: { type: integer, minimum: 1 }
+        sha256: { type: string, pattern: '^[a-f0-9]{64}$' }
+        uploaded_by_display: { type: string }
+        created_at: { type: string, format: date-time }
+    ValidationFinding:
+      type: object
+      required: [severity, code, message]
+      properties:
+        severity: { type: string, enum: [error, warning, info] }
+        code: { type: string }
+        message: { type: string }
+        feature_index: { type: ['integer', 'null'] }
+        field_name: { type: ['string', 'null'] }
+    InspectedField:
+      type: object
+      required: [field_id, name, type, nullable, ordinal]
+      properties:
+        field_id: { type: string }
+        name: { type: string }
+        type: { type: string, enum: [text, integer, decimal, boolean, timestamp] }
+        nullable: { type: boolean }
+        ordinal: { type: integer, minimum: 0 }
+        source_name: { type: string }
+    InspectedMember:
+      type: object
+      required: [name, eligible, geometry_family, dimensions, feature_count, fields]
+      properties:
+        name: { type: string }
+        eligible: { type: boolean }
+        reason: { type: ['string', 'null'] }
+        geometry_family: { type: string }
+        dimensions: { type: string }
+        feature_count: { type: integer, minimum: 0 }
+        detected_crs: { type: ['integer', 'null'] }
+        detected_encoding: { type: ['string', 'null'] }
+        fields:
+          type: array
+          items: { $ref: '#/components/schemas/InspectedField' }
+    ConversionDisclosure:
+      type: object
+      required: [code, message, requires_approval]
+      properties:
+        code: { type: string }
+        message: { type: string }
+        requires_approval: { type: boolean }
+        affected_fields:
+          type: array
+          items: { type: string }
+    ImportInspectionReport:
+      type: object
+      required: [asset_sha256, detected_format, members, selected_member, requires_member_selection, requires_crs_resolution, requires_encoding_resolution, resolved_source_crs, target_crs, resolved_encoding, sample_only, feature_count, geometry_family, dimensions, fields, findings, conversions, confirmable, inspection_fingerprint]
+      properties:
+        asset_sha256: { type: string }
+        detected_format: { $ref: '#/components/schemas/TransferFormat' }
+        members:
+          type: array
+          items: { $ref: '#/components/schemas/InspectedMember' }
+        selected_member: { type: ['string', 'null'] }
+        requires_member_selection: { type: boolean }
+        requires_crs_resolution: { type: boolean }
+        requires_encoding_resolution: { type: boolean }
+        resolved_source_crs: { type: ['integer', 'null'] }
+        target_crs: { type: ['integer', 'null'] }
+        resolved_encoding: { type: ['string', 'null'] }
+        sample_only: { type: boolean }
+        feature_count: { type: integer, minimum: 0 }
+        geometry_family: { type: ['string', 'null'] }
+        dimensions: { type: ['string', 'null'] }
+        extent: { type: ['object', 'null'], additionalProperties: true }
+        fields:
+          type: array
+          items: { $ref: '#/components/schemas/InspectedField' }
+        findings:
+          type: array
+          items: { $ref: '#/components/schemas/ValidationFinding' }
+        conversions:
+          type: array
+          items: { $ref: '#/components/schemas/ConversionDisclosure' }
+        confirmable: { type: boolean }
+        inspection_fingerprint: { type: string, pattern: '^[a-f0-9]{64}$' }
+    ImportInspectionResponse:
+      type: object
+      required: [asset, inspection]
+      properties:
+        asset: { $ref: '#/components/schemas/SourceAsset' }
+        inspection: { $ref: '#/components/schemas/ImportInspectionReport' }
+    ImportInspectInput:
+      type: object
+      required: [source_asset_id]
+      properties:
+        source_asset_id: { type: string, format: uuid }
+        selected_member: { type: ['string', 'null'] }
+        declared_source_crs: { type: ['integer', 'null'] }
+        target_crs: { type: ['integer', 'null'] }
+        declared_encoding: { type: ['string', 'null'] }
+    ImportConfirmInput:
+      type: object
+      required: [operation_id, source_asset_id, selected_member, source_name, layer_name, inspection_fingerprint]
+      properties:
+        operation_id: { type: string, format: uuid }
+        source_asset_id: { type: string, format: uuid }
+        selected_member: { type: string, minLength: 1 }
+        source_name: { type: string, minLength: 1, maxLength: 200 }
+        layer_name: { type: string, minLength: 1, maxLength: 200 }
+        declared_source_crs: { type: ['integer', 'null'] }
+        target_crs: { type: ['integer', 'null'] }
+        declared_encoding: { type: ['string', 'null'] }
+        approved_conversions:
+          type: array
+          items: { type: string }
+          default: []
+        inspection_fingerprint: { type: string, pattern: '^[a-f0-9]{64}$' }
+    ExportPreviewInput:
+      type: object
+      required: [layer_id, content_revision, schema_revision, output_format, output_crs]
+      properties:
+        layer_id: { type: string, format: uuid }
+        content_revision: { type: string, pattern: '^[a-f0-9]{64}$' }
+        schema_revision: { type: string, pattern: '^[a-f0-9]{64}$' }
+        output_format: { $ref: '#/components/schemas/TransferFormat' }
+        output_crs: { type: integer }
+    ExportPreviewResponse:
+      type: object
+      required: [layer_id, source_id, content_revision, schema_revision, output_format, source_crs, output_crs, feature_count, geometry_family, field_mappings, disclosures, confirmable, preview_fingerprint]
+      properties:
+        layer_id: { type: string, format: uuid }
+        source_id: { type: string, format: uuid }
+        content_revision: { type: string }
+        schema_revision: { type: string }
+        output_format: { $ref: '#/components/schemas/TransferFormat' }
+        source_crs: { type: integer }
+        output_crs: { type: integer }
+        transformation_operation_id: { type: ['string', 'null'] }
+        feature_count: { type: integer, minimum: 0 }
+        geometry_family: { type: string }
+        field_mappings:
+          type: array
+          items:
+            type: object
+            required: [field_id, source_name, output_name, type]
+            properties:
+              field_id: { type: string }
+              source_name: { type: string }
+              output_name: { type: string }
+              type: { type: string }
+        disclosures:
+          type: array
+          items: { $ref: '#/components/schemas/ConversionDisclosure' }
+        confirmable: { type: boolean }
+        preview_fingerprint: { type: string, pattern: '^[a-f0-9]{64}$' }
+    ExportConfirmInput:
+      type: object
+      required: [operation_id, layer_id, content_revision, schema_revision, output_format, output_crs, preview_fingerprint]
+      properties:
+        operation_id: { type: string, format: uuid }
+        layer_id: { type: string, format: uuid }
+        content_revision: { type: string, pattern: '^[a-f0-9]{64}$' }
+        schema_revision: { type: string, pattern: '^[a-f0-9]{64}$' }
+        output_format: { $ref: '#/components/schemas/TransferFormat' }
+        output_crs: { type: integer }
+        approved_disclosures:
+          type: array
+          items: { type: string }
+          default: []
+        preview_fingerprint: { type: string, pattern: '^[a-f0-9]{64}$' }
+    JobAttempt:
+      type: object
+      required: [id, attempt_number, status, actor_type, actor_id, started_at]
+      properties:
+        id: { type: string, format: uuid }
+        attempt_number: { type: integer, minimum: 1 }
+        status: { type: string }
+        actor_type: { type: string }
+        actor_id: { type: string, format: uuid }
+        started_at: { type: string, format: date-time }
+        finished_at: { type: ['string', 'null'], format: date-time }
+        error_code: { type: ['string', 'null'] }
+        error_message: { type: ['string', 'null'] }
+    DerivedArtifact:
+      type: object
+      required: [id, organization_id, project_id, job_id, source_id, layer_id, source_content_revision, source_schema_revision, output_format, output_crs, filename, content_type, byte_size, sha256, state, created_by_display, created_at, expires_at, comparison_report]
+      properties:
+        id: { type: string, format: uuid }
+        organization_id: { type: string, format: uuid }
+        project_id: { type: string, format: uuid }
+        job_id: { type: string, format: uuid }
+        source_id: { type: string, format: uuid }
+        layer_id: { type: string, format: uuid }
+        source_content_revision: { type: string }
+        source_schema_revision: { type: string }
+        output_format: { $ref: '#/components/schemas/TransferFormat' }
+        output_crs: { type: integer }
+        filename: { type: string }
+        content_type: { type: string }
+        byte_size: { type: integer, minimum: 1 }
+        sha256: { type: string, pattern: '^[a-f0-9]{64}$' }
+        state: { $ref: '#/components/schemas/ArtifactState' }
+        created_by_display: { type: string }
+        created_at: { type: string, format: date-time }
+        expires_at: { type: string, format: date-time }
+        comparison_report:
+          type: object
+          additionalProperties: true
+    TransferJob:
+      type: object
+      required: [id, organization_id, project_id, operation_id, kind, request_fingerprint, status, actor_type, actor_id, actor_display_snapshot, attempt_count, created_at, updated_at, attempts]
+      properties:
+        id: { type: string, format: uuid }
+        organization_id: { type: string, format: uuid }
+        project_id: { type: string, format: uuid }
+        operation_id: { type: string, format: uuid }
+        kind: { $ref: '#/components/schemas/JobKind' }
+        request_fingerprint: { type: string, pattern: '^[a-f0-9]{64}$' }
+        status: { $ref: '#/components/schemas/JobStatus' }
+        actor_type: { type: string }
+        actor_id: { type: string, format: uuid }
+        actor_display_snapshot: { type: string }
+        source_asset_id: { type: ['string', 'null'], format: uuid }
+        target_source_id: { type: ['string', 'null'], format: uuid }
+        target_layer_id: { type: ['string', 'null'], format: uuid }
+        source_content_revision: { type: ['string', 'null'] }
+        source_schema_revision: { type: ['string', 'null'] }
+        artifact_id: { type: ['string', 'null'], format: uuid }
+        attempt_count: { type: integer, minimum: 0 }
+        inspection_report: { type: ['object', 'null'], additionalProperties: true }
+        result_report: { type: ['object', 'null'], additionalProperties: true }
+        error_code: { type: ['string', 'null'] }
+        error_message: { type: ['string', 'null'] }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+        completed_at: { type: ['string', 'null'], format: date-time }
+        attempts:
+          type: array
+          items: { $ref: '#/components/schemas/JobAttempt' }
+        artifact:
+          oneOf:
+            - $ref: '#/components/schemas/DerivedArtifact'
+            - type: 'null'
+    TransferJobList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/TransferJob' }

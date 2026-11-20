@@ -9,6 +9,7 @@ import { WorkspacePage } from "../features/workspaces/WorkspacePage";
 
 import { SpatialCatalogPage } from "../features/spatial/SpatialCatalogPage";
 import { MapWorkspace } from "../features/map/MapWorkspace";
+import { ImportExportPage } from "../features/transfers/ImportExportPage";
 
 export const router = createBrowserRouter([
   { path: "/", element: <OrganizationHome /> },
@@ -17,6 +18,7 @@ export const router = createBrowserRouter([
   { path: "/organizations/:organizationId/projects", element: <ProjectPage /> },
   { path: "/organizations/:organizationId/projects/:projectId/spatial", element: <SpatialCatalogPage /> },
   { path: "/organizations/:organizationId/projects/:projectId/map", element: <MapWorkspace /> },
+  { path: "/organizations/:organizationId/projects/:projectId/transfers", element: <ImportExportPage /> },
   { path: "/organizations/:organizationId/membership", element: <MembershipPage /> },
   { path: "/invitations/accept", element: <InvitationAcceptPage /> },
   { path: "/identity", element: <IdentityPage /> }

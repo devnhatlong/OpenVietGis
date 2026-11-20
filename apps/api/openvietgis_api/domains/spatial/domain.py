@@ -43,6 +43,7 @@ class SpatialValidationError(ValueError):
 
 class SourceKind(StrEnum):
     REFERENCE_FIXTURE = "reference_fixture"
+    IMPORTED_FILE = "imported_file"
 
 
 class Lifecycle(StrEnum):
@@ -132,6 +133,7 @@ class ResourceType(StrEnum):
 
 class CatalogOperation(StrEnum):
     REGISTER_SOURCE = "register_source"
+    IMPORT_SOURCE = "import_source"
     UPDATE_SOURCE = "update_source"
     CORRECT_SOURCE_CRS = "correct_source_crs"
     RETIRE_SOURCE = "retire_source"
@@ -336,7 +338,7 @@ class DataSource:
     reference_key: str
     fixture_version: str
     manifest_digest: str
-    source_asset_id: None
+    source_asset_id: UUID | None
     lifecycle: Lifecycle
     validation_state: ValidationState
     validation_reason: ValidationReason | None
@@ -364,8 +366,10 @@ class DataSource:
         _pattern(self.reference_key, _REFERENCE_KEY, "invalid fixture key")
         object.__setattr__(self, "fixture_version", _text(self.fixture_version, 100))
         validate_revision_token(self.manifest_digest)
-        if self.source_asset_id is not None:
+        if self.kind == SourceKind.REFERENCE_FIXTURE and self.source_asset_id is not None:
             raise SpatialValidationError("reference source cannot have a source asset")
+        if self.kind == SourceKind.IMPORTED_FILE and not isinstance(self.source_asset_id, UUID):
+            raise SpatialValidationError("imported source requires a source asset UUID")
         _enum(self.validation_state, ValidationState)
         _enum(self.schema_state, SchemaState)
         _enum(self.geometry_family, GeometryFamily)
@@ -389,7 +393,8 @@ class DataSource:
             raise SpatialValidationError("empty/unavailable extent must be null")
         if self.validation_state == ValidationState.READY:
             _readable_crs(self.source_crs)
-            if self.source_crs != self.stored_crs:
+            _readable_crs(self.stored_crs)
+            if self.kind == SourceKind.REFERENCE_FIXTURE and self.source_crs != self.stored_crs:
                 raise SpatialValidationError("ready declaration must match verified native CRS")
             if (
                 self.validation_reason is not None
@@ -857,6 +862,7 @@ class ChangedValue:
 _SOURCE_OPERATIONS = frozenset(
     {
         CatalogOperation.REGISTER_SOURCE,
+        CatalogOperation.IMPORT_SOURCE,
         CatalogOperation.UPDATE_SOURCE,
         CatalogOperation.CORRECT_SOURCE_CRS,
         CatalogOperation.RETIRE_SOURCE,
@@ -907,7 +913,11 @@ class CatalogChange:
             raise SpatialValidationError("catalog change layer reference mismatch")
         if is_source != (self.operation in _SOURCE_OPERATIONS):
             raise SpatialValidationError("operation/resource type mismatch")
-        create = self.operation in (CatalogOperation.REGISTER_SOURCE, CatalogOperation.CREATE_LAYER)
+        create = self.operation in (
+            CatalogOperation.REGISTER_SOURCE,
+            CatalogOperation.IMPORT_SOURCE,
+            CatalogOperation.CREATE_LAYER,
+        )
         revision_type = SourceRevision if is_source else LayerRevision
         if not isinstance(self.new_revision, revision_type):
             raise SpatialValidationError("incorrect new revision domain")

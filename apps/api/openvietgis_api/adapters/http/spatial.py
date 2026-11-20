@@ -203,7 +203,7 @@ def _source(detail: SourceDetail) -> dict[str, object]:
             "reference_key": source.reference_key,
             "fixture_version": source.fixture_version,
             "manifest_digest": source.manifest_digest,
-            "source_asset_id": source.source_asset_id,
+            "source_asset_id": str(source.source_asset_id) if source.source_asset_id else None,
         },
         "lifecycle": source.lifecycle.value,
         "validation_state": source.validation_state.value,

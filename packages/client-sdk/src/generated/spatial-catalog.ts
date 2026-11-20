@@ -282,7 +282,7 @@ export interface components {
             reference_key: string;
             fixture_version: string;
             manifest_digest: string;
-            source_asset_id: null;
+            source_asset_id: string | null;
         };
         Source: {
             /** Format: uuid */
@@ -292,8 +292,8 @@ export interface components {
             /** Format: uuid */
             project_id: string;
             name: string;
-            /** @constant */
-            kind: "reference_fixture";
+            /** @enum {string} */
+            kind: "reference_fixture" | "imported_file";
             provenance: components["schemas"]["Provenance"];
             /** @enum {string} */
             lifecycle: "active" | "retired";
@@ -509,7 +509,7 @@ export interface components {
             actor_id: string;
             actor_display_snapshot: string;
             /** @enum {string} */
-            operation: "register_source" | "update_source" | "correct_source_crs" | "retire_source" | "create_layer" | "rename_layer" | "retire_layer" | "refresh_reference_fixture";
+            operation: "register_source" | "import_source" | "update_source" | "correct_source_crs" | "retire_source" | "create_layer" | "rename_layer" | "retire_layer" | "refresh_reference_fixture";
             /** Format: date-time */
             created_at: string;
             /** Format: uuid */

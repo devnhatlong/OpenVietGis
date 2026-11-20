@@ -53,6 +53,7 @@ from openvietgis_api.domains.tenancy.service import (
     WorkspaceHasActiveProjectsError,
     WorkspaceNotFoundError,
 )
+from openvietgis_api.domains.transfers.ports import TransferError
 
 # Fixed customer-safe descriptions; never forward exception text or SQL details.
 _SPATIAL_ERRORS: dict[type[Exception], tuple[int, str, str]] = {
@@ -165,6 +166,14 @@ def install_error_handlers(app: FastAPI) -> None:
             content={
                 "detail": [{"loc": [], "msg": "invalid request payload", "type": "value_error"}]
             },
+        )
+
+    @app.exception_handler(TransferError)
+    async def transfer_error_handler(_: Request, exc: Exception) -> JSONResponse:
+        assert isinstance(exc, TransferError)
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={"code": exc.code, "message": exc.message},
         )
 
     @app.exception_handler(AuthorizationDeniedError)

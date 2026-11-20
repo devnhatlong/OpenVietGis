@@ -1,0 +1,9 @@
+# Data Model: Import and Export (R005)
+
+## Entities & Tables (`transfers` schema)
+
+- **`transfers.source_assets`** (append-only): `id`, `organization_id`, `project_id`, `filename`, `detected_format`, `byte_size`, `sha256`, `storage_key`, `uploaded_by_type`, `uploaded_by_id`, `uploaded_by_display`, `created_at`.
+- **`transfers.jobs`**: `id`, `organization_id`, `project_id`, `operation_id` (unique per org+project), `kind` (`import`|`export`), `request_fingerprint` (SHA-256), `status` (`accepted`|`queued`|`active`|`awaiting_confirmation`|`cancel_requested`|`recoverable_failed`|`succeeded`|`failed`|`denied`|`cancelled`), `actor_type`, `actor_id`, `actor_display_snapshot`, `credential_id`, `source_asset_id`, `target_source_id`, `target_layer_id`, `source_content_revision`, `source_schema_revision`, `artifact_id`, `attempt_count`, `options_json`, `inspection_report`, `result_report`, `error_code`, `error_message`, `created_at`, `updated_at`, `completed_at`.
+- **`transfers.job_attempts`** (append-only): `id`, `organization_id`, `project_id`, `job_id`, `attempt_number`, `status`, `actor_type`, `actor_id`, `credential_id`, `started_at`, `finished_at`, `error_code`, `error_message`.
+- **`transfers.derived_artifacts`**: `id`, `organization_id`, `project_id`, `job_id`, `source_id`, `layer_id`, `source_content_revision`, `source_schema_revision`, `output_format`, `output_crs`, `filename`, `content_type`, `byte_size`, `sha256`, `storage_key`, `comparison_report`, `created_by_type`, `created_by_id`, `created_by_display`, `created_at`, `expires_at`, `state` (`ready`|`expired`|`unavailable`).
+- **`spatial.data_sources`** extension: `kind IN ('reference_fixture', 'imported_file')`; when `imported_file`, `source_asset_id` references `transfers.source_assets(organization_id, project_id, id)`.

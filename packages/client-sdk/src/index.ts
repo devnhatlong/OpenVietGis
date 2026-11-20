@@ -29,3 +29,8 @@ export type {
   components as MapWorkspaceComponents
 } from "./generated/map-workspace";
 export * from "./maps";
+export type {
+  paths as ImportExportPaths,
+  components as ImportExportComponents
+} from "./generated/import-export";
+export * from "./transfers";

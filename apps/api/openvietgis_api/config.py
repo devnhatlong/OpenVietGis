@@ -31,6 +31,7 @@ class Settings(BaseSettings):
     session_cookie_name: str = "ovg_session"
     session_cookie_secure: bool = False
     session_ttl_seconds: int = Field(default=28_800, ge=300, le=604_800)
+    artifact_store_dir: str = "/tmp/openvietgis-artifacts"
 
     application_session_secret: SecretStr
     csrf_secret: SecretStr

@@ -151,7 +151,7 @@ def exercise_consumer(
         name
         for name, item in capabilities.items()
         if item["available"] and item["actor_authorized"]
-    } == {"metadata_read", "feature_read", "render", "style"}
+    } == {"metadata_read", "feature_read", "render", "style", "export"}
 
     schema = source["schema"]
     assert schema["state"] == "known" and schema["schema_revision"] == source["schema_revision"]

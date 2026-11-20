@@ -627,7 +627,7 @@ components:
         reference_key: {"type":"string","minLength":1,"maxLength":100}
         fixture_version: {"type":"string","minLength":1,"maxLength":100}
         manifest_digest: {"type":"string","pattern":"^[a-f0-9]{64}$"}
-        source_asset_id: {"type":"null"}
+        source_asset_id: {"anyOf":[{"type":"string","format":"uuid"},{"type":"null"}]}
     Source:
       type: "object"
       additionalProperties: false
@@ -659,7 +659,7 @@ components:
         organization_id: {"type":"string","format":"uuid"}
         project_id: {"type":"string","format":"uuid"}
         name: {"type":"string","minLength":1,"maxLength":200}
-        kind: {"const":"reference_fixture"}
+        kind: {"type":"string","enum":["reference_fixture","imported_file"]}
         provenance: {"$ref":"#/components/schemas/Provenance"}
         lifecycle: {"type":"string","enum":["active","retired"]}
         validation_state: {"type":"string","enum":["ready","invalid","not_ready"]}
@@ -959,6 +959,7 @@ components:
           type: "string"
           enum:
             - "register_source"
+            - "import_source"
             - "update_source"
             - "correct_source_crs"
             - "retire_source"

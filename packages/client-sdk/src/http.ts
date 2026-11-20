@@ -35,7 +35,7 @@ export class ApiClient {
   private async send(path: string, init?: RequestInit): Promise<Response> {
     const method = (init?.method ?? "GET").toUpperCase();
     const headers = new Headers(init?.headers);
-    if (init?.body !== undefined && !headers.has("content-type")) {
+    if (init?.body !== undefined && !(init.body instanceof FormData) && !headers.has("content-type")) {
       headers.set("content-type", "application/json");
     }
     if (UNSAFE_METHODS.has(method) && this.csrfToken && !headers.has("x-openvietgis-csrf")) {
@@ -58,6 +58,10 @@ export class ApiClient {
 
   async requestWithoutBody(path: string, init?: RequestInit): Promise<void> {
     await this.send(path, init);
+  }
+
+  async requestRaw(path: string, init?: RequestInit): Promise<Response> {
+    return this.send(path, init);
   }
 
   async request<T>(path: string, init?: RequestInit): Promise<T> {

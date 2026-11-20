@@ -579,28 +579,38 @@ def source_render_supported(source: DataSource) -> bool:
     # Readable native4326 at latitude86 remains outside the display profile.
     native = source.stored_crs
     provenance_compatible = (
-        native not in (4756, 5899)
-        or source.reference_key in {
-            "reference_points_4756", "reference_points_4756_hvs", "reference_points_5899",
+        source.kind == SourceKind.IMPORTED_FILE
+        or native not in (4756, 5899)
+        or source.reference_key
+        in {
+            "reference_points_4756",
+            "reference_points_4756_hvs",
+            "reference_points_5899",
         }
     )
     geographic_extent_compatible = (
-        native != 4326 or source.feature_count == 0
+        native != 4326
+        or source.feature_count == 0
         or (
             source.extent is not None
-            and -WEB_MERCATOR_MAX_LATITUDE <= source.extent.min_y
-            <= source.extent.max_y <= WEB_MERCATOR_MAX_LATITUDE
+            and -WEB_MERCATOR_MAX_LATITUDE
+            <= source.extent.min_y
+            <= source.extent.max_y
+            <= WEB_MERCATOR_MAX_LATITUDE
         )
     )
     return (
-        source.kind == SourceKind.REFERENCE_FIXTURE
+        source.kind in (SourceKind.REFERENCE_FIXTURE, SourceKind.IMPORTED_FILE)
         and source.geometry_family in SUPPORTED_FAMILIES
         and source.dimensions == GeometryDimensions.XY
-        and source.feature_count is not None and source.feature_count <= 10_000
-        and (native == 4326 or (
-            native is not None and get_transformation_profile(native, 4326) is not None
-        ))
-        and provenance_compatible and geographic_extent_compatible
+        and source.feature_count is not None
+        and source.feature_count <= 10_000
+        and (
+            native == 4326
+            or (native is not None and get_transformation_profile(native, 4326) is not None)
+        )
+        and provenance_compatible
+        and geographic_extent_compatible
     )
 
 
@@ -625,15 +635,17 @@ def layer_capabilities(
         ),
         *(
             LayerCapability(
-                name, render_supported, ready and render_supported,
+                name,
+                render_supported,
+                ready and render_supported,
                 Permission.PROJECT_READ.value if render_supported else None,
                 actor_authorized if render_supported else False,
             )
-            for name in ("render", "style")
+            for name in ("render", "style", "export")
         ),
         *(
             LayerCapability(name, False, False, None, False)
-            for name in ("edit", "export", "analysis", "offline", "query")
+            for name in ("edit", "analysis", "offline", "query")
         ),
     )
 
@@ -952,12 +964,18 @@ class SpatialFeatureService:
         return detail, wire
 
     def _serialize_response(
-        self, *, context: AuthorizationContext, detail: SourceDetail,
-        wire: FeatureReadContextWire, features: Sequence[ReferenceFeature],
+        self,
+        *,
+        context: AuthorizationContext,
+        detail: SourceDetail,
+        wire: FeatureReadContextWire,
+        features: Sequence[ReferenceFeature],
     ) -> list[FeatureWire]:
         result = [
             serialize_feature(
-                detail.source, detail.fields, feature,
+                detail.source,
+                detail.fields,
+                feature,
                 include_geometry=wire["geometry_included"],
             )
             for feature in features
@@ -968,16 +986,23 @@ class SpatialFeatureService:
         if reference is None or not wire["geometry_included"]:
             raise SpatialValidationError("transform response requires coordinate reference")
         geometries = self.repository.transform_features(
-            context=context, source=detail.source, features=features, target_code=reference["code"],
+            context=context,
+            source=detail.source,
+            features=features,
+            target_code=reference["code"],
         )
         if len(geometries) != len(result):
             raise SpatialValidationError("transform response count disagrees")
         for item, geometry in zip(result, geometries, strict=True):
             validate_ready_geometry(
-                geometry, detail.source.geometry_family, reference["code"], output_roundoff=True,
+                geometry,
+                detail.source.geometry_family,
+                reference["code"],
+                output_roundoff=True,
             )
             item["geometry"] = {
-                "type": geometry.type, "coordinates": geometry.coordinates,
+                "type": geometry.type,
+                "coordinates": geometry.coordinates,
                 "coordinate_reference": reference,
             }
         return result
@@ -1023,7 +1048,10 @@ class SpatialFeatureService:
                 raise SpatialValidationError("feature page is not strictly ordered")
             previous = row.feature_id
         items = self._serialize_response(
-            context=context, detail=detail, wire=wire, features=rows,
+            context=context,
+            detail=detail,
+            wire=wire,
+            features=rows,
         )[:limit]
         return {
             "context": wire,
@@ -1065,7 +1093,10 @@ class SpatialFeatureService:
         return {
             "context": wire,
             "feature": self._serialize_response(
-                context=context, detail=detail, wire=wire, features=[feature],
+                context=context,
+                detail=detail,
+                wire=wire,
+                features=[feature],
             )[0],
         }
 
