@@ -1,0 +1,33 @@
+{
+  "extension_key": "house_numbering",
+  "version": "1.0.0",
+  "api_compatibility": "1.x",
+  "display_name": "House Numbering Reference Module",
+  "description": "Independent vertical reference module for street-segment house number assignment (ADR-008).",
+  "permissions": [
+    "ext.house_numbering.read",
+    "ext.house_numbering.assign"
+  ],
+  "commands": [
+    {
+      "id": "assign_street_numbers",
+      "label": "Assign Odd/Even House Numbers",
+      "required_permission": "ext.house_numbering.assign"
+    }
+  ],
+  "capabilities": [
+    "address_plate_registry",
+    "street_sequence_check"
+  ],
+  "entity_schemas": {
+    "address_plate": {
+      "fields": {
+        "street_name": { "type": "text", "required": true },
+        "house_number": { "type": "text", "required": true },
+        "side": { "type": "text", "required": true },
+        "ward_code": { "type": "text", "required": false },
+        "verified": { "type": "boolean", "required": false }
+      }
+    }
+  }
+}

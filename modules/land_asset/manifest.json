@@ -1,0 +1,33 @@
+{
+  "extension_key": "land_asset",
+  "version": "1.0.0",
+  "api_compatibility": "1.x",
+  "display_name": "Land & Asset Registry Reference Module",
+  "description": "Second independent reference module validating ADR-008 Core extension generality.",
+  "permissions": [
+    "ext.land_asset.read",
+    "ext.land_asset.inspect"
+  ],
+  "commands": [
+    {
+      "id": "record_asset_inspection",
+      "label": "Record Land/Asset Inspection",
+      "required_permission": "ext.land_asset.inspect"
+    }
+  ],
+  "capabilities": [
+    "asset_inspection_log",
+    "valuation_summary"
+  ],
+  "entity_schemas": {
+    "asset_inspection": {
+      "fields": {
+        "asset_code": { "type": "text", "required": true },
+        "land_use_code": { "type": "text", "required": true },
+        "area_m2": { "type": "number", "required": true },
+        "condition_score": { "type": "integer", "required": true },
+        "inspector_note": { "type": "text", "required": false }
+      }
+    }
+  }
+}

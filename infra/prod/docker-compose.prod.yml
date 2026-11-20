@@ -1,0 +1,69 @@
+services:
+  postgres:
+    image: postgis/postgis:18-3.7
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-openvietgis}
+      POSTGRES_USER: ${POSTGRES_USER:-openvietgis}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-openvietgis} -d ${POSTGRES_DB:-openvietgis}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.8.2
+    restart: unless-stopped
+    command: ["start", "--http-enabled=true", "--hostname-strict=false"]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KC_ADMIN_USER:-admin}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KC_ADMIN_PASSWORD:?set KC_ADMIN_PASSWORD}
+      KC_PROXY_HEADERS: xforwarded
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/8080"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: ../..
+      dockerfile: infra/prod/Dockerfile.api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      OPENVIETGIS_ENVIRONMENT: production
+      OPENVIETGIS_MIGRATION_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-openvietgis}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-openvietgis}
+      OPENVIETGIS_RUNTIME_DATABASE_URL: postgresql+psycopg://openvietgis_runtime:${RUNTIME_DB_PASSWORD:?set RUNTIME_DB_PASSWORD}@postgres:5432/${POSTGRES_DB:-openvietgis}
+      OPENVIETGIS_APPLICATION_SESSION_SECRET: ${SESSION_SECRET:?set SESSION_SECRET}
+      OPENVIETGIS_CSRF_SECRET: ${CSRF_SECRET:?set CSRF_SECRET}
+      OPENVIETGIS_BOOTSTRAP_SECRET: ${BOOTSTRAP_SECRET:?set BOOTSTRAP_SECRET}
+      OPENVIETGIS_SESSION_COOKIE_SECURE: "true"
+      OPENVIETGIS_ARTIFACT_STORE_DIR: /var/lib/openvietgis/artifacts
+    volumes:
+      - artifacts:/var/lib/openvietgis/artifacts
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/ops/health/ready')\""]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  web:
+    build:
+      context: ../..
+      dockerfile: infra/prod/Dockerfile.web
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "${HTTP_PORT:-8080}:80"
+
+volumes:
+  pgdata:
+  artifacts:

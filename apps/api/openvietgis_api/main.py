@@ -10,6 +10,7 @@ from openvietgis_api.adapters.http import (
     cartography,
     collaboration,
     editing,
+    extensions,
     external_sources,
     field,
     grants,
@@ -18,6 +19,7 @@ from openvietgis_api.adapters.http import (
     map_viewport,
     maps,
     me,
+    ops,
     organizations,
     processing,
     projects,
@@ -80,6 +82,8 @@ def create_app() -> FastAPI:
     api_v1.include_router(collaboration.router)
     api_v1.include_router(cad.router)
     api_v1.include_router(field.router)
+    api_v1.include_router(extensions.router)
+    api_v1.include_router(ops.router)
     app.include_router(api_v1)
     install_error_handlers(app)
     return app
