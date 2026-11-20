@@ -6,8 +6,12 @@ from openvietgis_api.adapters.http import (
     audit,
     auth,
     bootstrap,
+    cad,
     cartography,
+    collaboration,
     editing,
+    external_sources,
+    field,
     grants,
     health,
     invitations,
@@ -72,6 +76,10 @@ def create_app() -> FastAPI:
     api_v1.include_router(queries.router)
     api_v1.include_router(processing.router)
     api_v1.include_router(cartography.router)
+    api_v1.include_router(external_sources.router)
+    api_v1.include_router(collaboration.router)
+    api_v1.include_router(cad.router)
+    api_v1.include_router(field.router)
     app.include_router(api_v1)
     install_error_handlers(app)
     return app

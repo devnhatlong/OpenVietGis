@@ -115,6 +115,7 @@ def _capabilities(layer) -> None:
             "export",
             "query",
             "analysis",
+            "offline",
         }
         req_perm = (
             "project.edit"

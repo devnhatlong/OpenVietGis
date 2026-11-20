@@ -662,7 +662,13 @@ def layer_capabilities(
             Permission.PROJECT_EDIT.value if render_supported else None,
             actor_authorized if render_supported else False,
         ),
-        LayerCapability("offline", False, False, None, False),
+        LayerCapability(
+            "offline",
+            render_supported,
+            ready and render_supported,
+            Permission.PROJECT_READ.value if render_supported else None,
+            actor_authorized if render_supported else False,
+        ),
     )
 
 
