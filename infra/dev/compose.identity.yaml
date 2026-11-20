@@ -4,6 +4,7 @@ services:
     command: ["start-dev", "--import-realm"]
     environment:
       KC_HEALTH_ENABLED: "true"
+      KC_PROXY_HEADERS: "xforwarded"
       KC_BOOTSTRAP_ADMIN_USERNAME: openvietgis-admin
       KC_BOOTSTRAP_ADMIN_PASSWORD: openvietgis-development-only
     ports:
