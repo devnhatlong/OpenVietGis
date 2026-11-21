@@ -149,3 +149,12 @@ R004 SC009 (five first-time GIS-capable users) remains an external human accepta
   - camera summary remained unchanged;
   - Inspector focus and selected checkbox remained synchronized after reopening.
 - The current bounded Attribute Table renders exactly 100 body rows at the accepted page limit. This stays at the UI UX Pro Max virtualization threshold and is bounded by the parent R004 read contract, so no windowing dependency is introduced in this slice.
+
+## US3 synchronization evidence — 2026-11-21
+
+- Web typecheck PASS.
+- Web unit tests: 75/75 PASS after adding AccessibleMapSummary.
+- Browser scenario `keeps camera and selection stable across panel collapse and keyboard resize`: PASS.
+- Camera summary remains identical while Layer, Inspector and Attribute Table panels collapse/reopen and while the Layer separator is resized by keyboard.
+- Focused feature `point-000001`, checkbox selection and accessible map summary remain synchronized after layout-only changes.
+- Attribute Table renders exactly 100 bounded records on the reference page, matching the accepted parent read limit. No virtualization dependency is introduced because the simultaneous DOM row count does not exceed 100.
