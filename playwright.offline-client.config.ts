@@ -1,7 +1,7 @@
 import { defineConfig } from "@playwright/test";
 import { execPath } from "node:process";
 
-// Independent client test: all API responses are intercepted synthetic fixtures.
+// Independent client test: a strict loopback server supplies synthetic responses.
 // No live DB, identity provider, production endpoint or customer data.
 export default defineConfig({
   testDir: "./tests/offline-client",
