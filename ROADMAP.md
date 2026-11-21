@@ -50,6 +50,10 @@ Các phụ thuộc trên là baseline ở mức nhóm. Khi tạo spec nhỏ, ph�
 contract/capability cần dùng, không chỉ viện dẫn cả một nhóm lớn. Nếu module tham
 chiếu cần processing, thêm R008 vào phụ thuộc của slice đó trước khi mở spec.
 
+## Audit độc lập R001–R015
+
+[Spec 018 — Full Product Audit](specs/018-full-product-audit/spec.md) đánh giá toàn bộ các mục trên theo từng yêu cầu và bằng chứng chạy thực tế trên đúng candidate. Trạng thái `done` kế thừa trong bảng chưa phải kết luận của audit 018; không được xem các cờ capability tĩnh hoặc smoke test là nghiệm thu sản phẩm. Xem [ma trận sơ bộ](specs/018-full-product-audit/status-matrix.md) và [backlog nghi vấn](specs/018-full-product-audit/gaps.md). Không thay đổi phạm vi R001–R015 hoặc tự động phát hành.
+
 ## Mốc nghiệm thu
 
 | Mốc | Phạm vi tối thiểu | Kịch bản phải chứng minh | Trạng thái |
