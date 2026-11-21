@@ -508,6 +508,44 @@ export function createExternalConnection(
   });
 }
 
+export interface ExternalProviderPreview {
+  availability: "available";
+  capabilities: Record<string, boolean>;
+  scope: "operator_approved_sample";
+  connection_id: string;
+  cache_generation: number;
+  layer_identifier: string;
+  crs: number;
+  bbox: [number, number, number, number];
+  attribution: string;
+  license_text: string;
+  image_png_base64?: string;
+  width?: number;
+  height?: number;
+  feature_collection?: {
+    type: "FeatureCollection";
+    features: Array<{
+      type: "Feature";
+      id?: string | number;
+      geometry: { type: string; coordinates: unknown };
+      properties: Record<string, string | number | boolean | null>;
+    }>;
+  };
+}
+
+export function previewExternalProvider(
+  client: ApiClient,
+  orgId: string,
+  projectId: string,
+  connectionId: string,
+  csrf: string
+): Promise<ExternalProviderPreview> {
+  return client.request<ExternalProviderPreview>(
+    `${projBase(orgId, projectId)}/external-sources/${encodeURIComponent(connectionId)}/preview`,
+    { method: "POST", headers: csrfHeaders(csrf), cache: "no-store" }
+  );
+}
+
 // R011 Collaboration
 export function listProjectActivities(
   client: ApiClient,

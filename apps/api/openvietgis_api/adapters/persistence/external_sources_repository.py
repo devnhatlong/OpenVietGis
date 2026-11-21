@@ -10,6 +10,9 @@ from sqlalchemy import text
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.orm import Session
 
+from openvietgis_api.adapters.persistence.authorization_repository import (
+    SqlEffectivePermissionProvider,
+)
 from openvietgis_api.adapters.persistence.rls import (
     bind_authenticated_actor,
     bind_authenticated_service_actor,
@@ -18,6 +21,7 @@ from openvietgis_api.adapters.persistence.rls import (
 from openvietgis_api.adapters.persistence.scope_helper import prepare_project_scope
 from openvietgis_api.domains.authorization.context import AuthorizationContext
 from openvietgis_api.domains.authorization.permissions import Permission
+from openvietgis_api.domains.authorization.service import AuthorizationService
 from openvietgis_api.domains.external_sources.domain import (
     AllowlistedHostRecord,
     ExternalConnectionRecord,
@@ -99,6 +103,9 @@ class SqlExternalSourcesRepository:
         secret_ref_name: str | None = None,
     ) -> AllowlistedHostRecord:
         self._bind_org(context)
+        AuthorizationService(SqlEffectivePermissionProvider(self._session)).require(
+            context, Permission.ORGANIZATION_MANAGE_SETTINGS
+        )
         assert context.organization_id is not None and context.actor.actor_id is not None
         clean_host = validate_safe_hostname(hostname)
         schemes = [s.lower() for s in (allowed_schemes or ["https"])]
@@ -121,8 +128,9 @@ class SqlExternalSourcesRepository:
             )
 
         now = datetime.now(UTC)
-        row = self._session.execute(
-            text("""
+        row = (
+            self._session.execute(
+                text("""
                 INSERT INTO external_sources.allowlisted_hosts (
                     id, organization_id, hostname, allowed_schemes, allowed_ports,
                     secret_ref_name, enabled, created_by_actor_id, created_at
@@ -132,17 +140,20 @@ class SqlExternalSourcesRepository:
                 )
                 RETURNING *
             """),
-            {
-                "id": uuid4(),
-                "org": context.organization_id,
-                "host": clean_host,
-                "schemes": json.dumps(schemes),
-                "ports": json.dumps(ports),
-                "sref": secret_ref_name.strip()[:128] if secret_ref_name else None,
-                "actor": context.actor.actor_id,
-                "now": now,
-            },
-        ).mappings().one()
+                {
+                    "id": uuid4(),
+                    "org": context.organization_id,
+                    "host": clean_host,
+                    "schemes": json.dumps(schemes),
+                    "ports": json.dumps(ports),
+                    "sref": secret_ref_name.strip()[:128] if secret_ref_name else None,
+                    "actor": context.actor.actor_id,
+                    "now": now,
+                },
+            )
+            .mappings()
+            .one()
+        )
         self._session.commit()
         return _allowlist_from_row(row)
 
@@ -151,13 +162,17 @@ class SqlExternalSourcesRepository:
     ) -> list[AllowlistedHostRecord]:
         self._bind_org(context)
         assert context.organization_id is not None
-        rows = self._session.execute(
-            text("""
+        rows = (
+            self._session.execute(
+                text("""
                 SELECT * FROM external_sources.allowlisted_hosts
                 WHERE organization_id = :org ORDER BY hostname ASC
             """),
-            {"org": context.organization_id},
-        ).mappings().all()
+                {"org": context.organization_id},
+            )
+            .mappings()
+            .all()
+        )
         return [_allowlist_from_row(r) for r in rows]
 
     def create_connection(
@@ -177,13 +192,17 @@ class SqlExternalSourcesRepository:
         assert context.organization_id is not None and context.project_id is not None
         assert context.actor.actor_id is not None
 
-        arow = self._session.execute(
-            text("""
+        arow = (
+            self._session.execute(
+                text("""
                 SELECT * FROM external_sources.allowlisted_hosts
                 WHERE organization_id = :org AND id = :aid
             """),
-            {"org": context.organization_id, "aid": allowlist_id},
-        ).mappings().first()
+                {"org": context.organization_id, "aid": allowlist_id},
+            )
+            .mappings()
+            .first()
+        )
         if arow is None:
             raise PlatformNotFoundError("allowlisted host not found")
         allowlist = _allowlist_from_row(arow)
@@ -196,8 +215,9 @@ class SqlExternalSourcesRepository:
             )
         caps = default_external_capabilities(protocol)
         now = datetime.now(UTC)
-        row = self._session.execute(
-            text("""
+        row = (
+            self._session.execute(
+                text("""
                 INSERT INTO external_sources.connections (
                     id, organization_id, project_id, allowlist_id, name, protocol,
                     endpoint_url, layer_identifier, attribution, license_text,
@@ -211,38 +231,82 @@ class SqlExternalSourcesRepository:
                 )
                 RETURNING *
             """),
-            {
-                "id": uuid4(),
-                "org": context.organization_id,
-                "proj": context.project_id,
-                "aid": allowlist_id,
-                "name": name.strip()[:200] or "External Layer",
-                "proto": protocol.value,
-                "url": clean_url,
-                "lid": layer_identifier.strip()[:200] or "default",
-                "attr": attribution.strip()[:300] or "External Provider",
-                "lic": license_text.strip()[:300] or "Provider License Terms Apply",
-                "crs": json.dumps(crs_codes),
-                "caps": json.dumps(caps),
-                "actor": context.actor.actor_id,
-                "now": now,
-            },
-        ).mappings().one()
+                {
+                    "id": uuid4(),
+                    "org": context.organization_id,
+                    "proj": context.project_id,
+                    "aid": allowlist_id,
+                    "name": name.strip()[:200] or "External Layer",
+                    "proto": protocol.value,
+                    "url": clean_url,
+                    "lid": layer_identifier.strip()[:200] or "default",
+                    "attr": attribution.strip()[:300] or "External Provider",
+                    "lic": license_text.strip()[:300] or "Provider License Terms Apply",
+                    "crs": json.dumps(crs_codes),
+                    "caps": json.dumps(caps),
+                    "actor": context.actor.actor_id,
+                    "now": now,
+                },
+            )
+            .mappings()
+            .one()
+        )
         self._session.commit()
         return _conn_from_row(row)
 
     def list_connections(self, *, context: AuthorizationContext) -> list[ExternalConnectionRecord]:
         prepare_project_scope(self._session, context, permission=Permission.PROJECT_READ)
         assert context.organization_id is not None and context.project_id is not None
-        rows = self._session.execute(
-            text("""
+        rows = (
+            self._session.execute(
+                text("""
                 SELECT * FROM external_sources.connections
                 WHERE organization_id = :org AND project_id = :proj
                 ORDER BY created_at DESC
             """),
-            {"org": context.organization_id, "proj": context.project_id},
-        ).mappings().all()
+                {"org": context.organization_id, "proj": context.project_id},
+            )
+            .mappings()
+            .all()
+        )
         return [_conn_from_row(r) for r in rows]
+
+    def connection_for_provider_request(
+        self, *, context: AuthorizationContext, connection_id: UUID
+    ) -> tuple[ExternalConnectionRecord, AllowlistedHostRecord]:
+        """Live project authorization and shared row locks through provider response."""
+        prepare_project_scope(self._session, context, permission=Permission.PROJECT_READ)
+        assert context.organization_id is not None and context.project_id is not None
+        row = (
+            self._session.execute(
+                text("""
+                SELECT * FROM external_sources.connections
+                WHERE organization_id = :org AND project_id = :proj AND id = :cid
+                FOR SHARE
+            """),
+                {"org": context.organization_id, "proj": context.project_id, "cid": connection_id},
+            )
+            .mappings()
+            .first()
+        )
+        if row is None:
+            raise PlatformNotFoundError("external connection not found")
+        conn = _conn_from_row(row)
+        allowlist = (
+            self._session.execute(
+                text("""
+                SELECT * FROM external_sources.allowlisted_hosts
+                WHERE organization_id = :org AND id = :aid
+                FOR SHARE
+            """),
+                {"org": context.organization_id, "aid": conn.allowlist_id},
+            )
+            .mappings()
+            .first()
+        )
+        if allowlist is None:
+            raise PlatformNotFoundError("allowlisted host not found")
+        return conn, _allowlist_from_row(allowlist)
 
     def invalidate_cache(
         self, *, context: AuthorizationContext, connection_id: UUID
@@ -250,20 +314,24 @@ class SqlExternalSourcesRepository:
         prepare_project_scope(self._session, context, permission=Permission.PROJECT_EDIT)
         assert context.organization_id is not None and context.project_id is not None
         now = datetime.now(UTC)
-        row = self._session.execute(
-            text("""
+        row = (
+            self._session.execute(
+                text("""
                 UPDATE external_sources.connections
                 SET cache_generation = cache_generation + 1, updated_at = :now
                 WHERE organization_id = :org AND project_id = :proj AND id = :cid
                 RETURNING *
             """),
-            {
-                "org": context.organization_id,
-                "proj": context.project_id,
-                "cid": connection_id,
-                "now": now,
-            },
-        ).mappings().first()
+                {
+                    "org": context.organization_id,
+                    "proj": context.project_id,
+                    "cid": connection_id,
+                    "now": now,
+                },
+            )
+            .mappings()
+            .first()
+        )
         if row is None:
             raise PlatformNotFoundError("external connection not found")
         self._session.commit()
@@ -275,21 +343,25 @@ class SqlExternalSourcesRepository:
         prepare_project_scope(self._session, context, permission=Permission.PROJECT_EDIT)
         assert context.organization_id is not None and context.project_id is not None
         now = datetime.now(UTC)
-        row = self._session.execute(
-            text("""
+        row = (
+            self._session.execute(
+                text("""
                 UPDATE external_sources.connections
                 SET lifecycle = 'revoked', cache_generation = cache_generation + 1,
                     updated_at = :now
                 WHERE organization_id = :org AND project_id = :proj AND id = :cid
                 RETURNING *
             """),
-            {
-                "org": context.organization_id,
-                "proj": context.project_id,
-                "cid": connection_id,
-                "now": now,
-            },
-        ).mappings().first()
+                {
+                    "org": context.organization_id,
+                    "proj": context.project_id,
+                    "cid": connection_id,
+                    "now": now,
+                },
+            )
+            .mappings()
+            .first()
+        )
         if row is None:
             raise PlatformNotFoundError("external connection not found")
         self._session.commit()

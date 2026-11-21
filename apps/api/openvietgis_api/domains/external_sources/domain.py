@@ -108,11 +108,30 @@ def validate_endpoint_against_allowlist(
     allowlist: AllowlistedHostRecord,
 ) -> tuple[str, str, int]:
     """Ensure URL has no embedded credentials, passes SSRF checks, and matches allowlist."""
-    parsed = urllib.parse.urlparse(endpoint_url.strip())
-    if parsed.username or parsed.password:
+    clean = endpoint_url.strip()
+    if (
+        not clean
+        or len(clean) > 1000
+        or not clean.isascii()
+        or any(ord(c) <= 32 or ord(c) == 127 for c in clean)
+    ):
+        raise PlatformValidationError("invalid endpoint URL", code="INVALID_URL")
+    try:
+        parsed = urllib.parse.urlparse(clean)
+        port = parsed.port
+    except ValueError as exc:
+        raise PlatformValidationError("invalid endpoint URL", code="INVALID_URL") from exc
+    if parsed.username is not None or parsed.password is not None:
         raise PlatformForbiddenError(
             "credentials must not be embedded in external URLs; use secret_ref_name",
             code="URL_CREDENTIALS_FORBIDDEN",
+        )
+    # Raw URL query strings/fragments can contain provider API tokens. Adapter
+    # queries are synthesized only by trusted profiles at request time.
+    if "?" in clean or "#" in clean:
+        raise PlatformForbiddenError(
+            "endpoint query strings and fragments are not supported",
+            code="URL_PARAMETERS_FORBIDDEN",
         )
     scheme = parsed.scheme.lower()
     if scheme not in ("http", "https"):
@@ -122,7 +141,7 @@ def validate_endpoint_against_allowlist(
     if not parsed.hostname:
         raise PlatformValidationError("endpoint URL requires a hostname", code="INVALID_URL")
     host = validate_safe_hostname(parsed.hostname)
-    port = parsed.port or (443 if scheme == "https" else 80)
+    port = port if port is not None else (443 if scheme == "https" else 80)
 
     if not allowlist.enabled:
         raise PlatformForbiddenError("allowlisted host is disabled", code="HOST_DISABLED")
@@ -165,7 +184,9 @@ def sanitize_allowlist_wire(rec: AllowlistedHostRecord) -> dict[str, Any]:
         "allowed_schemes": list(rec.allowed_schemes),
         "allowed_ports": list(rec.allowed_ports),
         "has_secret_ref": rec.secret_ref_name is not None,
-        "secret_ref_name": rec.secret_ref_name,
+        # A reference name is never necessary for the project UI; keep even
+        # accidentally entered credential-like strings out of API responses.
+        "secret_ref_name": None,
         "enabled": rec.enabled,
         "created_at": rec.created_at.isoformat(),
     }

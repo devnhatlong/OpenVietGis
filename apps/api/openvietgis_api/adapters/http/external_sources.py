@@ -3,13 +3,15 @@
 from __future__ import annotations
 
 from typing import Annotated, Any
+from urllib.parse import urlsplit, urlunsplit
 from uuid import UUID
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Response
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
 from openvietgis_api.adapters.http.authorization import context_for
+from openvietgis_api.adapters.http.external_provider_transport import fetch_provider_bytes
 from openvietgis_api.adapters.http.security import (
     AuthenticatedRequest,
     authenticate_request,
@@ -24,10 +26,27 @@ from openvietgis_api.domains.external_sources.domain import (
     ExternalProtocol,
     sanitize_allowlist_wire,
 )
+from openvietgis_api.domains.external_sources.provider import (
+    approved_profile,
+    provider_preview,
+)
+from openvietgis_api.domains.platform_errors import PlatformForbiddenError
 
 router = APIRouter(tags=["external-sources"])
 _ORG = "/organizations/{organization_id}"
 _PROJ = f"{_ORG}/projects/{{project_id}}"
+
+
+def _safe_display_endpoint(endpoint: str) -> str:
+    """Never expose query/fragment/userinfo from a legacy registration."""
+    try:
+        parsed = urlsplit(endpoint)
+        if parsed.scheme not in ("http", "https") or not parsed.hostname:
+            return ""
+        authority = parsed.hostname + (f":{parsed.port}" if parsed.port is not None else "")
+        return urlunsplit((parsed.scheme, authority, parsed.path, "", ""))
+    except ValueError:
+        return ""
 
 
 def _conn_wire(c: ExternalConnectionRecord) -> dict[str, Any]:
@@ -38,7 +57,7 @@ def _conn_wire(c: ExternalConnectionRecord) -> dict[str, Any]:
         "allowlist_id": str(c.allowlist_id),
         "name": c.name,
         "protocol": c.protocol.value,
-        "endpoint_url": c.endpoint_url,
+        "endpoint_url": _safe_display_endpoint(c.endpoint_url),
         "layer_identifier": c.layer_identifier,
         "attribution": c.attribution,
         "license_text": c.license_text,
@@ -134,6 +153,34 @@ def list_external_connections(
     ctx = context_for(auth, organization_id=organization_id, project_id=project_id)
     items = SqlExternalSourcesRepository(session).list_connections(context=ctx)
     return {"items": [_conn_wire(c) for c in items]}
+
+
+@router.post(f"{_PROJ}/external-sources/{{connection_id}}/preview")
+def preview_external_source(
+    organization_id: UUID,
+    project_id: UUID,
+    connection_id: UUID,
+    response: Response,
+    auth: Annotated[AuthenticatedRequest, Depends(require_csrf)],
+    session: Annotated[Session, Depends(get_db_session, scope="function")],
+) -> dict[str, Any]:
+    """Fresh provider proof of the operator-approved sample, never user geometry."""
+    ctx = context_for(auth, organization_id=organization_id, project_id=project_id)
+    repository = SqlExternalSourcesRepository(session)
+    conn, allowlist = repository.connection_for_provider_request(
+        context=ctx, connection_id=connection_id
+    )
+    profile = approved_profile(conn, allowlist)
+    result = provider_preview(profile, fetch_provider_bytes)
+    # Recheck live authorization after the bounded outbound request. Row locks
+    # prevent provider revocation/cache mutation during this proof transaction.
+    current, current_allowlist = repository.connection_for_provider_request(
+        context=ctx, connection_id=connection_id
+    )
+    if approved_profile(current, current_allowlist) != profile:
+        raise PlatformForbiddenError("provider profile changed", code="PROVIDER_DISABLED")
+    response.headers["Cache-Control"] = "no-store"
+    return {**result, "connection_id": str(conn.id), "cache_generation": conn.cache_generation}
 
 
 @router.post(f"{_PROJ}/external-sources/{{connection_id}}/invalidate-cache")

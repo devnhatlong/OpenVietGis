@@ -25,10 +25,10 @@ import { apiClient } from "../../app/api";
 import { ProjectToolbar } from "./ProjectToolbar";
 import {
   entitlementTierLabel,
-  externalAvailabilityLabel,
   releaseProfileLabel,
   releaseStatusLabel
 } from "./platform-release-state";
+import { ExternalSourcePreview } from "./ExternalSourcePreview";
 
 type HubTab = "external" | "collab" | "cad" | "field" | "extensions" | "ops";
 
@@ -103,6 +103,10 @@ export function PlatformHubPage() {
   // R010 state
   const [extHost, setExtHost] = useState("tiles.example.org");
   const [extUrl, setExtUrl] = useState("https://tiles.example.org/wms");
+  const [extProtocol, setExtProtocol] = useState<"wms" | "wfs_ogc_features">("wms");
+  const [extLayer, setExtLayer] = useState("default");
+  const [extAttribution, setExtAttribution] = useState("External Provider");
+  const [extLicense, setExtLicense] = useState("Provider License Terms");
 
   // R012 COGO state
   const [originX, setOriginX] = useState("500000");
@@ -256,7 +260,9 @@ export function PlatformHubPage() {
                   setError(null);
                   try {
                     const csrf = await loadCsrfToken(apiClient);
-                    const al = await registerAllowlistedHost(
+                    const al = (allowlistQ.data?.items ?? []).find(
+                      (host) => host.hostname === extHost.trim().toLowerCase()
+                    ) ?? await registerAllowlistedHost(
                       apiClient,
                       organizationId,
                       { hostname: extHost },
@@ -268,13 +274,16 @@ export function PlatformHubPage() {
                       projectId,
                       {
                         allowlist_id: al.id,
-                        name: `WMS ${extHost}`,
-                        protocol: "wms",
-                        endpoint_url: extUrl
+                        name: `${extProtocol.toUpperCase()} ${extHost}`,
+                        protocol: extProtocol,
+                        endpoint_url: extUrl,
+                        layer_identifier: extLayer,
+                        attribution: extAttribution,
+                        license_text: extLicense
                       },
                       csrf
                     );
-                    setNotice(`Đã thêm ${extHost} vào danh sách cho phép và đăng ký cấu hình WMS. Xem trạng thái xác minh bên dưới.`);
+                    setNotice(`Đã đăng ký cấu hình ${extProtocol.toUpperCase()} cho ${extHost}; chưa xác minh kết nối. Xem mẫu được phép bên dưới.`);
                     await qc.invalidateQueries({ queryKey: ["hub", organizationId] });
                   } catch (err) {
                     setError(err instanceof Error ? err.message : "Không thành công.");
@@ -288,12 +297,42 @@ export function PlatformHubPage() {
                 <input value={extUrl} onChange={(e) => setExtUrl(e.target.value)} />
               </label>
             </div>
+            <div className="ovg-form-row">
+              <label>
+                Giao thức xem mẫu
+                <select
+                  value={extProtocol}
+                  onChange={(e) => setExtProtocol(e.target.value === "wms" ? "wms" : "wfs_ogc_features")}
+                >
+                  <option value="wms">WMS 1.1.1</option>
+                  <option value="wfs_ogc_features">WFS 1.0.0</option>
+                </select>
+              </label>
+              <label>
+                Tên lớp / Feature type
+                <input value={extLayer} onChange={(e) => setExtLayer(e.target.value)} />
+              </label>
+              <label>
+                Ghi công
+                <input value={extAttribution} onChange={(e) => setExtAttribution(e.target.value)} />
+              </label>
+              <label>
+                Quyền sử dụng
+                <input value={extLicense} onChange={(e) => setExtLicense(e.target.value)} />
+              </label>
+            </div>
+            <p>Chỉ xem mẫu đối với dịch vụ công khai và vùng mẫu được quản trị viên phê duyệt.</p>
             <p>Máy chủ trong danh sách cho phép: {(allowlistQ.data?.items ?? []).map((h) => h.hostname).join(", ") || "Không có"}</p>
             <ul>
               {(extConnsQ.data?.items ?? []).map((c) => (
                 <li key={c.id}>
                   <strong>{c.name}</strong> ({c.protocol}) — {c.endpoint_url}
-                  {" — "}{externalAvailabilityLabel(c)}
+                  <ExternalSourcePreview
+                    key={`${organizationId}:${projectId}:${c.id}:${c.cache_generation}:${c.lifecycle}`}
+                    connection={c}
+                    organizationId={organizationId}
+                    projectId={projectId}
+                  />
                 </li>
               ))}
             </ul>
