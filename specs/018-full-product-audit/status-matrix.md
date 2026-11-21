@@ -18,6 +18,6 @@ Candidate c6d449fc0ead93e259b79b87e63c1c894bd16c93. No row is fully accepted; in
 | R012 | CAD | DXF reader roundtrip/loss + COGO controls pass | full profile/precision breadth |
 | R013 | Offline | package download + server sync/conflict/revoke pass | disconnected client local restart and sync |
 | R014 | Extensions | reference modules and generic contract tests pass | independent lifecycle and tenant/permission negatives |
-| R015 | Operations | health/metrics/entitlement tests pass; static flags | enforcement, restore, release readiness |
+| R015 | Operations | health/metrics/entitlement pass; DB restore matches 57,171 features; **G010 backup omits artifact bytes** | full recovery, authority reconciliation, enforcement, release readiness |
 
 Release decision: blocked; G009 reproduced on frozen candidate, plus open source and manual gates. Never promote on green existing-suite count alone.

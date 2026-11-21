@@ -12,3 +12,4 @@ Source review for G003–G006: [candidate observations and original FR/SC tracea
 | G007 | R006–R015 | high | Single broad E2E omits most advanced UI journeys; actionable independent browser/negative tests for each supported operation. |
 | G008 | R002/R004/R005 | high | Human observation gates outstanding; run required acceptance observation before external release. |
 | G009 | R008 | high | **Reproduced**: Buffer reports succeeded, but pinned derived feature read raises noncanonical logical attribute (decimal stored as 1000.0). FR-027, FR-034, SC-001; [reproduction and retest](evidence/r008.md). |
+| G010 | R015 | high | **Reproduced**: Database restores 57,171 features with matching counts/fingerprint, but 24 artifact bytes are absent from backup output (manifest only); complete recoverability and authority reconciliation unproved. FR-010–012, SC-004; [restore evidence](evidence/r015.md). |

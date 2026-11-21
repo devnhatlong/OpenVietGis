@@ -760,9 +760,9 @@ Source: `3831db0c0019e55ab8fd98001663a50537ca99aa:specs/015-production-readiness
 | R015/FR-007 | 119 | unverified | — |
 | R015/FR-008 | 120 | unverified | — |
 | R015/FR-009 | 121 | unverified | — |
-| R015/FR-010 | 122 | unverified | — |
-| R015/FR-011 | 123 | unverified | — |
-| R015/FR-012 | 124 | unverified | — |
+| R015/FR-010 | 122 | blocked | [G010](r015.md) |
+| R015/FR-011 | 123 | blocked | [G010](r015.md) |
+| R015/FR-012 | 124 | blocked | [G010](r015.md) |
 | R015/FR-013 | 125 | unverified | — |
 | R015/FR-014 | 126 | unverified | — |
 | R015/FR-015 | 127 | unverified | — |
@@ -775,7 +775,7 @@ Source: `3831db0c0019e55ab8fd98001663a50537ca99aa:specs/015-production-readiness
 | R015/SC-001 | 149 | unverified | — |
 | R015/SC-002 | 150 | unverified | — |
 | R015/SC-003 | 151 | unverified | — |
-| R015/SC-004 | 152 | unverified | — |
+| R015/SC-004 | 152 | blocked | [G010](r015.md) |
 | R015/SC-005 | 153 | unverified | — |
 | R015/SC-006 | 154 | unverified | — |
 | R015/SC-007 | 155 | unverified | — |
