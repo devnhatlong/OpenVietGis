@@ -23,9 +23,7 @@ def parse_dxf_2d(
         text_stream = io.StringIO(payload.decode("utf-8", errors="replace"))
         doc = ezdxf.read(text_stream)
     except Exception as exc:
-        raise PlatformValidationError(
-            f"invalid DXF document: {exc}", code="INVALID_DXF"
-        ) from exc
+        raise PlatformValidationError(f"invalid DXF document: {exc}", code="INVALID_DXF") from exc
 
     msp = doc.modelspace()
     points: list[dict[str, Any]] = []
@@ -44,21 +42,25 @@ def parse_dxf_2d(
 
         if etype == "POINT":
             loc = ent.dxf.location
-            points.append({
-                "feature_id": f"dxf_{idx}",
-                "attributes": {"cad_layer": layer_name, "cad_entity": "POINT"},
-                "geometry": {"type": "Point", "coordinates": [loc.x * scale, loc.y * scale]},
-            })
+            points.append(
+                {
+                    "feature_id": f"dxf_{idx}",
+                    "attributes": {"cad_layer": layer_name, "cad_entity": "POINT"},
+                    "geometry": {"type": "Point", "coordinates": [loc.x * scale, loc.y * scale]},
+                }
+            )
         elif etype == "LINE":
             s, e = ent.dxf.start, ent.dxf.end
-            lines.append({
-                "feature_id": f"dxf_{idx}",
-                "attributes": {"cad_layer": layer_name, "cad_entity": "LINE"},
-                "geometry": {
-                    "type": "LineString",
-                    "coordinates": [[s.x * scale, s.y * scale], [e.x * scale, e.y * scale]],
-                },
-            })
+            lines.append(
+                {
+                    "feature_id": f"dxf_{idx}",
+                    "attributes": {"cad_layer": layer_name, "cad_entity": "LINE"},
+                    "geometry": {
+                        "type": "LineString",
+                        "coordinates": [[s.x * scale, s.y * scale], [e.x * scale, e.y * scale]],
+                    },
+                }
+            )
         elif etype == "LWPOLYLINE":
             lw: Any = ent
             pts = [[float(p[0]) * scale, float(p[1]) * scale] for p in lw.get_points("xy")]
@@ -71,17 +73,21 @@ def parse_dxf_2d(
             if is_closed and len(pts) >= 3:
                 if pts[0] != pts[-1]:
                     pts.append(pts[0])
-                polygons.append({
-                    "feature_id": f"dxf_{idx}",
-                    "attributes": {"cad_layer": layer_name, "cad_entity": "LWPOLYLINE_CLOSED"},
-                    "geometry": {"type": "Polygon", "coordinates": [pts]},
-                })
+                polygons.append(
+                    {
+                        "feature_id": f"dxf_{idx}",
+                        "attributes": {"cad_layer": layer_name, "cad_entity": "LWPOLYLINE_CLOSED"},
+                        "geometry": {"type": "Polygon", "coordinates": [pts]},
+                    }
+                )
             else:
-                lines.append({
-                    "feature_id": f"dxf_{idx}",
-                    "attributes": {"cad_layer": layer_name, "cad_entity": "LWPOLYLINE"},
-                    "geometry": {"type": "LineString", "coordinates": pts},
-                })
+                lines.append(
+                    {
+                        "feature_id": f"dxf_{idx}",
+                        "attributes": {"cad_layer": layer_name, "cad_entity": "LWPOLYLINE"},
+                        "geometry": {"type": "LineString", "coordinates": pts},
+                    }
+                )
         elif etype == "CIRCLE":
             c = ent.dxf.center
             r = float(ent.dxf.radius) * scale
@@ -94,11 +100,13 @@ def parse_dxf_2d(
                 for k in range(segs)
             ]
             ring.append(ring[0])
-            polygons.append({
-                "feature_id": f"dxf_{idx}",
-                "attributes": {"cad_layer": layer_name, "cad_entity": "CIRCLE"},
-                "geometry": {"type": "Polygon", "coordinates": [ring]},
-            })
+            polygons.append(
+                {
+                    "feature_id": f"dxf_{idx}",
+                    "attributes": {"cad_layer": layer_name, "cad_entity": "CIRCLE"},
+                    "geometry": {"type": "Polygon", "coordinates": [ring]},
+                }
+            )
             if "CIRCLE_TESSELLATED_32_SEGMENTS" not in approximations:
                 approximations.append("CIRCLE_TESSELLATED_32_SEGMENTS")
         else:
@@ -108,9 +116,7 @@ def parse_dxf_2d(
     buckets = [("Polygon", polygons), ("LineString", lines), ("Point", points)]
     buckets.sort(key=lambda b: len(b[1]), reverse=True)
     dominant_family, features = buckets[0]
-    dropped_families = {
-        fam: len(items) for fam, items in buckets[1:] if len(items) > 0
-    }
+    dropped_families = {fam: len(items) for fam, items in buckets[1:] if len(items) > 0}
     if not features:
         raise PlatformValidationError(
             "DXF contains no supported 2D vector entities (POINT, LINE, LWPOLYLINE, CIRCLE)",
@@ -144,6 +150,9 @@ def write_dxf_2d(
     """Export 2D vector features into a clean R2010 DXF document."""
     inv_scale = 1.0 / UNIT_TO_METERS[units]
     doc = ezdxf.new("R2010")
+    doc.header["$INSUNITS"] = {CadUnit.METER: 6, CadUnit.CENTIMETER: 5, CadUnit.MILLIMETER: 4}[
+        units
+    ]
     msp = doc.modelspace()
     safe_layer = "".join(c if c.isalnum() or c in "_-" else "_" for c in layer_name)[:48] or "GIS"
     if safe_layer not in doc.layers:
@@ -152,7 +161,9 @@ def write_dxf_2d(
     for feat in features:
         geom = feat.get("geometry")
         if not geom:
-            continue
+            raise PlatformValidationError(
+                "DXF cannot preserve missing geometry", code="CAD_GEOMETRY_UNSUPPORTED"
+            )
         gtype = geom.get("type")
         coords = geom.get("coordinates")
         if gtype == "Point":
@@ -164,9 +175,18 @@ def write_dxf_2d(
             pts = [(float(p[0]) * inv_scale, float(p[1]) * inv_scale) for p in coords]
             msp.add_lwpolyline(pts, dxfattribs={"layer": safe_layer})
         elif gtype == "Polygon":
+            if len(coords) != 1:
+                raise PlatformValidationError(
+                    "DXF simple polylines cannot preserve polygon holes",
+                    code="CAD_GEOMETRY_UNSUPPORTED",
+                )
             for ring in coords:
                 pts = [(float(p[0]) * inv_scale, float(p[1]) * inv_scale) for p in ring]
                 msp.add_lwpolyline(pts, close=True, dxfattribs={"layer": safe_layer})
+        else:
+            raise PlatformValidationError(
+                f"unsupported DXF geometry: {gtype}", code="CAD_GEOMETRY_UNSUPPORTED"
+            )
 
     out = io.StringIO()
     doc.write(out)

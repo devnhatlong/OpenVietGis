@@ -29,6 +29,7 @@ from openvietgis_api.domains.cad.domain import (
     compute_precision_snap,
     compute_traverse_point,
 )
+from openvietgis_api.domains.platform_errors import PlatformValidationError
 
 router = APIRouter(tags=["cad"])
 _BASE = "/organizations/{organization_id}/projects/{project_id}"
@@ -62,6 +63,7 @@ class ExportDxfRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     layer_id: UUID
     units: CadUnit = CadUnit.METER
+    expected_content_revision: str | None = None
 
 
 class CogoTraverseRequest(BaseModel):
@@ -102,7 +104,10 @@ def import_cad_file(
     session: Annotated[Session, Depends(get_db_session, scope="function")] = ...,  # type: ignore[assignment]
 ) -> dict[str, Any]:
     ctx = context_for(auth, organization_id=organization_id, project_id=project_id)
-    payload = file.file.read(25 * 1024 * 1024)
+    cap = 25 * 1024 * 1024
+    payload = file.file.read(cap + 1)
+    if len(payload) > cap:
+        raise PlatformValidationError("CAD upload exceeds 25 MiB limit", code="CAD_FILE_LIMIT")
     rec = _repo(session).import_cad(
         context=ctx,
         filename=file.filename or "drawing.dxf",
@@ -123,7 +128,12 @@ def export_cad_dxf(
     session: Annotated[Session, Depends(get_db_session, scope="function")],
 ) -> Response:
     ctx = context_for(auth, organization_id=organization_id, project_id=project_id)
-    rec, data = _repo(session).export_dxf(context=ctx, layer_id=body.layer_id, units=body.units)
+    rec, data = _repo(session).export_dxf(
+        context=ctx,
+        layer_id=body.layer_id,
+        units=body.units,
+        expected_content_revision=body.expected_content_revision,
+    )
     return Response(
         content=data,
         media_type="application/dxf",

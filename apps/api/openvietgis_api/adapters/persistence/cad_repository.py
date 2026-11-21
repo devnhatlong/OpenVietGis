@@ -23,6 +23,7 @@ from openvietgis_api.domains.authorization.permissions import Permission
 from openvietgis_api.domains.cad.domain import CadConversionRecord, CadUnit
 from openvietgis_api.domains.editing.domain import geometry_to_wkt
 from openvietgis_api.domains.platform_errors import (
+    PlatformConflictError,
     PlatformNotFoundError,
     PlatformValidationError,
 )
@@ -79,12 +80,14 @@ class SqlCadRepository:
         assert context.actor.actor_id is not None
         org_id, project_id = context.organization_id, context.project_id
 
-        if crs_code not in (4326, 3857, 4756, 5899):
+        if crs_code not in (3857, 5899):
             raise PlatformValidationError(
-                "explicit georeferenced CRS (4326, 3857, 4756, 5899) required; "
-                "ungeoreferenced CAD publication is rejected",
+                "DXF length units require an explicit supported projected CRS (3857 or 5899); "
+                "geographic degrees are not metres",
                 code="UNGEOREFERENCED_CAD_REJECTED",
             )
+        if not payload or len(payload) > 25 * 1024 * 1024:
+            raise PlatformValidationError("CAD upload size unsupported", code="CAD_FILE_LIMIT")
 
         conv_id = uuid4()
         lower = filename.lower()
@@ -95,8 +98,9 @@ class SqlCadRepository:
 
         if fmt == "dwg":
             # Preserve original evidence and reject DWG without licensed adapter
-            row = self._session.execute(
-                text("""
+            row = (
+                self._session.execute(
+                    text("""
                     INSERT INTO cad.conversions (
                         id, organization_id, project_id, direction, cad_format, filename,
                         units, crs_code, status, entity_summary, loss_report, storage_key,
@@ -108,26 +112,31 @@ class SqlCadRepository:
                     )
                     RETURNING *
                 """),
-                {
-                    "id": conv_id,
-                    "org": org_id,
-                    "proj": project_id,
-                    "fname": filename[:255],
-                    "units": units.value,
-                    "crs": crs_code,
-                    "esum": json.dumps({"detected_format": "dwg"}),
-                    "loss": json.dumps({
-                        "reason": "DWG_ADAPTER_REQUIRED",
-                        "message": "Native DWG requires a separately licensed adapter; "
-                        "convert to 2D DXF R2010+ for direct import.",
-                    }),
-                    "skey": skey,
-                    "sha": sha256_hex,
-                    "sz": byte_size,
-                    "actor": context.actor.actor_id,
-                    "now": now,
-                },
-            ).mappings().one()
+                    {
+                        "id": conv_id,
+                        "org": org_id,
+                        "proj": project_id,
+                        "fname": filename[:255],
+                        "units": units.value,
+                        "crs": crs_code,
+                        "esum": json.dumps({"detected_format": "dwg"}),
+                        "loss": json.dumps(
+                            {
+                                "reason": "DWG_ADAPTER_REQUIRED",
+                                "message": "Native DWG requires a separately licensed adapter; "
+                                "convert to 2D DXF R2010+ for direct import.",
+                            }
+                        ),
+                        "skey": skey,
+                        "sha": sha256_hex,
+                        "sz": byte_size,
+                        "actor": context.actor.actor_id,
+                        "now": now,
+                    },
+                )
+                .mappings()
+                .one()
+            )
             self._session.commit()
             raise PlatformValidationError(
                 "DWG requires a separately licensed adapter; original evidence preserved.",
@@ -244,8 +253,9 @@ class SqlCadRepository:
                 },
             )
 
-        stats = self._session.execute(
-            text("""
+        stats = (
+            self._session.execute(
+                text("""
                 SELECT COUNT(*)::int AS cnt,
                        ST_XMin(ST_Extent(geometry)) AS min_x,
                        ST_YMin(ST_Extent(geometry)) AS min_y,
@@ -254,8 +264,11 @@ class SqlCadRepository:
                 FROM spatial.reference_features
                 WHERE organization_id = :org AND project_id = :proj AND source_id = :src
             """),
-            {"org": org_id, "proj": project_id, "src": out_source_id},
-        ).mappings().one()
+                {"org": org_id, "proj": project_id, "src": out_source_id},
+            )
+            .mappings()
+            .one()
+        )
         self._session.execute(
             text("""
                 UPDATE spatial.data_sources
@@ -269,13 +282,15 @@ class SqlCadRepository:
                 "proj": project_id,
                 "src": out_source_id,
                 "cnt": int(stats["cnt"]),
-                "ext": json.dumps({
-                    "min_x": float(stats["min_x"]),
-                    "min_y": float(stats["min_y"]),
-                    "max_x": float(stats["max_x"]),
-                    "max_y": float(stats["max_y"]),
-                    "crs_code": int(crs_code),
-                }),
+                "ext": json.dumps(
+                    {
+                        "min_x": float(stats["min_x"]),
+                        "min_y": float(stats["min_y"]),
+                        "max_x": float(stats["max_x"]),
+                        "max_y": float(stats["max_y"]),
+                        "crs_code": int(crs_code),
+                    }
+                ),
             },
         )
         self._session.execute(
@@ -307,8 +322,9 @@ class SqlCadRepository:
             created_at=now,
         )
 
-        row = self._session.execute(
-            text("""
+        row = (
+            self._session.execute(
+                text("""
                 INSERT INTO cad.conversions (
                     id, organization_id, project_id, direction, cad_format, filename,
                     units, crs_code, status, entity_summary, loss_report, storage_key,
@@ -321,25 +337,28 @@ class SqlCadRepository:
                 )
                 RETURNING *
             """),
-            {
-                "id": conv_id,
-                "org": org_id,
-                "proj": project_id,
-                "fname": filename[:255],
-                "units": units.value,
-                "crs": crs_code,
-                "esum": json.dumps(entity_summary),
-                "loss": json.dumps(loss_report),
-                "skey": skey,
-                "sha": sha256_hex,
-                "sz": byte_size,
-                "src": out_source_id,
-                "lid": out_layer_id,
-                "crev": content_rev,
-                "actor": context.actor.actor_id,
-                "now": now,
-            },
-        ).mappings().one()
+                {
+                    "id": conv_id,
+                    "org": org_id,
+                    "proj": project_id,
+                    "fname": filename[:255],
+                    "units": units.value,
+                    "crs": crs_code,
+                    "esum": json.dumps(entity_summary),
+                    "loss": json.dumps(loss_report),
+                    "skey": skey,
+                    "sha": sha256_hex,
+                    "sz": byte_size,
+                    "src": out_source_id,
+                    "lid": out_layer_id,
+                    "crev": content_rev,
+                    "actor": context.actor.actor_id,
+                    "now": now,
+                },
+            )
+            .mappings()
+            .one()
+        )
         self._session.commit()
         return _conv_from_row(row)
 
@@ -349,14 +368,16 @@ class SqlCadRepository:
         context: AuthorizationContext,
         layer_id: UUID,
         units: CadUnit = CadUnit.METER,
+        expected_content_revision: str | None = None,
     ) -> tuple[CadConversionRecord, bytes]:
         prepare_project_scope(self._session, context, permission=Permission.PROJECT_READ)
         assert context.organization_id is not None and context.project_id is not None
         assert context.actor.actor_id is not None
         org_id, project_id = context.organization_id, context.project_id
 
-        meta = self._session.execute(
-            text("""
+        meta = (
+            self._session.execute(
+                text("""
                 SELECT l.id AS layer_id, l.name AS layer_name,
                        s.id AS source_id, s.stored_crs, s.content_revision
                 FROM spatial.layers l
@@ -365,25 +386,53 @@ class SqlCadRepository:
                  AND s.project_id = l.project_id
                  AND s.id = l.source_id
                 WHERE l.organization_id = :org AND l.project_id = :proj AND l.id = :lid
+                  AND l.lifecycle = 'active' AND s.lifecycle = 'active'
+                  AND s.validation_state = 'ready'
             """),
-            {"org": org_id, "proj": project_id, "lid": layer_id},
-        ).mappings().first()
+                {"org": org_id, "proj": project_id, "lid": layer_id},
+            )
+            .mappings()
+            .first()
+        )
         if meta is None:
             raise PlatformNotFoundError("layer not found")
+        if int(meta["stored_crs"]) not in (3857, 5899):
+            raise PlatformValidationError(
+                "DXF export requires a metric projected source; "
+                "no implicit degree-to-meter conversion",
+                code="CAD_PROJECTED_CRS_REQUIRED",
+            )
+        if (
+            expected_content_revision is not None
+            and expected_content_revision != meta["content_revision"]
+        ):
+            raise PlatformConflictError(
+                "requested CAD source revision changed", code="STALE_CAD_REVISION"
+            )
 
-        frows = self._session.execute(
-            text("""
+        frows = (
+            self._session.execute(
+                text("""
                 SELECT feature_id, ST_AsGeoJSON(geometry)::jsonb AS geom
                 FROM spatial.reference_features
                 WHERE organization_id = :org AND project_id = :proj AND source_id = :src
-                ORDER BY feature_id ASC LIMIT 10000
+                ORDER BY feature_id ASC LIMIT 10001
             """),
-            {"org": org_id, "proj": project_id, "src": meta["source_id"]},
-        ).mappings().all()
+                {"org": org_id, "proj": project_id, "src": meta["source_id"]},
+            )
+            .mappings()
+            .all()
+        )
+        if len(frows) > 10000:
+            raise PlatformValidationError(
+                "DXF source exceeds 10000 features", code="CAD_FEATURE_LIMIT"
+            )
+        if any(r["geom"] is None for r in frows):
+            raise PlatformValidationError(
+                "DXF cannot preserve null geometry", code="CAD_GEOMETRY_UNSUPPORTED"
+            )
         features = [
-            {"feature_id": str(r["feature_id"]), "geometry": dict(r["geom"])}
-            for r in frows
-            if r["geom"] is not None
+            {"feature_id": str(r["feature_id"]), "geometry": dict(r["geom"])} for r in frows
         ]
         dxf_bytes = write_dxf_2d(features, layer_name=str(meta["layer_name"]), units=units)
         conv_id = uuid4()
@@ -392,8 +441,9 @@ class SqlCadRepository:
         sha256_hex, byte_size = self._store.put_bytes(skey, dxf_bytes)
         now = datetime.now(UTC)
 
-        row = self._session.execute(
-            text("""
+        row = (
+            self._session.execute(
+                text("""
                 INSERT INTO cad.conversions (
                     id, organization_id, project_id, direction, cad_format, filename,
                     units, crs_code, status, entity_summary, loss_report, storage_key,
@@ -406,40 +456,51 @@ class SqlCadRepository:
                 )
                 RETURNING *
             """),
-            {
-                "id": conv_id,
-                "org": org_id,
-                "proj": project_id,
-                "fname": fname,
-                "units": units.value,
-                "crs": int(meta["stored_crs"]),
-                "esum": json.dumps({"exported_features": len(features), "dxf_version": "R2010"}),
-                "loss": json.dumps({
-                    "attributes_omitted_in_dxf_geometry": True,
-                    "silent_loss": False,
-                }),
-                "skey": skey,
-                "sha": sha256_hex,
-                "sz": byte_size,
-                "src": meta["source_id"],
-                "lid": layer_id,
-                "crev": str(meta["content_revision"]),
-                "actor": context.actor.actor_id,
-                "now": now,
-            },
-        ).mappings().one()
+                {
+                    "id": conv_id,
+                    "org": org_id,
+                    "proj": project_id,
+                    "fname": fname,
+                    "units": units.value,
+                    "crs": int(meta["stored_crs"]),
+                    "esum": json.dumps(
+                        {"exported_features": len(features), "dxf_version": "R2010"}
+                    ),
+                    "loss": json.dumps(
+                        {
+                            "attributes_omitted_in_dxf_geometry": True,
+                            "silent_loss": False,
+                        }
+                    ),
+                    "skey": skey,
+                    "sha": sha256_hex,
+                    "sz": byte_size,
+                    "src": meta["source_id"],
+                    "lid": layer_id,
+                    "crev": str(meta["content_revision"]),
+                    "actor": context.actor.actor_id,
+                    "now": now,
+                },
+            )
+            .mappings()
+            .one()
+        )
         self._session.commit()
         return _conv_from_row(row), dxf_bytes
 
     def list_conversions(self, *, context: AuthorizationContext) -> list[CadConversionRecord]:
         prepare_project_scope(self._session, context, permission=Permission.PROJECT_READ)
         assert context.organization_id is not None and context.project_id is not None
-        rows = self._session.execute(
-            text("""
+        rows = (
+            self._session.execute(
+                text("""
                 SELECT * FROM cad.conversions
                 WHERE organization_id = :org AND project_id = :proj
                 ORDER BY created_at DESC LIMIT 50
             """),
-            {"org": context.organization_id, "proj": context.project_id},
-        ).mappings().all()
+                {"org": context.organization_id, "proj": context.project_id},
+            )
+            .mappings()
+            .all()
+        )
         return [_conv_from_row(r) for r in rows]
