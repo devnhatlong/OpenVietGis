@@ -6,7 +6,13 @@ code is not auto-loaded by the official-module runtime.
 
 from __future__ import annotations
 
+import json
+import re
+from dataclasses import dataclass
+from hashlib import sha256
+from pathlib import Path
 from typing import Literal
+from uuid import UUID, uuid4
 
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -22,6 +28,7 @@ from openvietgis_api.adapters.persistence.scope_helper import (
     append_project_audit,
     prepare_project_scope,
 )
+from openvietgis_api.config import get_settings
 from openvietgis_api.domains.authorization.context import AuthorizationContext
 from openvietgis_api.domains.authorization.permissions import Permission
 
@@ -32,6 +39,9 @@ __all__ = [
     "authenticate_request",
     "context_for",
     "get_db_session",
+    "ModuleArtifact",
+    "put_module_artifact",
+    "read_module_artifact",
     "prepare_module_scope",
     "require_csrf",
     "set_private_data_access",
@@ -57,4 +67,103 @@ def set_private_data_access(session: Session, *, enabled: bool) -> None:
     session.execute(
         text("SELECT set_config('openvietgis.house_numbering_private_access', :flag, true)"),
         {"flag": "on" if enabled else "off"},
+    )
+
+
+_ARTIFACT_NAME = re.compile(r"[^A-Za-z0-9._-]+")
+
+
+@dataclass(frozen=True, slots=True)
+class ModuleArtifact:
+    id: UUID
+    filename: str
+    content_type: str
+    byte_size: int
+    sha256: str
+    storage_key: str
+
+
+def put_module_artifact(
+    context: AuthorizationContext,
+    *,
+    namespace: str,
+    filename: str,
+    content_type: str,
+    data: bytes,
+) -> ModuleArtifact:
+    if context.organization_id is None or context.project_id is None:
+        raise ValueError("project context required for module artifact")
+    safe_namespace = _ARTIFACT_NAME.sub("-", namespace.strip()).strip("-._")
+    safe_filename = _ARTIFACT_NAME.sub("-", Path(filename).name).strip("-._") or "artifact.bin"
+    if not safe_namespace:
+        raise ValueError("artifact namespace required")
+    artifact_id = uuid4()
+    storage_key = (
+        f"modules/{context.organization_id}/{context.project_id}/"
+        f"{safe_namespace}/{artifact_id}/{safe_filename}"
+    )
+    root = Path(get_settings().artifact_store_dir).resolve()
+    target = (root / storage_key).resolve()
+    if root not in target.parents:
+        raise ValueError("invalid artifact path")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    digest = sha256(data).hexdigest()
+    target.write_bytes(data)
+    meta = {
+        "id": str(artifact_id),
+        "filename": safe_filename,
+        "content_type": content_type,
+        "byte_size": len(data),
+        "sha256": digest,
+        "storage_key": storage_key,
+    }
+    target.with_suffix(target.suffix + ".json").write_text(
+        json.dumps(meta, ensure_ascii=False, sort_keys=True), encoding="utf-8"
+    )
+    return ModuleArtifact(
+        id=artifact_id,
+        filename=safe_filename,
+        content_type=content_type,
+        byte_size=len(data),
+        sha256=digest,
+        storage_key=storage_key,
+    )
+
+
+def read_module_artifact(
+    context: AuthorizationContext, *, namespace: str, artifact_id: UUID
+) -> tuple[ModuleArtifact, bytes]:
+    if context.organization_id is None or context.project_id is None:
+        raise ValueError("project context required for module artifact")
+    safe_namespace = _ARTIFACT_NAME.sub("-", namespace.strip()).strip("-._")
+    root = Path(get_settings().artifact_store_dir).resolve()
+    parent = (
+        root
+        / "modules"
+        / str(context.organization_id)
+        / str(context.project_id)
+        / safe_namespace
+        / str(artifact_id)
+    ).resolve()
+    if root not in parent.parents or not parent.is_dir():
+        raise FileNotFoundError("module artifact not found")
+    metas = list(parent.glob("*.json"))
+    if len(metas) != 1:
+        raise FileNotFoundError("module artifact metadata not found")
+    meta = json.loads(metas[0].read_text(encoding="utf-8"))
+    file_path = parent / str(meta["filename"])
+    data = file_path.read_bytes()
+    digest = sha256(data).hexdigest()
+    if digest != meta["sha256"] or len(data) != int(meta["byte_size"]):
+        raise RuntimeError("module artifact integrity mismatch")
+    return (
+        ModuleArtifact(
+            id=artifact_id,
+            filename=str(meta["filename"]),
+            content_type=str(meta["content_type"]),
+            byte_size=int(meta["byte_size"]),
+            sha256=str(meta["sha256"]),
+            storage_key=str(meta["storage_key"]),
+        ),
+        data,
     )

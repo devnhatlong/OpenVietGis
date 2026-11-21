@@ -24,9 +24,7 @@ def assign_even_odd_sequence(
     """Deterministic street-side odd/even address plate generator."""
     step = 2
     num = start_number
-    if side == "left" and num % 2 == 0:
-        num += 1
-    elif side == "right" and num % 2 == 1:
+    if (side == "left" and num % 2 == 0) or (side == "right" and num % 2 == 1):
         num += 1
     plates: list[dict[str, Any]] = []
     for i in range(count):

@@ -527,7 +527,9 @@ def upgrade() -> None:
                 REFERENCES house_numbering.documents(organization_id, project_id, id) ON DELETE RESTRICT,
             CONSTRAINT ck_hn_doc_type CHECK (doc_type IN ('inspection','certificate','house_form','plate')),
             CONSTRAINT ck_hn_doc_status CHECK (status IN ('draft','official','void','reissue_required')),
-            CONSTRAINT ck_hn_doc_issue CHECK ((status='official')=(issued_at IS NOT NULL)),
+            CONSTRAINT ck_hn_doc_issue CHECK (
+                (status IN ('official','reissue_required'))=(issued_at IS NOT NULL)
+            ),
             CONSTRAINT ck_hn_doc_revision CHECK (revision > 0)
         )
     """)
