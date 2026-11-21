@@ -54,6 +54,8 @@ chiếu cần processing, thêm R008 vào phụ thuộc của slice đó trướ
 
 [Spec 018 — Full Product Audit](specs/018-full-product-audit/spec.md) đánh giá toàn bộ các mục trên theo từng yêu cầu và bằng chứng chạy thực tế trên đúng candidate. Trạng thái `done` kế thừa trong bảng chưa phải kết luận của audit 018; không được xem các cờ capability tĩnh hoặc smoke test là nghiệm thu sản phẩm. Xem [ma trận sơ bộ](specs/018-full-product-audit/status-matrix.md) và [backlog nghi vấn](specs/018-full-product-audit/gaps.md). Không thay đổi phạm vi R001–R015 hoặc tự động phát hành.
 
+**Trạng thái phát hành hiện tại — chưa nghiệm thu profile:** các nhãn `done` trong bảng là trạng thái triển khai lịch sử, không phải chứng nhận production của candidate hiện tại. [G006 release gate](specs/018-full-product-audit/remediation/G006-release-certification/evidence.md) tách 15 nhóm inventory khỏi số nhóm được nghiệm thu phát hành; [so sánh 016/017 và handoff nghiệm thu](specs/018-full-product-audit/remediation/release-convergence.md) ghi các gate còn mở. Không chuyển trạng thái M1/M2/M3 hoặc quảng bá capability release khi thiếu bằng chứng cùng candidate, profile và review.
+
 ## Mốc nghiệm thu
 
 | Mốc | Phạm vi tối thiểu | Kịch bản phải chứng minh | Trạng thái |
