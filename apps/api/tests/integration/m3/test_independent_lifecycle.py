@@ -4,6 +4,9 @@ from __future__ import annotations
 
 from uuid import uuid4
 
+from sqlalchemy import text
+
+from tests.fixtures.db_admin import get_admin_engine
 from tests.fixtures.identity_tenancy import seed_access_world
 from tests.integration.m2.test_r006_r009_real import _import_geojson
 from tests.integration.spatial.test_authorization import _grant
@@ -110,6 +113,17 @@ def test_review_assignee_current_permission_and_immutable_decision(migrated_data
         reviews = f"{base}/collaboration/reviews"
         assert owner.post(reviews, json=req).status_code == 422
         grant = _grant(owner, world, "membership", str(world.member_membership_id), "editor")
+        with get_admin_engine().begin() as conn:
+            conn.execute(
+                text("UPDATE identity.users SET status='disabled' WHERE id=:id"),
+                {"id": world.member_user_id},
+            )
+        assert owner.post(reviews, json=req).status_code == 422
+        with get_admin_engine().begin() as conn:
+            conn.execute(
+                text("UPDATE identity.users SET status='active' WHERE id=:id"),
+                {"id": world.member_user_id},
+            )
         created = owner.post(reviews, json=req)
         assert created.status_code == 201, created.text
         rid = created.json()["id"]

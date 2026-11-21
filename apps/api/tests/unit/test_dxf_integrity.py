@@ -7,7 +7,7 @@ import io
 import ezdxf
 import pytest
 
-from openvietgis_api.adapters.cad.dxf_codec import write_dxf_2d
+from openvietgis_api.adapters.cad.dxf_codec import parse_dxf_2d, write_dxf_2d
 from openvietgis_api.domains.cad.domain import CadUnit
 from openvietgis_api.domains.platform_errors import PlatformValidationError
 
@@ -48,3 +48,34 @@ def test_unsupported_topology_is_not_silently_omitted(geometry):
         write_dxf_2d(
             [{"feature_id": "bad", "geometry": geometry}], layer_name="Control", units=CadUnit.METER
         )
+
+
+def _encode_doc(doc):
+    buf = io.StringIO()
+    doc.write(buf)
+    return buf.getvalue().encode("utf-8")
+
+
+def test_declared_import_units_mismatch():
+    doc = ezdxf.new("R2010")
+    doc.header["$INSUNITS"] = 4
+    doc.modelspace().add_point((1, 2))
+    with pytest.raises(PlatformValidationError, match="units do not match"):
+        parse_dxf_2d(_encode_doc(doc), units=CadUnit.METER)
+    family, records, _, _ = parse_dxf_2d(_encode_doc(doc), units=CadUnit.MILLIMETER)
+    assert family == "Point"
+    assert records[0]["geometry"]["coordinates"] == [0.001, 0.002]
+
+
+def test_bulged_polyline_is_not_silently_straightened():
+    doc = ezdxf.new("R2010")
+    doc.modelspace().add_lwpolyline([(0, 0, 1), (10, 0, 0)], format="xyb")
+    with pytest.raises(PlatformValidationError, match="bulges"):
+        parse_dxf_2d(_encode_doc(doc), units=CadUnit.METER)
+
+
+def test_nonstandard_ocs_is_not_silently_misplaced():
+    doc = ezdxf.new("R2010")
+    doc.modelspace().add_circle((1, 2), 1, dxfattribs={"extrusion": (0, 0, -1)})
+    with pytest.raises(PlatformValidationError, match="extrusion"):
+        parse_dxf_2d(_encode_doc(doc), units=CadUnit.METER)

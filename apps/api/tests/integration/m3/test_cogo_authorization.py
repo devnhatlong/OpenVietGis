@@ -34,3 +34,24 @@ def test_cogo_preview_requires_live_project_access(migrated_database, name, payl
         assert result.json()["published"] is False
         assert ungranted.post(path, json=payload).status_code in (403, 404)
         assert outsider.post(path, json=payload).status_code in (403, 404)
+
+
+def test_dxf_requires_explicit_units_and_crs_and_leaves_no_rejected_artifact(migrated_database):
+    from pathlib import Path
+
+    from openvietgis_api.config import get_settings
+
+    world = seed_access_world()
+    base = f"/api/v1/organizations/{world.organization_id}/projects/{world.project_id}"
+    root = Path(get_settings().artifact_store_dir) / "cad" / str(world.organization_id)
+    with _client(world.owner_user_id) as owner:
+        files = {"file": ("broken.dxf", b"not a valid DXF", "application/dxf")}
+        missing = owner.post(f"{base}/cad/import", files=files)
+        assert missing.status_code == 422, missing.text
+        invalid = owner.post(
+            f"{base}/cad/import", files=files, data={"units": "meter", "crs_code": "5899"}
+        )
+        assert invalid.status_code == 422, invalid.text
+        assert invalid.json()["code"] == "INVALID_DXF"
+        assert not root.exists() or not any(path.is_file() for path in root.rglob("*"))
+        assert owner.get(f"{base}/cad/conversions").json()["items"] == []

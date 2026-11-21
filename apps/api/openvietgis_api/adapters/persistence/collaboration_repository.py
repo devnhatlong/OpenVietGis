@@ -167,6 +167,7 @@ class SqlCollaborationRepository:
                 text("""
                 SELECT m.role AS membership_role, g.role AS grant_role
                 FROM org.organization_memberships m
+                JOIN identity.users u ON u.id = m.user_id AND u.status = 'active'
                 JOIN workspace.projects p ON p.organization_id = m.organization_id
                     AND p.id = :proj AND p.status = 'active'
                 LEFT JOIN org.resource_grants g ON g.organization_id = m.organization_id

@@ -97,9 +97,9 @@ def import_cad_file(
     organization_id: UUID,
     project_id: UUID,
     file: Annotated[UploadFile, File()],
+    units: Annotated[CadUnit, Form()],
+    crs_code: Annotated[int, Form()],
     layer_name: Annotated[str, Form()] = "CAD Import",
-    units: Annotated[CadUnit, Form()] = CadUnit.METER,
-    crs_code: Annotated[int, Form()] = 5899,
     auth: Annotated[AuthenticatedRequest, Depends(require_csrf)] = ...,  # type: ignore[assignment]
     session: Annotated[Session, Depends(get_db_session, scope="function")] = ...,  # type: ignore[assignment]
 ) -> dict[str, Any]:
