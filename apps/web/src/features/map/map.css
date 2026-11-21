@@ -202,3 +202,15 @@
 .map-technical-capabilities li span.is-permission{background:#fff1f2;color:#b42318}
 .map-technical-capabilities li span.is-unsupported,
 .map-technical-capabilities li span.is-unavailable{background:#f1f5f9;color:#64748b}
+
+
+@media (prefers-reduced-motion: reduce){
+  .gis-workspace *,
+  .gis-workspace *::before,
+  .gis-workspace *::after{
+    scroll-behavior:auto!important;
+    animation-duration:.01ms!important;
+    animation-iteration-count:1!important;
+    transition-duration:.01ms!important;
+  }
+}

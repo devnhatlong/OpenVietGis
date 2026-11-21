@@ -195,3 +195,22 @@ R004 SC009 (five first-time GIS-capable users) remains an external human accepta
   - closing the drawer returns focus to the invoking control;
   - navigating to another Project while the drawer is open unmounts/closes the drawer and the old Project ID is absent from the new primary context.
 - Deterministic visual suite covers Technical Details closed/open states. After removing a colliding duplicate snapshot name, visual generation and a subsequent no-update run both passed 4/4.
+
+## US6 responsive/accessibility evidence — 2026-11-21
+
+- Workspace responsive matrix browser acceptance PASS at 1440, 1280, 1024, 768, 414 and 375 px.
+  - 1440/1280 resolve to desktop;
+  - 1024/768 resolve to tablet;
+  - 414/375 resolve to mobile basic-viewer mode;
+  - no page-wide horizontal overflow was observed at any reference width;
+  - Map remains visible when mobile sheets are collapsed.
+- MapLibre adapter explicitly keeps keyboard navigation enabled and exposes visible NavigationControl zoom/compass controls.
+- Accessibility browser acceptance PASS:
+  - named Map region and synchronized textual summary are present;
+  - MapLibre canvas is keyboard-focusable and Arrow-key movement changes the camera;
+  - Layer reorder works through Move Up/Down keyboard controls without drag;
+  - panel separators expose keyboard-adjustable separator semantics;
+  - Attribute Table remains the textual feature alternative;
+  - Technical Details close returns focus to the invoking control;
+  - visible focus remains present;
+  - reduced-motion media preference resolves workspace transition/animation duration to effectively zero.

@@ -1,5 +1,6 @@
 import {
   Map as LibreMap,
+  NavigationControl,
   setWorkerCount,
   setWorkerUrl,
   type GeoJSONSourceSpecification,
@@ -133,6 +134,7 @@ export function createMapLibreEngine(container: HTMLElement, events: MapEngineEv
     renderWorldCopies: false,
     maxPitch: 60,
     fadeDuration: 0,
+    keyboard: true,
     center: [105.84, 21.03],
     zoom: 5,
     style: {
@@ -154,6 +156,36 @@ export function createMapLibreEngine(container: HTMLElement, events: MapEngineEv
       ]
     }
   });
+
+  // Keep core map navigation available without leaking MapLibre controls into
+  // business components. Keyboard, wheel and drag navigation stay enabled and
+  // one visible control provides equivalent zoom/bearing actions.
+  map.keyboard.enable();
+  map.scrollZoom.enable();
+  map.dragPan.enable();
+  map.addControl(
+    new NavigationControl({
+      showCompass: true,
+      showZoom: true,
+      visualizePitch: true
+    }),
+    "bottom-right"
+  );
+
+  const zoomIn = container.querySelector<HTMLButtonElement>(
+    ".maplibregl-ctrl-zoom-in"
+  );
+  const zoomOut = container.querySelector<HTMLButtonElement>(
+    ".maplibregl-ctrl-zoom-out"
+  );
+  if (zoomIn) {
+    zoomIn.title = "Phóng to bản đồ";
+    zoomIn.setAttribute("aria-label", "Phóng to bản đồ");
+  }
+  if (zoomOut) {
+    zoomOut.title = "Thu nhỏ bản đồ";
+    zoomOut.setAttribute("aria-label", "Thu nhỏ bản đồ");
+  }
 
   let layers: RenderLayer[] = [];
   let active: string | null = null;

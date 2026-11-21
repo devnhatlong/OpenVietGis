@@ -120,13 +120,13 @@ description: "Dependency-ordered implementation tasks for OpenVietGIS GIS Worksp
 
 **Independent Test**: 1440/1280/1024/768/414/375 widths plus keyboard-only interaction and reduced-motion checks.
 
-- [ ] T046 [P] [US6] Add responsive browser matrix for 1440, 1280, 1024, 768, 414 and 375 px in `tests/e2e/map-workspace-responsive.spec.ts`
-- [ ] T047 [P] [US6] Add keyboard/accessibility browser checks for named map region, focus visibility, Move Up/Down, panel controls, table semantics and drawer focus return in `tests/e2e/map-workspace-accessibility.spec.ts`
-- [ ] T048 [US6] Implement desktop/tablet/mobile presentation from `WorkspaceResponsiveMode` in `apps/web/src/features/map/WorkspaceLayout.tsx` and `apps/web/src/features/map/map.css`
-- [ ] T049 [US6] Keep map keyboard pan/zoom and visible navigation controls enabled through the MapEngine/MapLibre adapter in `apps/web/src/features/map/maplibre-engine.ts` without leaking renderer internals into business components
-- [ ] T050 [US6] Add named map region + synchronized textual/table alternative in `apps/web/src/features/map/MapWorkspace.tsx` and `apps/web/src/features/map/accessibility-summary.ts`
-- [ ] T051 [US6] Implement keyboard/non-drag layer reorder and accessible labels/states in `apps/web/src/features/map/LayerTree.tsx`
-- [ ] T052 [US6] Implement keyboard-accessible panel resize/collapse behavior and reduced-motion handling in `apps/web/src/ui/primitives/ResizablePanel.tsx` and `apps/web/src/features/map/map.css`
+- [x] T046 [P] [US6] Add responsive browser matrix for 1440, 1280, 1024, 768, 414 and 375 px in `tests/e2e/map-workspace-responsive.spec.ts`
+- [x] T047 [P] [US6] Add keyboard/accessibility browser checks for named map region, focus visibility, Move Up/Down, panel controls, table semantics and drawer focus return in `tests/e2e/map-workspace-accessibility.spec.ts`
+- [x] T048 [US6] Implement desktop/tablet/mobile presentation from `WorkspaceResponsiveMode` in `apps/web/src/features/map/WorkspaceLayout.tsx` and `apps/web/src/features/map/map.css`
+- [x] T049 [US6] Keep map keyboard pan/zoom and visible navigation controls enabled through the MapEngine/MapLibre adapter in `apps/web/src/features/map/maplibre-engine.ts` without leaking renderer internals into business components
+- [x] T050 [US6] Add named map region + synchronized textual/table alternative in `apps/web/src/features/map/MapWorkspace.tsx` and `apps/web/src/features/map/accessibility-summary.ts`
+- [x] T051 [US6] Implement keyboard/non-drag layer reorder and accessible labels/states in `apps/web/src/features/map/LayerTree.tsx`
+- [x] T052 [US6] Implement keyboard-accessible panel resize/collapse behavior and reduced-motion handling in `apps/web/src/ui/primitives/ResizablePanel.tsx` and `apps/web/src/features/map/map.css`
 
 **Checkpoint**: All six user stories are demonstrable without claiming full mobile desktop parity.
 
