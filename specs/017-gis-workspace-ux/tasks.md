@@ -26,15 +26,15 @@ description: "Dependency-ordered implementation tasks for OpenVietGIS GIS Worksp
 
 **Purpose**: Add UI-only layout state without changing parent Map semantics.
 
-- [ ] T006 [P] Add failing tests for `WorkspaceLayoutPreference.leftPanelCollapsed`, `rightPanelCollapsed`, `attributeTableCollapsed`, `leftPanelWidth`, `rightPanelWidth`, and `attributeTableHeight` from `specs/017-gis-workspace-ux/data-model.md` in `apps/web/src/features/map/workspace-layout.test.ts`
-- [ ] T007 Implement bounded non-sensitive `WorkspaceLayoutPreference` persistence from `specs/017-gis-workspace-ux/data-model.md` in `apps/web/src/features/map/workspace-layout.ts`
-- [ ] T008 [P] Implement the `WorkspaceResponsiveMode` desktop/tablet/mobile resolver from `specs/017-gis-workspace-ux/data-model.md` with tests in `apps/web/src/features/map/responsive-mode.ts` and `apps/web/src/features/map/responsive-mode.test.ts`
-- [ ] T009 [P] Add failing tests for user-facing Layer availability/status mapping that distinguishes capability, permission, stale, unsupported, unavailable and partial states in `apps/web/src/features/map/layer-view.test.ts`
-- [ ] T010 Implement `LayerPanelItemView.layerId`, `name`, `visible`, `active`, `order`, `availability`, and command availability/reason from `specs/017-gis-workspace-ux/data-model.md` in `apps/web/src/features/map/layer-view.ts`
-- [ ] T011 Add the stable panel composition container in `apps/web/src/features/map/WorkspaceLayout.tsx` so sibling panel changes do not own/recreate the Map engine
-- [ ] T012 Add desktop/tablet/mobile grid, splitter, panel and deterministic local-map chrome styles in `apps/web/src/features/map/map.css`
-- [ ] T013 [P] Add accessible panel-collapse/splitter primitives (including keyboard alternatives) in `apps/web/src/ui/primitives/ResizablePanel.tsx` or the accepted shared UI primitive path
-- [ ] T014 Integrate the accepted shared UI tokens/primitives into map workspace chrome without changing Map domain state in `apps/web/src/features/map/MapWorkspace.tsx`
+- [x] T006 [P] Add failing tests for `WorkspaceLayoutPreference.leftPanelCollapsed`, `rightPanelCollapsed`, `attributeTableCollapsed`, `leftPanelWidth`, `rightPanelWidth`, and `attributeTableHeight` from `specs/017-gis-workspace-ux/data-model.md` in `apps/web/src/features/map/workspace-layout.test.ts`
+- [x] T007 Implement bounded non-sensitive `WorkspaceLayoutPreference` persistence from `specs/017-gis-workspace-ux/data-model.md` in `apps/web/src/features/map/workspace-layout.ts`
+- [x] T008 [P] Implement the `WorkspaceResponsiveMode` desktop/tablet/mobile resolver from `specs/017-gis-workspace-ux/data-model.md` with tests in `apps/web/src/features/map/responsive-mode.ts` and `apps/web/src/features/map/responsive-mode.test.ts`
+- [x] T009 [P] Add failing tests for user-facing Layer availability/status mapping that distinguishes capability, permission, stale, unsupported, unavailable and partial states in `apps/web/src/features/map/layer-view.test.ts`
+- [x] T010 Implement `LayerPanelItemView.layerId`, `name`, `visible`, `active`, `order`, `availability`, and command availability/reason from `specs/017-gis-workspace-ux/data-model.md` in `apps/web/src/features/map/layer-view.ts`
+- [x] T011 Add the stable panel composition container in `apps/web/src/features/map/WorkspaceLayout.tsx` so sibling panel changes do not own/recreate the Map engine
+- [x] T012 Add desktop/tablet/mobile grid, splitter, panel and deterministic local-map chrome styles in `apps/web/src/features/map/map.css`
+- [x] T013 [P] Add accessible panel-collapse/splitter primitives (including keyboard alternatives) in `apps/web/src/ui/primitives/ResizablePanel.tsx` or the accepted shared UI primitive path
+- [x] T014 Integrate the accepted shared UI tokens/primitives into map workspace chrome without changing Map domain state in `apps/web/src/features/map/MapWorkspace.tsx`
 
 **Checkpoint**: Layout state is local-only, tested, and Map engine ownership is stable.
 
