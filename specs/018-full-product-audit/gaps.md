@@ -2,13 +2,13 @@
 
 Source review for G003–G006: [candidate observations and original FR/SC traceability](evidence/source-gap-review.md). These strengthen the hypotheses but do not close runtime acceptance gates.
 
-Confirmed blocker remediation drafts: [G009 processing output](remediation/G009-processing-output/spec.md) and [G010 recoverable backup](remediation/G010-recoverable-backup/spec.md), each with plan/tasks. Separate implementation branch/base/owner coordination required; no product changes in the frozen audit.
+Confirmed blocker remediation drafts: [G004 external capability](remediation/G004-external-capability/spec.md), [G009 processing output](remediation/G009-processing-output/spec.md) and [G010 recoverable backup](remediation/G010-recoverable-backup/spec.md), each with plan/tasks. Separate implementation branch/base/owner coordination required; no product changes in the frozen audit.
 | ID | Roadmap | Severity | Observation and retest |
 | --- | --- | --- | --- |
 | G001 | R001–R015 | high | Divergent main and deployed integration; freeze and retest exact candidate, independently review before promotion. |
 | G002 | R006–R015 | high | Spec summaries omit approved requirement detail; restore traceability from original decision/spec and resolve scope before marking done. |
 | G003 | R006 | high | JSON editing workbench; reconcile graphical editing scope and test click/draw/edit/save/reopen in browser. |
-| G004 | R010 | high | No provider retrieval proved; controlled WMS/WFS fixture request, render/query evidence or narrow advertised scope. |
+| G004 | R010 | high | **Reproduced**: all 4 unavailable synthetic provider connections register active and advertise render/query capabilities. Actual provider retrieval not proved; [negative probe and retest requirements](evidence/r010.md). |
 | G005 | R013 | high | No true offline client verified; disconnect, durable local edit, restart, reconnect and conflict behavior. |
 | G006 | R015 | high | Static 15 enabled flags are not evidence; derive availability or state limits, verify quota/capability claims and isolated restore. |
 | G007 | R006–R015 | high | Single broad E2E omits most advanced UI journeys; actionable independent browser/negative tests for each supported operation. |

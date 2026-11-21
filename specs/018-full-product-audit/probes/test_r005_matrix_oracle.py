@@ -70,7 +70,7 @@ def test_exact_format_roundtrip(migrated_database, family, suffix):
         asset = uploaded["asset"]["id"]
         inspect = uploaded["inspection"]
         # Re-inspect with explicit CRS and encoding to obtain matching confirmation fingerprint.
-        inspect = ok(client.post(f"{base}/imports/inspect", json={"source_asset_id": asset, "selected_member":inspect["selected_member"], "declared_source_crs":crs,"target_crs":crs,"declared_encoding":"utf-8"}))
+        inspect = ok(client.post(f"{base}/imports/inspect", json={"source_asset_id": asset, "selected_member":inspect["selected_member"], "declared_source_crs":crs,"target_crs":crs,"declared_encoding":"utf-8"}))["inspection"]
         assert inspect["confirmable"], inspect
         assert inspect["asset_sha256"] == hashlib.sha256(inp).hexdigest()
         assert inspect["feature_count"] == expected_count
@@ -101,7 +101,7 @@ def test_exact_format_roundtrip(migrated_database, family, suffix):
         dl = client.get(f"{base}/artifacts/{artifact['id']}/download")
         assert dl.status_code == 200
         assert hashlib.sha256(dl.content).hexdigest() == artifact["sha256"]
-        out = ROOT / "roundtrip"
+        out = ROOT / "roundtrip-final"
         out.mkdir(mode=0o700, exist_ok=True)
         p = out / f"{family}.{suffix}"
         p.write_bytes(dl.content)
@@ -121,10 +121,20 @@ def test_exact_format_roundtrip(migrated_database, family, suffix):
             assert key in mappings, (key,mappings)
             assert mappings[key] in output_fields, (key,output_fields)
             if not inspect["conversions"] and not preview["disclosures"]:
-                assert output_fields[mappings[key]] == val, (key,val,output_fields)
+                actual_type = output_fields[mappings[key]]
+                # OGR 32-bit -> 64-bit physical encoding is a widening, not
+                # semantic loss, only if the Core logical type stays integer
+                # and all independently decoded values/types match below.
+                if val == ("Integer", None) and actual_type == ("Integer64", None):
+                    semantic = next(m for m in preview["field_mappings"] if m["output_name"] == mappings[key])
+                    assert semantic["type"] == "integer"
+                    print("AUDIT018_LOSSLESS_INTEGER_WIDENING",family,suffix,key)
+                else:
+                    assert actual_type == val, (key,val,output_fields)
         by_geom = {normalize_geometry(f["geometry"]):f["properties"] for f in output_features}
         for f in input_features:
             actual = by_geom[normalize_geometry(f["geometry"])]
             for key,val in f["properties"].items():
-                assert actual[mappings[key]] == val, (key,val,actual[mappings[key]])
+                got = actual[mappings[key]]
+                assert got == val and type(got) is type(val), (key,val,got)
         print("AUDIT018_ROUNDTRIP", family,suffix,expected_count,{"import_conversions":[x["code"] for x in inspect["conversions"]],"export_disclosures":[x["code"] for x in preview["disclosures"]],"sha256":artifact["sha256"]})

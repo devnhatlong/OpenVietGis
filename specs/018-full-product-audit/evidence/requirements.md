@@ -282,7 +282,7 @@ Source: `c6d449fc0ead93e259b79b87e63c1c894bd16c93:specs/005-import-export/spec.m
 | R005/FR-034 | 154 | unverified | — |
 | R005/FR-035 | 155 | unverified | — |
 | R005/FR-036 | 156 | unverified | — |
-| R005/SC-001 | 173 | unverified | — |
+| R005/SC-001 | 173 | partial | [9-profile independent round-trips](r005.md) |
 | R005/SC-002 | 174 | unverified | — |
 | R005/SC-003 | 175 | unverified | — |
 | R005/SC-004 | 176 | unverified | — |
@@ -503,11 +503,11 @@ Source: `854fcd0b591aea45c45e13640e1418fc4766c112:specs/010-external-sources/spe
 
 | Requirement | Source line | Status | New evidence |
 | --- | ---: | --- | --- |
-| R010/FR-001 | 114 | unverified | — |
+| R010/FR-001 | 114 | blocked | [G004](r010.md) |
 | R010/FR-002 | 115 | unverified | — |
 | R010/FR-003 | 116 | unverified | — |
-| R010/FR-004 | 117 | unverified | — |
-| R010/FR-005 | 118 | unverified | — |
+| R010/FR-004 | 117 | blocked | [G004](r010.md) |
+| R010/FR-005 | 118 | blocked | [G004](r010.md) |
 | R010/FR-006 | 119 | unverified | — |
 | R010/FR-007 | 120 | unverified | — |
 | R010/FR-008 | 124 | unverified | — |
@@ -524,7 +524,7 @@ Source: `854fcd0b591aea45c45e13640e1418fc4766c112:specs/010-external-sources/spe
 | R010/FR-019 | 135 | unverified | — |
 | R010/FR-020 | 136 | unverified | — |
 | R010/FR-021 | 137 | unverified | — |
-| R010/FR-022 | 141 | unverified | — |
+| R010/FR-022 | 141 | blocked | [G004](r010.md) |
 | R010/FR-023 | 142 | unverified | — |
 | R010/FR-024 | 143 | unverified | — |
 | R010/FR-025 | 147 | unverified | — |
@@ -540,12 +540,12 @@ Source: `854fcd0b591aea45c45e13640e1418fc4766c112:specs/010-external-sources/spe
 | R010/FR-035 | 163 | unverified | — |
 | R010/FR-036 | 164 | unverified | — |
 | R010/FR-037 | 165 | unverified | — |
-| R010/FR-038 | 166 | unverified | — |
+| R010/FR-038 | 166 | blocked | [G004](r010.md) |
 | R010/FR-039 | 170 | unverified | — |
 | R010/FR-040 | 171 | unverified | — |
 | R010/FR-041 | 172 | unverified | — |
 | R010/FR-042 | 173 | unverified | — |
-| R010/SC-001 | 190 | unverified | — |
+| R010/SC-001 | 190 | blocked | [G004](r010.md) |
 | R010/SC-002 | 191 | unverified | — |
 | R010/SC-003 | 192 | unverified | — |
 | R010/SC-004 | 193 | unverified | — |
