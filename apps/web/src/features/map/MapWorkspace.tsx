@@ -31,7 +31,7 @@ import { beginSave,markUnresolved,receiptMatches,saveErrorState,type PendingSave
 import { buildSaveIndicatorView } from "./save-indicator";
 import { buildTechnicalDetailsView } from "./technical-details";
 import { useUnsavedNavigationProtection } from "./unsaved-navigation";
-import { boundsOfGeometry,capability,combineBounds,defaultStyle,mapResponseMatches,positionCount,selectionKey,toggleSelection,viewportMatches,type Bounds,type SelectionScope } from "./workspace";
+import { applyCurrentFrameSet,boundsOfGeometry,capability,combineBounds,defaultStyle,mapResponseMatches,positionCount,selectionKey,toggleSelection,viewportMatches,type Bounds,type SelectionScope } from "./workspace";
 import {
  loadWorkspaceLayoutPreference,normalizeWorkspaceLayoutPreference,saveWorkspaceLayoutPreference,
  type WorkspaceLayoutPreference
@@ -160,7 +160,7 @@ function Workspace({organizationId,projectId,accountId,project,initial,canEdit}:
  });
  const busyData=states.some(s=>s==="loading");
  const frameKey=JSON.stringify([configuration.layers,metadataQueries.map(q=>[q.dataUpdatedAt,Boolean(q.error)]),viewportQueries.map(q=>[q.dataUpdatedAt,Boolean(q.error)]),blocked,activeBlocked,busyData]);
- useLayoutEffect(()=>{if(!busyData)engine.current?.setLayers(frames);},[frameKey]);
+ useLayoutEffect(()=>{applyCurrentFrameSet(engine.current,frames,busyData);},[frameKey]);
  useLayoutEffect(()=>{engine.current?.setActiveLayer(configuration.layers.some(ref=>ref.layer_id===active&&ref.visible)&&!activeBlocked?active:null);engine.current?.setSelection(activeBlocked?null:active,selected);},[active,activeBlocked,selected.join(","),configuration.layers.map(ref=>ref.layer_id+ref.visible).join(",")]);
  const hasGeometry=frames.some(frame=>frame.features.length>0);
  const state:AccessibleMapState=engineError?"unavailable":busyData?"loading":states.some(s=>s.startsWith("stale"))?"stale":states.some(s=>s.startsWith("partial"))?"partial":hasGeometry?"usable":states.some(s=>s.startsWith("unsupported")||s.startsWith("unavailable"))?"unavailable":"empty";

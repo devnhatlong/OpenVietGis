@@ -1,4 +1,10 @@
 import type { MapLayerReference, MapStyle, SpatialLayer, SpatialFeatureReadContext } from "@openvietgis/client-sdk";
+import type { MapEngine, RenderLayer } from "./engine";
+
+/** Do not retain the previous authorized frame while new protected reads settle. */
+export function applyCurrentFrameSet(engine:Pick<MapEngine,"setLayers">|null, frames:RenderLayer[], busy:boolean):void {
+ engine?.setLayers(busy?[]:frames);
+}
 export type Bounds = [number,number,number,number];
 export interface SelectionScope { accountId:string; organizationId:string; projectId:string; layerId:string; sourceId:string; contentRevision:string; schemaRevision:string }
 export const defaultStyle:MapStyle={color:"#2563eb",opacity:0.8,width:3,radius:6};

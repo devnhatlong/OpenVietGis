@@ -1,8 +1,25 @@
 import { describe, expect, it } from "vitest";
-import { boundsOfGeometry, combineBounds, defaultStyle, mapResponseMatches, previewMove, selectionKey, toggleSelection, viewportMatches } from "./workspace";
+import { applyCurrentFrameSet, boundsOfGeometry, combineBounds, defaultStyle, mapResponseMatches, previewMove, selectionKey, toggleSelection, viewportMatches } from "./workspace";
+import type { RenderLayer } from "./engine";
 
 describe("map workspace invariants", () => {
   const scope = { accountId:"a",organizationId:"o",projectId:"p",layerId:"l",sourceId:"s",contentRevision:"c",schemaRevision:"r" };
+  it("clears previously authorized render buffers while any protected viewport is loading", () => {
+    const prior:RenderLayer={id:"revoked",style:defaultStyle,features:[{feature_id:"private",geometry:{type:"Point",coordinates:[105,10]}}]};
+    const current:RenderLayer={id:"current",style:defaultStyle,features:[{feature_id:"public",geometry:{type:"Point",coordinates:[106,11]}}]};
+    let rendered:RenderLayer[]=[];
+    const engine={setLayers:(layers:RenderLayer[])=>{rendered=layers;}};
+    applyCurrentFrameSet(engine,[prior,current],false);
+    expect(rendered).toEqual([prior,current]);
+    // A revoked layer and another in-flight layer must not leave a retained frame.
+    applyCurrentFrameSet(engine,[current],true);
+    expect(rendered).toEqual([]);
+    // Once the current protected reads settle, only their verified frame is sent.
+    applyCurrentFrameSet(engine,[current],false);
+    expect(rendered).toEqual([current]);
+    applyCurrentFrameSet(engine,[],false);
+    expect(rendered).toEqual([]);
+  });
   it("binds selections to actor, tenant, logical layer, source and independent pins", () => {
     const keys = ["accountId","organizationId","projectId","layerId","sourceId","contentRevision","schemaRevision"] as const;
     for (const key of keys) expect(selectionKey({...scope,[key]:"other"})).not.toBe(selectionKey(scope));
