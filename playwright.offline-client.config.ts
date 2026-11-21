@@ -10,7 +10,7 @@ export default defineConfig({
   reporter: [["list"], ["json", {outputFile:"dist/remediation-r013/offline-browser.json"}]],
   use: {baseURL:"http://127.0.0.1:5184", serviceWorkers:"allow", trace:"off"},
   webServer: {
-    command: `"${execPath}" node_modules/vite/bin/vite.js preview --host 127.0.0.1 --port 5184 --strictPort`,
-    cwd:"./apps/web", url:"http://127.0.0.1:5184/index.html", reuseExistingServer:false, timeout:20_000
+    command: `"${execPath}" tests/offline-client/static-server.mjs`,
+    url:"http://127.0.0.1:5184/index.html", reuseExistingServer:false, timeout:20_000
   }
 });
