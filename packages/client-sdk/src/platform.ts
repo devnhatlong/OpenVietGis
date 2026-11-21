@@ -40,6 +40,11 @@ export interface LayerQueryResponse {
   source_id: string;
   content_revision: string;
   stored_crs: number;
+  /** Required by revision-pinned query servers; optional for older servers. */
+  schema_revision?: string;
+  query_fingerprint?: string;
+  reference_pin?: { layer_id: string; source_id: string; content_revision: string; schema_revision: string; stored_crs: number } | null;
+  geometry_transformation?: string | null;
   total_count: number;
   limit: number;
   offset: number;

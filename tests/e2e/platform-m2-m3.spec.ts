@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
-import { createMapProject, mapSignIn } from "./map-fixtures";
+import type { SpatialFeaturePage, SpatialLayerList } from "../../packages/client-sdk/src";
+import { createMapProject, mapRead, mapSignIn } from "./map-fixtures";
 
 test.use({ viewport: { width: 1280, height: 900 }, trace: "off", screenshot: "off", video: "off" });
 
@@ -42,6 +43,7 @@ test("M2+M3 end-to-end: R006 Editing, R007 Query, R008 Processing, R009 Cartogra
   // 1. R006 Editing Workbench
   await page.goto(`${base}/editing`);
   await expect(page.getByTestId("editing-workbench")).toBeVisible();
+  await expect(page.getByTestId("native-edit-canvas")).toBeVisible();
   await page.getByLabel("Hình học 2D GeoJSON").fill('{"type":"Point","coordinates":[105.85,21.02]}');
   await page.getByLabel("Thuộc tính JSON có kiểu").fill('{"name":"Point Two"}');
   await page.getByRole("button", { name: "Đưa vào bản nháp" }).click();
@@ -54,6 +56,27 @@ test("M2+M3 end-to-end: R006 Editing, R007 Query, R008 Processing, R009 Cartogra
   await page.getByRole("button", { name: "Chạy truy vấn" }).click();
   await expect(page.getByText(/Kết quả: 2 đối tượng phù hợp/i)).toBeVisible({ timeout: 10000 });
 
+  // Compose and persist a real typed AND/NOT query, then replay it after reload.
+  const first = page.getByTestId("query-filter-0");
+  await first.getByRole("combobox", {name:"Trường thuộc tính",exact:true}).selectOption("name");
+  await first.getByLabel("Giá trị").fill("Point One");
+  await page.getByRole("button", {name:"Thêm điều kiện"}).click();
+  const second = page.getByTestId("query-filter-1");
+  await second.getByRole("combobox", {name:"Trường thuộc tính",exact:true}).selectOption("name");
+  await second.getByLabel("Giá trị").fill("Point Two");
+  await page.getByRole("combobox", {name:"Kết hợp điều kiện",exact:true}).selectOption("or");
+  await page.getByRole("button", {name:"Chạy truy vấn"}).click();
+  await expect(page.getByText(/Kết quả: 2 đối tượng phù hợp/i)).toBeVisible();
+  await page.getByRole("combobox", {name:"Kết hợp điều kiện",exact:true}).selectOption("and");
+  await second.getByLabel("Phủ định (NOT)").check();
+  await page.getByLabel("Tên truy vấn lưu").fill("Browser saved query");
+  await page.getByRole("button", {name:"Lưu truy vấn"}).click();
+  await expect(page.getByText(/Đã lưu truy vấn Browser saved query/)).toBeVisible();
+  await page.reload();
+  await page.getByRole("listitem").filter({hasText:"Browser saved query"}).getByRole("button",{name:"Chạy lại truy vấn"}).click();
+  await expect(page.getByText(/Kết quả: 1 đối tượng phù hợp/i)).toBeVisible();
+  await expect(page.getByTestId("query-result").getByRole("cell",{name:"pt_e2e_1",exact:true})).toBeVisible();
+
   // 3. R008 Processing Workbench
   await page.goto(`${base}/processing`);
   await expect(page.getByTestId("processing-workbench")).toBeVisible();
@@ -61,6 +84,17 @@ test("M2+M3 end-to-end: R006 Editing, R007 Query, R008 Processing, R009 Cartogra
   await expect(page.getByText(/hoàn tất \(Thành công, 2 đối tượng\)/i)).toBeVisible({
     timeout: 15000
   });
+
+  const layers = await mapRead<SpatialLayerList>(page,fixture.api+"/layers");
+  const output=layers.items.find(layer=>layer.name==="Lớp kết quả xử lý");
+  expect(output).toBeDefined();
+  const pins=new URLSearchParams({content_revision:output!.source.content_revision,schema_revision:output!.source.schema_revision,include_geometry:"true"});
+  const derived=await mapRead<SpatialFeaturePage>(page,fixture.api+"/layers/"+output!.id+"/features?"+pins);
+  expect(derived.items).toHaveLength(2);
+  for(const item of derived.items) {
+    expect(item.geometry?.type).toBe("Polygon");
+    expect(item.attributes.buffer_meters).toBe("500");
+  }
 
   // 4. R009 Cartography Workbench
   await page.goto(`${base}/cartography`);
@@ -73,6 +107,15 @@ test("M2+M3 end-to-end: R006 Editing, R007 Query, R008 Processing, R009 Cartogra
   });
   await page.getByRole("button", { name: "PNG 150 DPI" }).first().click();
   await expect(page.getByText(/Đã xuất tệp PNG \(150 DPI/i)).toBeVisible({ timeout: 15000 });
+
+  const pngUrl = await page.getByRole("link",{name:/Download PNG \(150 DPI/i}).first().getAttribute("href");
+  expect(pngUrl).toBeTruthy();
+  const png=await page.request.get(pngUrl!);
+  expect(png.status()).toBe(200);
+  const pngBytes = await png.body();
+  expect(pngBytes.subarray(0,8).toString("hex")).toBe("89504e470d0a1a0a");
+  expect(pngBytes.readUInt32BE(16)).toBe(1754);
+  expect(pngBytes.readUInt32BE(20)).toBe(1240);
 
   // 5. R010–R015 Platform Hub (Ops Readiness + COGO)
   await page.goto(`${base}/platform-hub`);
