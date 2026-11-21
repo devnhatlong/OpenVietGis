@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
 
 from tools.backup_restore import (
     _copy_verified,
+    _finish_manifest,
     _verify_references,
     backup_docker_postgres_and_artifacts,
     compute_artifact_manifest,
@@ -85,3 +88,78 @@ def test_backup_requires_consistency_attestation(tmp_path: Path) -> None:
             artifact_dir=tmp_path / "store",
             backup_dir=tmp_path / "backup",
         )
+
+
+def test_completion_marker_is_atomic_and_never_overwritten(tmp_path: Path) -> None:
+    root = tmp_path / "backup"
+    root.mkdir()
+    original = {"manifest_version": 3, "marker": "original"}
+    _finish_manifest(root, original)
+    assert json.loads((root / "backup-manifest.json").read_text()) == original
+    assert not (root / ".backup-manifest-staged").exists()
+    with pytest.raises(FileExistsError):
+        _finish_manifest(root, {"marker": "replacement"})
+    assert json.loads((root / "backup-manifest.json").read_text()) == original
+
+
+@pytest.mark.parametrize("failure", ["missing", "tampered", "same_authority", "future"])
+def test_v3_restore_preflight_fails_before_creation(
+    tmp_path: Path, monkeypatch, failure: str
+) -> None:
+    backup = tmp_path / "backup"
+    backup.mkdir()
+    artifacts = backup / "artifacts"
+    artifacts.mkdir()
+    payload = b"GIS synthetic artifact"
+    original = artifacts / "sample.bin"
+    original.write_bytes(payload)
+    sql = b"SELECT 1;"
+    (backup / "database.sql").write_bytes(sql)
+    manifest = {
+        "manifest_version": 3,
+        "created_at": datetime.now(UTC).isoformat(),
+        "database": "source",
+        "dump_file": "database.sql",
+        "dump_bytes": len(sql),
+        "dump_sha256": hashlib.sha256(sql).hexdigest(),
+        "artifact_count": 1,
+        "artifacts": compute_artifact_manifest(artifacts),
+        "references": [
+            {
+                "storage_key": "sample.bin",
+                "required": True,
+                "sha256": hashlib.sha256(payload).hexdigest(),
+                "byte_size": len(payload),
+            }
+        ],
+    }
+    kwargs = {
+        "container_name": "unused",
+        "db_user": "unused",
+        "restore_db_name": "new_restore",
+        "backup_dir": backup,
+        "restore_artifact_dir": tmp_path / "restore",
+        "isolated_target_confirmed": True,
+    }
+    if failure == "missing":
+        original.unlink()
+    elif failure == "tampered":
+        original.write_bytes(b"corrupted")
+    elif failure == "same_authority":
+        kwargs["current_authority"] = (
+            "different-name-for-same-db",
+            "unused",
+            "new_restore",
+        )
+        kwargs["current_authority_confirmed"] = True
+    else:
+        manifest["created_at"] = (datetime.now(UTC) + timedelta(hours=1)).isoformat()
+    _finish_manifest(backup, manifest)
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("Unsafe preflight reached database creation")
+
+    monkeypatch.setattr("tools.backup_restore.subprocess.run", forbidden)
+    with pytest.raises(RuntimeError):
+        verify_isolated_restore_docker(**kwargs)
+    assert not (tmp_path / "restore").exists()

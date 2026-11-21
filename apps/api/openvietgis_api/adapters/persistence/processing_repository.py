@@ -371,6 +371,11 @@ class SqlProcessingRepository:
         if row is None:
             raise PlatformNotFoundError("processing job not found")
         job = _job_from_row(row)
+        if job.error_code == "RECOVERY_QUARANTINED":
+            raise PlatformConflictError(
+                "historical restored processing job cannot resume; submit a new operation",
+                code="RECOVERY_QUARANTINED",
+            )
         if job.status in (ProcessingStatus.SUCCEEDED, ProcessingStatus.CANCELLED):
             return job
 
@@ -1038,6 +1043,11 @@ class SqlProcessingRepository:
         )
         if row is None:
             raise PlatformNotFoundError("processing job not found")
+        if row["error_code"] == "RECOVERY_QUARANTINED":
+            raise PlatformConflictError(
+                "historical restored processing job cannot retry; submit a new operation",
+                code="RECOVERY_QUARANTINED",
+            )
         if str(row["status"]) == "succeeded":
             return _job_from_row(row)
         now = datetime.now(UTC)
