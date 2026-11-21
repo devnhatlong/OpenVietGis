@@ -23,7 +23,7 @@ Audit tasks only; implementation fixes require separately scoped child specs. Al
 ## Phase 4: US2 — M1 Core verification (P1)
 - [x] T013 [US2] Run exact baseline foundation, migration, restart and health validation; save results under specs/018-full-product-audit/evidence/r001.md (FR-004).
 - [ ] T014 [US2] Exercise real OIDC session, project hierarchy, two-tenant deny, revocation in apps/api/tests/integration/identity and tenancy; record specs/018-full-product-audit/evidence/r002.md and pending SC-013 human gate (FR-004).
-- [ ] T015 [US2] Verify R003 CRS controls, catalog pins, scope and benchmark from specs/003-spatial-catalog-crs; record specs/018-full-product-audit/evidence/r003.md (FR-004).
+- [x] T015 [US2] Verify R003 CRS controls, catalog pins, scope and benchmark from specs/003-spatial-catalog-crs; record specs/018-full-product-audit/evidence/r003.md (FR-004).
 - [ ] T016 [US2] Verify layer tree, map pan/select/table/extent/save/reopen and stale/revoked behavior via tests/e2e/map-workspace.spec.ts; record specs/018-full-product-audit/evidence/r004.md and pending SC-009 human gate (FR-004).
 - [ ] T017 [US2] Import and export supported GeoPackage, GeoJSON, zipped Shapefile profiles, independently compare count/schema/CRS/geometry and failure/retry; record specs/018-full-product-audit/evidence/r005.md plus SC-008 manual gate (FR-004).
 - [ ] T018 [US2] Execute complete M1 browser scenario and collect independent artifact proof in specs/018-full-product-audit/evidence/m1.md (FR-004, SC-003).

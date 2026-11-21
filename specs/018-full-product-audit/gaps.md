@@ -11,3 +11,4 @@ Source review for G003–G006: [candidate observations and original FR/SC tracea
 | G006 | R015 | high | Static 15 enabled flags are not evidence; derive availability or state limits, verify quota/capability claims and isolated restore. |
 | G007 | R006–R015 | high | Single broad E2E omits most advanced UI journeys; actionable independent browser/negative tests for each supported operation. |
 | G008 | R002/R004/R005 | high | Human observation gates outstanding; run required acceptance observation before external release. |
+| G009 | R008 | high | **Reproduced**: Buffer reports succeeded, but pinned derived feature read raises noncanonical logical attribute (decimal stored as 1000.0). FR-027, FR-034, SC-001; [reproduction and retest](evidence/r008.md). |
