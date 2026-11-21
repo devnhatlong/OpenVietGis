@@ -14,6 +14,7 @@ from openvietgis_api.domains.cartography.domain import (
     PrintFormat,
     paper_dimensions_px,
 )
+from openvietgis_api.domains.platform_errors import PlatformValidationError
 
 
 def _hex_to_rgba(hex_color: str, alpha: int = 220) -> tuple[int, int, int, int]:
@@ -139,6 +140,8 @@ def render_print_map(
 
     # Draw layer geometries & labels
     legend_entries: list[tuple[str, str, str]] = []
+    ink = Image.new("RGBA", img.size, (0, 0, 0, 0))
+    map_draw = ImageDraw.Draw(ink, "RGBA")
     for layer in layers_payload:
         style = layer.get("style")
         label_field = style.get("label_field") if style else None
@@ -166,33 +169,72 @@ def render_print_map(
             coords = geom.get("coordinates")
             label_anchor: tuple[float, float] | None = None
 
-            if gtype == "Point":
-                pt = to_px(float(coords[0]), float(coords[1]))
-                r = max(4, width // 240)
-                draw.ellipse(
-                    [pt[0] - r, pt[1] - r, pt[0] + r, pt[1] + r],
-                    fill=fill_rgba,
-                    outline=stroke_rgba,
-                    width=2,
+            def paint_geometry(
+                kind: str,
+                points: Any,
+                fill_color: tuple[int, int, int, int],
+                stroke_color: tuple[int, int, int, int],
+            ) -> tuple[float, float] | None:
+                if kind == "Point":
+                    pt = to_px(float(points[0]), float(points[1]))
+                    r = max(4, width // 240)
+                    map_draw.ellipse(
+                        [pt[0] - r, pt[1] - r, pt[0] + r, pt[1] + r],
+                        fill=fill_color,
+                        outline=stroke_color,
+                        width=2,
+                    )
+                    return pt[0] + r + 4, pt[1] - r
+                if kind == "LineString":
+                    pts = [to_px(float(p[0]), float(p[1])) for p in points]
+                    if len(pts) >= 2:
+                        map_draw.line(pts, fill=stroke_color, width=max(2, width // 400))
+                        return pts[len(pts) // 2]
+                    return None
+                if kind == "Polygon":
+                    rings = [[to_px(float(p[0]), float(p[1])) for p in ring] for ring in points]
+                    if not rings or not rings[0]:
+                        return None
+                    outer = rings[0]
+                    # Draw holes as transparent in this polygon only, not over
+                    # earlier layers. Bounding box limits memory per feature.
+                    x0 = max(map_x0, math.floor(min(p[0] for p in outer)))
+                    y0 = max(map_y0, math.floor(min(p[1] for p in outer)))
+                    x1 = min(map_x1 + 1, math.ceil(max(p[0] for p in outer)) + 1)
+                    y1 = min(map_y1 + 1, math.ceil(max(p[1] for p in outer)) + 1)
+                    if x1 > x0 and y1 > y0:
+                        mask = Image.new("L", (x1 - x0, y1 - y0), 0)
+                        md = ImageDraw.Draw(mask)
+                        for i, ring in enumerate(rings):
+                            md.polygon(
+                                [(x - x0, y - y0) for x, y in ring], fill=255 if i == 0 else 0
+                            )
+                        fill = Image.new("RGBA", mask.size, fill_color)
+                        ink.paste(fill, (x0, y0), mask)
+                        for ring in rings:
+                            map_draw.line(ring, fill=stroke_color, width=1)
+                    return (
+                        sum(p[0] for p in outer) / len(outer),
+                        sum(p[1] for p in outer) / len(outer),
+                    )
+                if kind in ("MultiPoint", "MultiLineString", "MultiPolygon"):
+                    first = None
+                    for member in points:
+                        anchor = paint_geometry(kind[5:], member, fill_color, stroke_color)
+                        if first is None:
+                            first = anchor
+                    return first
+                raise PlatformValidationError(
+                    f"unsupported print geometry {kind!r}", code="UNSUPPORTED_PRINT_GEOMETRY"
                 )
-                label_anchor = (pt[0] + r + 4, pt[1] - r)
-            elif gtype == "LineString":
-                pts = [to_px(float(p[0]), float(p[1])) for p in coords]
-                if len(pts) >= 2:
-                    draw.line(pts, fill=stroke_rgba, width=max(2, width // 400))
-                    label_anchor = pts[len(pts) // 2]
-            elif gtype == "Polygon":
-                for ring in coords:
-                    pts = [to_px(float(p[0]), float(p[1])) for p in ring]
-                    if len(pts) >= 3:
-                        draw.polygon(pts, fill=fill_rgba, outline=stroke_rgba)
-                        if label_anchor is None:
-                            cx = sum(p[0] for p in pts) / len(pts)
-                            cy = sum(p[1] for p in pts) / len(pts)
-                            label_anchor = (cx, cy)
 
+            label_anchor = paint_geometry(str(gtype), coords, fill_rgba, stroke_rgba)
             if label_field and label_anchor and attrs.get(label_field) is not None:
-                draw.text(label_anchor, str(attrs[label_field])[:32], fill=(15, 23, 42, 255))
+                map_draw.text(label_anchor, str(attrs[label_field]), fill=(15, 23, 42, 255))
+
+    # Clip all feature ink to the map frame; nothing can overdraw page elements.
+    tile = ink.crop((map_x0, map_y0, map_x1 + 1, map_y1 + 1))
+    img.paste(tile, (map_x0, map_y0), tile)
 
     # North arrow
     if show_north_arrow:
@@ -201,15 +243,25 @@ def render_print_map(
         draw.polygon(
             [(nx, ny - 28), (nx - 12, ny + 8), (nx, ny), (nx + 12, ny + 8)], fill=(15, 23, 42, 255)
         )
-        draw.text((nx - 4, ny - 44), "N", fill=(15, 23, 42, 255))
+        draw.text((nx - 12, ny - 44), "N (grid)", fill=(15, 23, 42, 255))
 
     # Compute approximate scale denominator (meters on ground per meter on paper)
     map_width_meters_paper = (map_w / float(dpi)) * 0.0254
+    # Use the actual aspect-preserving pixel transform, not the data span:
+    # a tall extent can occupy only a fraction of the frame horizontally.
+    frame_units = map_w / scale_px
     if crs_code in (4326, 4756):
         mid_lat = (min_y + max_y) / 2.0
-        ground_width_m = span_x * 111_320.0 * max(0.1, math.cos(math.radians(mid_lat)))
+        meters_per_unit = 111_320.0 * max(0.001, abs(math.cos(math.radians(mid_lat))))
+        scale_reference = "approximate ground scale at extent center"
+    elif crs_code == 3857:
+        mid_y = (min_y + max_y) / 2.0
+        meters_per_unit = 1.0 / math.cosh(mid_y / 6378137.0)
+        scale_reference = "approximate ground scale at extent center (Web Mercator)"
     else:
-        ground_width_m = span_x
+        meters_per_unit = 1.0
+        scale_reference = "approximate projected grid scale, not ground distance"
+    ground_width_m = frame_units * meters_per_unit
     scale_denom = max(1, int(round(ground_width_m / max(1e-4, map_width_meters_paper))))
 
     # Scale bar
@@ -242,20 +294,28 @@ def render_print_map(
         )
         draw.text((lx0 + 12, ly0 + 12), "LEGEND", fill=(15, 23, 42, 255))
         cy = ly0 + 40
-        for label, fhex, shex in legend_entries[:20]:
+        if len(legend_entries) > 20 or cy + 26 * len(legend_entries) > map_y1:
+            raise PlatformValidationError(
+                "legend does not fit this page", code="PRINT_LEGEND_OVERFLOW"
+            )
+        for label, fhex, shex in legend_entries:
             draw.rectangle(
                 [lx0 + 12, cy, lx0 + 30, cy + 16],
                 fill=_hex_to_rgba(fhex, 220),
                 outline=_hex_to_rgba(shex, 255),
                 width=1,
             )
-            draw.text((lx0 + 38, cy + 1), label[:26], fill=(30, 41, 59, 255))
+            if draw.textbbox((lx0 + 38, cy + 1), label)[2] > width - margin - 8:
+                raise PlatformValidationError(
+                    "legend label does not fit", code="PRINT_LEGEND_OVERFLOW"
+                )
+            draw.text((lx0 + 38, cy + 1), label, fill=(30, 41, 59, 255))
             cy += 26
 
     # Footer attribution & accuracy disclosure
     scale_note = (
-        f"Approximate map scale 1:{scale_denom:,} in EPSG:{crs_code} ({dpi} DPI). "
-        "Cartographic output only; not a survey-grade cadastral certificate."
+        f"Scale 1:{scale_denom:,} in EPSG:{crs_code} ({dpi} DPI): {scale_reference}. "
+        "Cartographic output only; not survey-grade."
     )
     draw.text((map_x0, map_y1 + 14), f"Attribution: {attribution}", fill=(51, 65, 85, 255))
     draw.text((map_x0, map_y1 + 36), scale_note, fill=(100, 116, 139, 255))

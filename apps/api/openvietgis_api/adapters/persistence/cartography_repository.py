@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -29,6 +30,24 @@ from openvietgis_api.domains.cartography.domain import (
     validate_and_build_legend,
 )
 from openvietgis_api.domains.platform_errors import PlatformNotFoundError, PlatformValidationError
+
+
+def _validate_print_extent(extent: dict[str, float], crs_code: int) -> None:
+    if (
+        set(extent) != {"min_x", "min_y", "max_x", "max_y"}
+        or not all(math.isfinite(value) and abs(value) <= 1e9 for value in extent.values())
+        or extent["min_x"] >= extent["max_x"]
+        or extent["min_y"] >= extent["max_y"]
+        or (
+            crs_code in (4326, 4756)
+            and not (
+                -180 <= extent["min_x"] < extent["max_x"] <= 180
+                and -90 <= extent["min_y"] < extent["max_y"] <= 90
+            )
+        )
+        or (crs_code == 3857 and any(abs(value) > 20_037_509 for value in extent.values()))
+    ):
+        raise PlatformValidationError("invalid print extent", code="INVALID_PRINT_EXTENT")
 
 
 def _style_from_row(row: RowMapping) -> LayerStyleRecord:
@@ -233,6 +252,26 @@ class SqlCartographyRepository:
             )
         if not layer_ids:
             raise PlatformValidationError("layout requires at least one layer", code="EMPTY_LAYOUT")
+        if len(layer_ids) != len(set(layer_ids)) or len(layer_ids) > 20:
+            raise PlatformValidationError(
+                "layout requires 1..20 unique layers", code="LAYOUT_LAYER_LIMIT"
+            )
+        for layer_id in layer_ids:
+            row = self._session.execute(
+                text("""
+                    SELECT l.id FROM spatial.layers l JOIN spatial.data_sources s
+                    ON l.source_id = s.id AND l.project_id = s.project_id
+                    AND l.organization_id = s.organization_id
+                    WHERE l.organization_id = :org AND l.project_id = :proj AND l.id = :lid
+                      AND l.lifecycle = 'active' AND s.lifecycle = 'active'
+                      AND s.validation_state = 'ready'
+                """),
+                {"org": context.organization_id, "proj": context.project_id, "lid": layer_id},
+            ).first()
+            if row is None:
+                raise PlatformNotFoundError("layout layer unavailable")
+        if extent is not None:
+            _validate_print_extent(extent, crs_code)
         now = datetime.now(UTC)
         row = (
             self._session.execute(
@@ -341,6 +380,8 @@ class SqlCartographyRepository:
                      AND s.project_id = l.project_id
                      AND s.id = l.source_id
                     WHERE l.organization_id = :org AND l.project_id = :proj AND l.id = :lid
+                      AND l.lifecycle = 'active' AND s.lifecycle = 'active'
+                      AND s.validation_state = 'ready'
                 """),
                     {"org": org_id, "proj": project_id, "lid": lid},
                 )
@@ -348,7 +389,7 @@ class SqlCartographyRepository:
                 .first()
             )
             if meta is None:
-                continue
+                raise PlatformNotFoundError("one or more layout layers are unavailable")
 
             style_row = (
                 self._session.execute(
@@ -379,7 +420,8 @@ class SqlCartographyRepository:
                     FROM spatial.reference_features rf
                     WHERE rf.organization_id = :org AND rf.project_id = :proj
                       AND rf.source_id = :src
-                    LIMIT 2500
+                    ORDER BY rf.feature_id
+                    LIMIT 2501
                 """),
                     {"org": org_id, "proj": project_id, "src": meta["source_id"]},
                 )
@@ -387,6 +429,11 @@ class SqlCartographyRepository:
                 .all()
             )
 
+            if len(frows) > 2500:
+                raise PlatformValidationError(
+                    "print layer exceeds the supported 2500-feature limit; narrow the source",
+                    code="PRINT_FEATURE_LIMIT",
+                )
             features = []
             for fr in frows:
                 if fr["x0"] is not None:
@@ -421,11 +468,21 @@ class SqlCartographyRepository:
                 }
             )
 
-        use_extent = layout.extent or (
-            {"min_x": min_x, "min_y": min_y, "max_x": max_x, "max_y": max_y}
-            if min_x < float("inf")
-            else {"min_x": 105.0, "min_y": 20.0, "max_x": 108.0, "max_y": 22.0}
-        )
+        if layout.extent is not None:
+            _validate_print_extent(layout.extent, layout.crs_code)
+            use_extent = layout.extent
+        elif min_x < float("inf"):
+            # Point/vertical-line extents need a finite, honest frame.
+            minimum_span = 0.00001 if layout.crs_code in (4326, 4756) else 1.0
+            if min_x == max_x:
+                min_x, max_x = min_x - minimum_span / 2, max_x + minimum_span / 2
+            if min_y == max_y:
+                min_y, max_y = min_y - minimum_span / 2, max_y + minimum_span / 2
+            use_extent = {"min_x": min_x, "min_y": min_y, "max_x": max_x, "max_y": max_y}
+        else:
+            raise PlatformValidationError(
+                "layout has no spatial extent; supply an explicit extent", code="EMPTY_PRINT_EXTENT"
+            )
 
         raw_bytes, scale_denom, scale_note = render_print_map(
             title=layout.title,
