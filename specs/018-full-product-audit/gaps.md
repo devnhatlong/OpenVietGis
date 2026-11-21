@@ -1,4 +1,6 @@
 # Preliminary gap register (open, requires exact-candidate reproduction)
+
+Source review for G003–G006: [candidate observations and original FR/SC traceability](evidence/source-gap-review.md). These strengthen the hypotheses but do not close runtime acceptance gates.
 | ID | Roadmap | Severity | Observation and retest |
 | --- | --- | --- | --- |
 | G001 | R001–R015 | high | Divergent main and deployed integration; freeze and retest exact candidate, independently review before promotion. |
