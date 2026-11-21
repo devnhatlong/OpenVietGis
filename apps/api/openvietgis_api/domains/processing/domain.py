@@ -104,7 +104,11 @@ def validate_algorithm_parameters(
             raise PlatformValidationError("unknown buffer parameter", code="INVALID_PARAMETERS")
         raw_dist = parameters.get("distance_meters")
         # The public contract is a JSON number, not a coercible string or boolean.
-        if type(raw_dist) not in (int, float) or not (0.1 <= raw_dist <= 500_000.0):
+        if (
+            not isinstance(raw_dist, (int, float))
+            or type(raw_dist) not in (int, float)
+            or not (0.1 <= raw_dist <= 500_000.0)
+        ):
             raise PlatformValidationError(
                 "distance_meters must be a number between 0.1 and 500000",
                 code="INVALID_PARAMETERS",

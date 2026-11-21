@@ -13,6 +13,7 @@ from uuid import UUID
 from openvietgis_api.domains.platform_errors import PlatformValidationError
 from openvietgis_api.domains.spatial.domain import (
     READABLE_CRS_CODES,
+    CoordinateTree,
     FieldType,
     GeometryFamily,
     NativeGeometry,
@@ -88,9 +89,12 @@ def _typed_value(value: Any, field: SourceField) -> Any:
         canonical = canonical_attribute_value(field, value)
     except SpatialValidationError as exc:
         raise _invalid("value does not match declared field type or precision") from exc
-    if field.type == FieldType.DECIMAL:
-        return Decimal(canonical)
-    if field.type == FieldType.TIMESTAMP:
+    if field.type in (FieldType.DECIMAL, FieldType.TIMESTAMP):
+        # Both logical types use canonical textual JSON representations.
+        if not isinstance(canonical, str):
+            raise _invalid("non-text canonical representation")
+        if field.type == FieldType.DECIMAL:
+            return Decimal(canonical)
         return datetime.fromisoformat(canonical)
     return canonical
 
@@ -222,7 +226,10 @@ def parse_drawn_area(value: Any, crs_code: Any) -> NativeGeometry:
                 "drawn geometry requires XY coordinates", code="INVALID_SPATIAL_FILTER"
             )
     try:
-        geometry = NativeGeometry("Polygon", rings, crs_code)
+        coordinates: CoordinateTree = tuple(
+            tuple(tuple(position) for position in ring) for ring in rings
+        )
+        geometry = NativeGeometry("Polygon", coordinates, crs_code)
         validate_ready_geometry(geometry, GeometryFamily.POLYGON, crs_code)
     except SpatialValidationError as exc:
         raise PlatformValidationError(
