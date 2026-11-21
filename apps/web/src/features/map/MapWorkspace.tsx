@@ -18,6 +18,7 @@ import {
 import { AttributeTable } from "./AttributeTable";
 import { CommandBar } from "./CommandBar";
 import { FeatureInspector } from "./FeatureInspector";
+import { SaveStateIndicator } from "./SaveStateIndicator";
 import { LayerTree } from "./LayerTree";
 import { WorkspaceLayout } from "./WorkspaceLayout";
 import { buildAddDataCandidates } from "./add-data";
@@ -25,6 +26,8 @@ import { createCommands,invokeCommand,type MapCommandId } from "./commands";
 import { BASEMAP_OPTIONS,type BasemapId,type MapEngine,type RenderLayer } from "./engine";
 import { createMapLibreEngine } from "./maplibre-engine";
 import { beginSave,markUnresolved,receiptMatches,saveErrorState,type PendingSave } from "./save";
+import { buildSaveIndicatorView } from "./save-indicator";
+import { useUnsavedNavigationProtection } from "./unsaved-navigation";
 import { boundsOfGeometry,capability,combineBounds,defaultStyle,mapResponseMatches,positionCount,selectionKey,toggleSelection,viewportMatches,type Bounds,type SelectionScope } from "./workspace";
 import {
  loadWorkspaceLayoutPreference,normalizeWorkspaceLayoutPreference,saveWorkspaceLayoutPreference,
@@ -83,7 +86,7 @@ function Workspace({organizationId,projectId,accountId,project,initial,canEdit}:
  useEffect(()=>{engine.current?.setBasemap(basemap);},[basemap]);
  const initialFit=useRef(false),fitGeneration=useRef(0);
  const writable=canEdit&&project.status==="active";
- const locked=working||pending?.status==="unresolved";
+ const locked=working||pending?.status==="unresolved"||pending?.status==="conflict";
  const scopePrefix=["map-workspace",accountId,organizationId,projectId];
  const catalogQuery=useQuery({queryKey:[...scopePrefix,"catalog",catalogCursor],queryFn:()=>listSpatialLayers(apiClient,organizationId,projectId,{limit:100,...(catalogCursor?{after_id:catalogCursor}:{})}),...protectedQueryOptions});
  const catalog=currentProtectedData(catalogQuery);
@@ -263,6 +266,12 @@ function Workspace({organizationId,projectId,accountId,project,initial,canEdit}:
  const readError=activeBlocked?"Lớp hoặc đối tượng đang chọn cần xác thực lại quyền truy cập hiện hành.":pageQuery.error?errorMessage(pageQuery.error):null;
  const detailError=activeBlocked?readError:detailQuery.error?errorMessage(detailQuery.error):null;
  const dirty=JSON.stringify(configuration.layers)!==JSON.stringify(saved.configuration.layers)||viewpointIntent.mode!=="preserve"||saved.configuration_revision===0;
+ const saveIndicatorView=buildSaveIndicatorView({
+  dirty,
+  pendingStatus:pending?.status??null,
+  revision:saved.configuration_revision
+ });
+ const navigationBlocker=useUnsavedNavigationProtection(dirty);
  function change(layers:MapLayerReference[]):void {if(locked)return;setConfiguration({...configuration,layers});setPending(null);if(active&&!layers.some(l=>l.layer_id===active))choose(layers[0]?.layer_id??"");}
  function updateLayoutPreference(value:WorkspaceLayoutPreference):void {
   const normalized=normalizeWorkspaceLayoutPreference(value);
@@ -281,7 +290,7 @@ function Workspace({organizationId,projectId,accountId,project,initial,canEdit}:
   <header className="gis-header"><div><Link to={"/app/organizations/"+organizationId+"/projects"}>← Dự án</Link><span className="gis-logo">OVG</span><h1>{project.name}<small>Không gian bản đồ</small></h1></div><div className="gis-header-meta"><span>{project.status==="archived"?"Chỉ đọc":writable?"Chế độ chỉnh sửa":"Chế độ xem"}</span><Link to={"/app/organizations/"+organizationId+"/projects/"+projectId+"/spatial"}>Danh mục GIS</Link><Link to={"/app/organizations/"+organizationId+"/projects/"+projectId+"/transfers"}>Nhập / Xuất</Link><Link to={"/app/organizations/"+organizationId+"/projects/"+projectId+"/editing"}>Biên tập</Link><Link to={"/app/organizations/"+organizationId+"/projects/"+projectId+"/queries"}>Truy vấn</Link><Link to={"/app/organizations/"+organizationId+"/projects/"+projectId+"/processing"}>Xử lý</Link><Link to={"/app/organizations/"+organizationId+"/projects/"+projectId+"/cartography"}>In ấn</Link><Link to={"/app/organizations/"+organizationId+"/projects/"+projectId+"/platform-hub"}>Công cụ nâng cao</Link></div></header>
   <div className="map-context">
     <span><strong>Phiên bản bản đồ:</strong> {saved.configuration_revision}</span>
-    <span className={dirty?"map-context-unsaved":"map-context-saved"}>{dirty?"● Có thay đổi chưa lưu":"✓ Đã lưu"}</span>
+    <span className={dirty?"map-context-unsaved":"map-context-saved"} data-save-state={saveIndicatorView.state}>{saveIndicatorView.label}</span>
     <details>
       <summary>Thông tin kỹ thuật</summary>
       <div><span>Mã tổ chức: <code>{organizationId}</code></span><span>Mã dự án: <code>{projectId}</code></span></div>
@@ -320,8 +329,18 @@ function Workspace({organizationId,projectId,accountId,project,initial,canEdit}:
    onAdd={addLayerToMap}
    onClose={()=>setAddDataOpen(false)}
   />
+  {navigationBlocker.state==="blocked"?<div className="map-unsaved-blocker" role="dialog" aria-modal="true" aria-labelledby="map-unsaved-title">
+   <div>
+    <h2 id="map-unsaved-title">Có thay đổi bản đồ chưa lưu</h2>
+    <p>Rời trang lúc này sẽ bỏ các thay đổi cấu hình bản đồ chưa được lưu.</p>
+    <div>
+     <button type="button" onClick={()=>navigationBlocker.reset()}>Ở lại</button>
+     <button type="button" className="is-danger" onClick={()=>navigationBlocker.proceed()}>Rời đi và bỏ thay đổi</button>
+    </div>
+   </div>
+  </div>:null}
   <div className="map-sessionbar"><span>Giữ Shift hoặc Ctrl khi bấm để chọn nhiều · {selected.length}/100 đang chọn</span><span data-testid="map-camera-summary">Tọa độ tâm {camera.longitude.toFixed(5)}, {camera.latitude.toFixed(5)} · mức thu phóng {camera.zoom.toFixed(2)}</span><button onClick={()=>void revalidate()}>Kiểm tra lại quyền truy cập</button></div>
-  <section className="map-save-panel" aria-label="Cấu hình bản đồ dùng chung"><div><h2>Cấu hình bản đồ dùng chung</h2><p data-testid="map-save-status">{pending?.status??(dirty?"chưa lưu":"đã lưu")} · phiên bản {saved.configuration_revision} · góc nhìn mặc định: {viewpointIntent.mode==="preserve"?(saved.configuration.default_viewpoint?"giữ nguyên":"chưa đặt"):viewpointIntent.mode==="clear"?"xóa khi lưu":"cập nhật khi lưu"}</p></div>
+  <section className="map-save-panel" aria-label="Cấu hình bản đồ dùng chung"><div><h2>Cấu hình bản đồ dùng chung</h2><SaveStateIndicator dirty={dirty} pendingStatus={pending?.status??null} revision={saved.configuration_revision}/><p className="map-muted">Góc nhìn mặc định: {viewpointIntent.mode==="preserve"?(saved.configuration.default_viewpoint?"giữ nguyên":"chưa đặt"):viewpointIntent.mode==="clear"?"xóa khi lưu":"cập nhật khi lưu"}</p></div>
    <button disabled={!writable||locked} onClick={()=>invokeCommand(commands,"map.set-default-viewpoint","toolbar")}>Đặt góc nhìn mặc định</button>
    <button disabled={!writable||locked} onClick={()=>{setViewpointIntent({mode:"clear"});setPending(null);}}>Xóa góc nhìn mặc định</button>
    <button disabled={!writable||locked} onClick={()=>void submitSave()}>Lưu bản đồ</button>

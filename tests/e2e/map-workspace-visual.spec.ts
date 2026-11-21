@@ -76,3 +76,79 @@ test("populated GIS workspace visual baseline", async ({ page }) => {
     }
   );
 });
+
+test("dirty saved and conflict save-state visual baselines", async ({ page }) => {
+  test.setTimeout(180_000);
+  await mapSignIn(page);
+  const fixture = await createMapProject(
+    page,
+    Date.now().toString() + "-visual-save-state"
+  );
+  await registerMapReferences(page, fixture, false);
+  await saveFixtureMap(page, fixture);
+  await openFixtureMap(page, fixture);
+
+  const workspace = page.getByTestId("map-workspace");
+  const indicator = page.getByTestId("map-save-indicator");
+  const screenshotOptions = {
+    animations: "disabled" as const,
+    mask: [
+      page.getByTestId("map-canvas"),
+      page.locator(".gis-header h1")
+    ]
+  };
+
+  await page
+    .getByRole("checkbox", { name: "Hiển thị Points", exact: true })
+    .uncheck();
+  await expect(indicator).toHaveAttribute("data-save-state", "dirty");
+  await expect(workspace).toHaveScreenshot(
+    "map-workspace-dirty.png",
+    screenshotOptions
+  );
+
+  await page
+    .getByRole("region", { name: "Cấu hình bản đồ dùng chung" })
+    .getByRole("button", { name: "Lưu bản đồ", exact: true })
+    .click();
+  await expect(indicator).toHaveAttribute("data-save-state", "saved");
+  await expect(workspace).toHaveScreenshot(
+    "map-workspace-saved.png",
+    screenshotOptions
+  );
+
+  await page
+    .getByRole("checkbox", { name: "Hiển thị Points", exact: true })
+    .check();
+  await expect(indicator).toHaveAttribute("data-save-state", "dirty");
+
+  const savePath = fixture.api + "/map";
+  await page.route(savePath, async (route) => {
+    if (route.request().method() !== "PUT") {
+      await route.continue();
+      return;
+    }
+    await route.fulfill({
+      status: 409,
+      json: {
+        code: "STALE_MAP_REVISION",
+        detail: "Synthetic deterministic conflict"
+      }
+    });
+  });
+
+  try {
+    await page
+      .getByRole("region", { name: "Cấu hình bản đồ dùng chung" })
+      .getByRole("button", { name: "Lưu bản đồ", exact: true })
+      .click();
+    await expect(indicator).toHaveAttribute("data-save-state", "conflict");
+    await expect(indicator).toContainText("Có phiên bản mới");
+    await expect(workspace).toHaveScreenshot(
+      "map-workspace-conflict.png",
+      screenshotOptions
+    );
+  } finally {
+    await page.unroute(savePath);
+  }
+});

@@ -133,7 +133,10 @@ test("opens a real empty grid and arranges, renders, selects and saves catalog L
   );
   await shared.getByRole("button", { name: "Lưu bản đồ", exact: true }).click();
   expect((await savedResponse).status()).toBe(200);
-  await expect(page.getByTestId("map-save-status")).toContainText("committed");
+  await expect(page.getByTestId("map-save-indicator")).toHaveAttribute(
+    "data-save-state",
+    "saved"
+  );
   const persisted = await currentMap(page, fixture);
   expect(persisted.configuration_revision).toBe(1);
   // Incidental fit/zoom/selection never designates a shared startup camera.
@@ -190,7 +193,13 @@ test("preserves the designated camera and reconciles a genuinely committed lost 
     await route.abort("connectionreset");
   });
   await shared.getByRole("button", { name: "Lưu bản đồ", exact: true }).click();
-  await expect(page.getByTestId("map-save-status")).toContainText("unresolved");
+  await expect(page.getByTestId("map-save-indicator")).toHaveAttribute(
+    "data-save-state",
+    "unresolved"
+  );
+  await expect(page.getByTestId("map-save-indicator")).toContainText(
+    "Chưa xác định kết quả lưu"
+  );
   await page.unroute(saveUrl);
   const committed = await currentMap(page, fixture);
   expect(committed.configuration_revision).toBe(2);
@@ -204,7 +213,10 @@ test("preserves the designated camera and reconciles a genuinely committed lost 
   expect(later.status).toBe(200);
   expect(later.body!.configuration_revision).toBe(3);
   await shared.getByRole("button", { name: "Đối chiếu bản lưu", exact: true }).click();
-  await expect(page.getByTestId("map-save-status")).toContainText("committed");
+  await expect(page.getByTestId("map-save-indicator")).toHaveAttribute(
+    "data-save-state",
+    "saved"
+  );
   const receipt = await mapRead<MapSaveReceipt>(page, fixture.api + "/map/operations/" + originalOperation.operation_id);
   expect(receipt.configuration_revision).toBe(2);
   expect((await currentMap(page, fixture)).configuration_revision).toBe(3);
@@ -215,7 +227,13 @@ test("preserves the designated camera and reconciles a genuinely committed lost 
   expect(history.items.map(item => item.configuration_revision)).toEqual([3, 2, 1]);
   await page.reload();
   await expect(page.getByRole("checkbox", { name: "Hiển thị Points", exact: true })).toBeChecked();
-  await expect(page.getByTestId("map-save-status")).toContainText("phiên bản 3");
+  await expect(page.getByTestId("map-save-indicator")).toHaveAttribute(
+    "data-save-state",
+    "clean"
+  );
+  await expect(page.getByTestId("map-save-indicator")).toContainText(
+    "Phiên bản bản đồ 3"
+  );
 });
 
 test("two real actors receive CAS conflicts and revoked access clears a warm rendered selection", async ({ page: owner, browser, baseURL }) => {
@@ -234,14 +252,32 @@ test("two real actors receive CAS conflicts and revoked access clears a warm ren
     await owner.getByRole("checkbox", { name: "Hiển thị Points", exact: true }).uncheck();
     await owner.getByRole("region", { name: "Cấu hình bản đồ dùng chung" })
       .getByRole("button", { name: "Lưu bản đồ", exact: true }).click();
-    await expect(owner.getByTestId("map-save-status")).toContainText("phiên bản 2");
+    await expect(owner.getByTestId("map-save-indicator")).toHaveAttribute(
+      "data-save-state",
+      "saved"
+    );
+    await expect(owner.getByTestId("map-save-indicator")).toContainText(
+      "Đã lưu phiên bản bản đồ 2"
+    );
     const shared = editor.getByRole("region", { name: "Cấu hình bản đồ dùng chung" });
     await shared.getByRole("button", { name: "Xóa góc nhìn mặc định", exact: true }).click();
     await shared.getByRole("button", { name: "Lưu bản đồ", exact: true }).click();
-    await expect(editor.getByTestId("map-save-status")).toContainText("conflict");
+    await expect(editor.getByTestId("map-save-indicator")).toHaveAttribute(
+      "data-save-state",
+      "conflict"
+    );
+    await expect(editor.getByTestId("map-save-indicator")).toContainText(
+      "Có phiên bản mới"
+    );
     expect((await currentMap(owner, fixture)).configuration_revision).toBe(2);
     await shared.getByRole("button", { name: "Tải lại bản đồ chung", exact: true }).click();
-    await expect(editor.getByTestId("map-save-status")).toContainText("phiên bản 2");
+    await expect(editor.getByTestId("map-save-indicator")).toHaveAttribute(
+      "data-save-state",
+      "clean"
+    );
+    await expect(editor.getByTestId("map-save-indicator")).toContainText(
+      "Phiên bản bản đồ 2"
+    );
     await editor.getByRole("checkbox", { name: "Hiển thị Points", exact: true }).check();
     await editor.getByTestId("feature-select-point-000001").check();
     await expect(editor.getByTestId("map-inspector")).toHaveAttribute("data-feature-id", "point-000001");
@@ -384,4 +420,79 @@ test("keeps camera and selection stable across panel collapse and keyboard resiz
   await expect(page.getByTestId("accessible-map-summary")).toContainText(
     points.name
   );
+});
+
+test("warns only for unsaved shared configuration changes", async ({ page }) => {
+  test.setTimeout(180_000);
+  await mapSignIn(page);
+  const fixture = await createMapProject(
+    page,
+    Date.now().toString() + "-dirty-navigation"
+  );
+  await registerMapReferences(page, fixture, false);
+  await saveFixtureMap(page, fixture);
+  await openFixtureMap(page, fixture);
+
+  const indicator = page.getByTestId("map-save-indicator");
+  await expect(indicator).toHaveAttribute("data-save-state", "clean");
+
+  // Camera, selection and local panel layout are personal/transient state.
+  await page.getByRole("button", { name: "Phóng to (+)", exact: true }).click();
+  await expect(indicator).toHaveAttribute("data-save-state", "clean");
+
+  await page
+    .getByRole("button", {
+      name: "Chọn Points làm lớp hiện hành",
+      exact: true
+    })
+    .click();
+  const table = page.getByRole("table", {
+    name: "Bảng thuộc tính theo phiên bản"
+  });
+  await table
+    .getByRole("button", { name: "point-000001", exact: true })
+    .click();
+  await expect(indicator).toHaveAttribute("data-save-state", "clean");
+
+  const detailToggle = page
+    .getByLabel("Điều khiển bố cục")
+    .getByRole("button", { name: "Chi tiết", exact: true });
+  await detailToggle.click();
+  await expect(indicator).toHaveAttribute("data-save-state", "clean");
+  await detailToggle.click();
+
+  // Shared visibility changes are dirty and must block navigation.
+  await page
+    .getByRole("checkbox", { name: "Hiển thị Points", exact: true })
+    .uncheck();
+  await expect(indicator).toHaveAttribute("data-save-state", "dirty");
+  await expect(indicator).toContainText("Có thay đổi chưa lưu");
+
+  await page.getByRole("link", { name: "← Dự án", exact: true }).click();
+  const blocker = page.getByRole("dialog", {
+    name: "Có thay đổi bản đồ chưa lưu"
+  });
+  await expect(blocker).toBeVisible();
+  await blocker.getByRole("button", { name: "Ở lại", exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(fixture.root + "/map$"));
+  await expect(indicator).toHaveAttribute("data-save-state", "dirty");
+
+  await page
+    .getByRole("region", { name: "Cấu hình bản đồ dùng chung" })
+    .getByRole("button", { name: "Lưu bản đồ", exact: true })
+    .click();
+  await expect(indicator).toHaveAttribute("data-save-state", "saved");
+  await expect(indicator).toContainText("Đã lưu phiên bản bản đồ 2");
+
+  await page.getByRole("link", { name: "← Dự án", exact: true }).click();
+  await expect(page).toHaveURL(
+    new RegExp(
+      "/app/organizations/" +
+        fixture.organizationId +
+        "/projects$"
+    )
+  );
+  await expect(
+    page.getByRole("dialog", { name: "Có thay đổi bản đồ chưa lưu" })
+  ).toHaveCount(0);
 });

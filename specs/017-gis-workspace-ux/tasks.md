@@ -91,12 +91,12 @@ description: "Dependency-ordered implementation tasks for OpenVietGIS GIS Worksp
 
 **Independent Test**: Shared config changes mark dirty; pan/zoom/selection/layout do not; successful save confirms only after authority; stale/unresolved outcomes remain honest.
 
-- [ ] T035 [P] [US4] Add failing unit tests for every `SaveIndicatorState` value from `specs/017-gis-workspace-ux/data-model.md` and parent save outcomes in `apps/web/src/features/map/save-indicator.test.ts`
-- [ ] T036 [P] [US4] Add Playwright scenarios for dirty-vs-transient state, leave warning, successful save, stale conflict and unresolved acknowledgement in `tests/e2e/map-workspace.spec.ts`
-- [ ] T037 [US4] Implement user-facing save-state mapping in `apps/web/src/features/map/SaveStateIndicator.tsx` using `contracts/save-and-technical-state.md`
-- [ ] T038 [US4] Integrate `SaveStateIndicator.tsx` with the accepted parent save state machine in `apps/web/src/features/map/MapWorkspace.tsx` without changing revision/CAS semantics
-- [ ] T039 [US4] Add scoped unsaved-shared-change navigation protection in `apps/web/src/features/map/unsaved-navigation.ts` and integrate it with project/context navigation in `MapWorkspace.tsx`
-- [ ] T040 [US4] Add deterministic dirty/saved/conflict screenshot states in `tests/e2e/map-workspace-visual.spec.ts`
+- [x] T035 [P] [US4] Add failing unit tests for every `SaveIndicatorState` value from `specs/017-gis-workspace-ux/data-model.md` and parent save outcomes in `apps/web/src/features/map/save-indicator.test.ts`
+- [x] T036 [P] [US4] Add Playwright scenarios for dirty-vs-transient state, leave warning, successful save, stale conflict and unresolved acknowledgement in `tests/e2e/map-workspace.spec.ts`
+- [x] T037 [US4] Implement user-facing save-state mapping in `apps/web/src/features/map/SaveStateIndicator.tsx` using `contracts/save-and-technical-state.md`
+- [x] T038 [US4] Integrate `SaveStateIndicator.tsx` with the accepted parent save state machine in `apps/web/src/features/map/MapWorkspace.tsx` without changing revision/CAS semantics
+- [x] T039 [US4] Add scoped unsaved-shared-change navigation protection in `apps/web/src/features/map/unsaved-navigation.ts` and integrate it with project/context navigation in `MapWorkspace.tsx`
+- [x] T040 [US4] Add deterministic dirty/saved/conflict screenshot states in `tests/e2e/map-workspace-visual.spec.ts`
 
 **Checkpoint**: Users can distinguish personal exploration from shared Map changes and never see false save success.
 

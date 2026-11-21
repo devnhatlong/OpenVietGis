@@ -158,3 +158,29 @@ R004 SC009 (five first-time GIS-capable users) remains an external human accepta
 - Camera summary remains identical while Layer, Inspector and Attribute Table panels collapse/reopen and while the Layer separator is resized by keyboard.
 - Focused feature `point-000001`, checkbox selection and accessible map summary remain synchronized after layout-only changes.
 - Attribute Table renders exactly 100 bounded records on the reference page, matching the accepted parent read limit. No virtualization dependency is introduced because the simultaneous DOM row count does not exceed 100.
+
+## US4 save-state evidence — 2026-11-21
+
+- Web typecheck PASS; web unit tests 84/84 PASS.
+- Save indicator explicitly distinguishes clean, dirty, saving, saved, conflict, failed and unresolved outcomes.
+- Browser save-state group: 3/3 PASS:
+  - transient camera/selection/layout changes remain clean;
+  - shared visibility change becomes dirty and blocks route navigation until the user stays or discards;
+  - authoritative save clears dirty and navigation proceeds;
+  - lost acknowledgement remains unresolved until operation reconciliation;
+  - concurrent editor save produces an explicit CAS conflict and reload returns to the authoritative revision.
+- Deterministic workspace visual baselines for dirty, saved and conflict states: 3/3 PASS and repeated without snapshot regeneration.
+
+## US4 save-state evidence — 2026-11-21
+
+- Save indicator maps shared configuration state to clean, dirty, saving, saved, conflict, failed and unresolved without changing parent CAS/revision semantics.
+- Web unit suite passed with explicit save-indicator coverage; known 4xx validation failures map to failed, 409 to conflict, authorization loss to failed/denied presentation, and ambiguous transport/server outcomes remain unresolved.
+- Targeted browser acceptance PASS:
+  - transient camera zoom, feature selection and panel layout changes keep save state clean;
+  - shared Layer visibility change becomes dirty;
+  - dirty navigation opens the in-app leave warning and can be cancelled;
+  - authoritative save becomes saved and navigation then proceeds without warning;
+  - lost acknowledgement remains unresolved until reconciliation;
+  - stale revision remains conflict until reload.
+- Deterministic visual suite PASS both when snapshots were generated and on a subsequent no-update run.
+- Save-state snapshots cover dirty, saved and conflict in addition to empty/populated workspace baselines.
