@@ -1,19 +1,39 @@
-"""R007 Attribute & Spatial Query pure typed AST compiler (zero arbitrary SQL)."""
+"""R007 exact typed, resource-bounded visual filter compiler (zero arbitrary SQL)."""
 
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
+from decimal import Decimal
 from enum import StrEnum
 from typing import Any
 from uuid import UUID
 
 from openvietgis_api.domains.platform_errors import PlatformValidationError
-from openvietgis_api.domains.spatial.domain import FieldType, SourceField
+from openvietgis_api.domains.spatial.domain import (
+    READABLE_CRS_CODES,
+    FieldType,
+    GeometryFamily,
+    NativeGeometry,
+    SourceField,
+    SpatialValidationError,
+    canonical_attribute_value,
+    validate_ready_geometry,
+)
 
 MAX_QUERY_LIMIT = 500
+MAX_QUERY_OFFSET = 25000
+MAX_QUERY_FEATURES = 25000
+MAX_QUERY_POSITIONS = 1_000_000
+MAX_REFERENCE_FEATURES = 500
+MAX_REFERENCE_POSITIONS = 100_000
+MAX_PAGE_POSITIONS = 20_000
+MAX_DRAWN_POSITIONS = 2048
 MAX_AST_DEPTH = 6
+MAX_AST_NODES = 100
+MAX_AST_PARAMS = 1000
+QUERY_STATEMENT_TIMEOUT = "5s"
 
 
 class SpatialPredicate(StrEnum):
@@ -45,137 +65,167 @@ class CompiledFilter:
     params: dict[str, Any]
 
 
-def compile_attribute_filter(
-    node: Mapping[str, Any] | None,
-    fields: Sequence[SourceField],
-) -> CompiledFilter:
-    """Compile a typed visual filter AST into strictly parameterized PostgreSQL SQL."""
-    if not node:
-        return CompiledFilter(sql="TRUE", params={})
-    field_map = {f.field_id: f for f in fields}
-    params: dict[str, Any] = {}
-    counter = [0]
+def _invalid(message: str = "invalid typed filter") -> PlatformValidationError:
+    return PlatformValidationError(message, code="INVALID_FILTER")
 
-    def _next_param(val: Any) -> str:
-        counter[0] += 1
-        key = f"qf_{counter[0]}"
-        params[key] = val
+
+def typed_column_expr(json_text: str, field: SourceField) -> str:
+    cast = {
+        FieldType.INTEGER: "bigint",
+        FieldType.DECIMAL: "numeric",
+        FieldType.BOOLEAN: "boolean",
+        FieldType.TIMESTAMP: "timestamptz",
+    }.get(field.type)
+    if cast:
+        return f"CAST({json_text} AS {cast})"
+    return f'({json_text} COLLATE "C")'
+
+
+def _typed_value(value: Any, field: SourceField) -> Any:
+    if value is None:
+        raise _invalid("use is_null, not a null comparison value")
+    try:
+        canonical = canonical_attribute_value(field, value)
+    except SpatialValidationError as exc:
+        raise _invalid("value does not match declared field type or precision") from exc
+    if field.type == FieldType.DECIMAL:
+        return Decimal(canonical)
+    if field.type == FieldType.TIMESTAMP:
+        return datetime.fromisoformat(canonical)
+    return canonical
+
+
+def compile_attribute_filter(
+    node: Mapping[str, Any] | None, fields: Sequence[SourceField]
+) -> CompiledFilter:
+    """Compile literal, exact typed values and SQL three-valued Boolean semantics."""
+    if node is None:
+        return CompiledFilter(sql="TRUE", params={})
+    field_map = {field.field_id: field for field in fields}
+    params: dict[str, Any] = {}
+    nodes = 0
+
+    def bind(value: Any) -> str:
+        if len(params) >= MAX_AST_PARAMS:
+            raise PlatformValidationError("filter value budget exceeded", code="QUERY_TOO_COMPLEX")
+        key = f"qf_{len(params) + 1}"
+        params[key] = value
         return f":{key}"
 
-    def _compile(expr: Mapping[str, Any], depth: int) -> str:
-        if depth > MAX_AST_DEPTH:
-            raise PlatformValidationError(
-                f"filter nesting exceeds max depth {MAX_AST_DEPTH}",
-                code="QUERY_TOO_COMPLEX",
-            )
-        op = expr.get("op")
+    def compile_node(expr: Any, depth: int) -> str:
+        nonlocal nodes
+        nodes += 1
+        if depth > MAX_AST_DEPTH or nodes > MAX_AST_NODES:
+            raise PlatformValidationError("filter complexity exceeded", code="QUERY_TOO_COMPLEX")
+        if not isinstance(expr, Mapping) or not isinstance(expr.get("op"), str):
+            raise _invalid()
+        op = expr["op"]
         if op in ("and", "or"):
-            children = expr.get("conditions")
-            if not isinstance(children, list) or not children:
-                raise PlatformValidationError(
-                    f"logical operator {op!r} requires non-empty conditions",
-                    code="INVALID_FILTER",
-                )
-            joiner = " AND " if op == "and" else " OR "
-            compiled = [_compile(c, depth + 1) for c in children]
-            return "(" + joiner.join(compiled) + ")"
+            if set(expr) != {"op", "conditions"}:
+                raise _invalid()
+            children = expr["conditions"]
+            if not isinstance(children, list) or not children or len(children) > MAX_AST_NODES:
+                raise _invalid("logical group requires bounded non-empty conditions")
+            return "(" + f" {op.upper()} ".join(compile_node(c, depth + 1) for c in children) + ")"
         if op == "not":
-            child = expr.get("condition")
-            if not isinstance(child, Mapping):
-                raise PlatformValidationError(
-                    "'not' operator requires 'condition' object", code="INVALID_FILTER"
-                )
-            return f"(NOT ({_compile(child, depth + 1)}))"
-
+            if set(expr) != {"op", "condition"}:
+                raise _invalid()
+            return f"(NOT ({compile_node(expr['condition'], depth + 1)}))"
+        if op == "is_null":
+            if set(expr) - {"op", "field", "value"}:
+                raise _invalid()
+        elif set(expr) != {"op", "field", "value"}:
+            raise _invalid()
         field_id = expr.get("field")
         if not isinstance(field_id, str) or field_id not in field_map:
-            raise PlatformValidationError(
-                f"unknown or missing query field {field_id!r}",
-                code="UNKNOWN_QUERY_FIELD",
-            )
-        field = field_map[field_id]
-        # field_id is validated against known schema regex ^[A-Za-z][A-Za-z0-9_]{0,63}$
-        json_text = f"(rf.attributes ->> '{field.field_id}')"
-
+            raise PlatformValidationError("unknown query field", code="UNKNOWN_QUERY_FIELD")
+        field = field_map[field_id]  # validated stable SourceField identifier
+        column = f"(rf.attributes ->> '{field.field_id}')"
+        typed = typed_column_expr(column, field)
+        value = expr.get("value", True) if op == "is_null" else expr["value"]
         if op == "is_null":
-            want_null = bool(expr.get("value", True))
-            return f"({json_text} IS NULL)" if want_null else f"({json_text} IS NOT NULL)"
-
-        val = expr.get("value")
-        if op == "contains":
+            if type(value) is not bool:
+                raise _invalid("is_null requires a Boolean value")
+            return f"({column} IS {'NULL' if value else 'NOT NULL'})"
+        if op in ("contains", "prefix"):
             if field.type != FieldType.TEXT:
                 raise PlatformValidationError(
-                    f"'contains' only valid for text field {field.field_id!r}",
-                    code="INVALID_OPERATOR",
+                    "literal text operator requires text", code="INVALID_OPERATOR"
                 )
-            p = _next_param(f"%{str(val)}%")
-            return f"({json_text} ILIKE {p})"
-
+            parameter = bind(_typed_value(value, field))
+            # No LIKE wildcards, escape syntax, accent folding or case folding.
+            fn = "strpos" if op == "contains" else "starts_with"
+            comparison = " > 0" if op == "contains" else ""
+            return f"({fn}({typed}, {parameter}){comparison})"
         if op == "in":
-            if not isinstance(val, list) or len(val) == 0 or len(val) > 100:
-                raise PlatformValidationError(
-                    "'in' operator requires 1..100 values", code="INVALID_FILTER"
-                )
-            placeholders = []
-            for item in val:
-                placeholders.append(_next_param(_coerce_value(item, field)))
-            col_expr = _typed_column_expr(json_text, field)
-            return f"({col_expr} IN ({', '.join(placeholders)}))"
+            if not isinstance(value, list) or not 1 <= len(value) <= 100:
+                raise _invalid("membership requires 1..100 typed values")
+            return f"({typed} IN ({', '.join(bind(_typed_value(v, field)) for v in value)}))"
+        if op == "between":
+            if field.type == FieldType.BOOLEAN or not isinstance(value, list) or len(value) != 2:
+                raise _invalid("range requires two ordered non-Boolean values")
+            start, end = (_typed_value(v, field) for v in value)
+            if start > end:
+                raise _invalid("range endpoints are reversed")
+            return f"({typed} BETWEEN {bind(start)} AND {bind(end)})"
+        comparators = {"eq": "=", "neq": "!=", "gt": ">", "gte": ">=", "lt": "<", "lte": "<="}
+        if op not in comparators or (op not in ("eq", "neq") and field.type == FieldType.BOOLEAN):
+            raise PlatformValidationError("unsupported typed operator", code="INVALID_OPERATOR")
+        return f"({typed} {comparators[op]} {bind(_typed_value(value, field))})"
 
-        cmp_map = {
-            "eq": "=",
-            "neq": "!=",
-            "gt": ">",
-            "gte": ">=",
-            "lt": "<",
-            "lte": "<=",
-        }
-        if op not in cmp_map:
-            raise PlatformValidationError(
-                f"unsupported filter operator {op!r}", code="INVALID_OPERATOR"
-            )
-        if op in ("gt", "gte", "lt", "lte") and field.type == FieldType.BOOLEAN:
-            raise PlatformValidationError(
-                f"operator {op!r} is not supported for boolean field {field.field_id!r}",
-                code="INVALID_OPERATOR",
-            )
-        coerced = _coerce_value(val, field)
-        p = _next_param(coerced)
-        col_expr = _typed_column_expr(json_text, field)
-        return f"({col_expr} {cmp_map[op]} {p})"
-
-    sql = _compile(node, 0)
-    return CompiledFilter(sql=sql, params=params)
+    return CompiledFilter(sql=compile_node(node, 0), params=params)
 
 
-def _typed_column_expr(json_text: str, field: SourceField) -> str:
-    if field.type == FieldType.INTEGER:
-        return f"({json_text})::bigint"
-    if field.type == FieldType.DECIMAL:
-        return f"({json_text})::double precision"
-    if field.type == FieldType.BOOLEAN:
-        return f"({json_text})::boolean"
-    return json_text
+def compile_sort(fields: Sequence[SourceField], sort_field: str | None, sort_direction: str) -> str:
+    if sort_direction not in ("asc", "desc"):
+        raise PlatformValidationError("sort direction must be asc or desc", code="INVALID_SORT")
+    direction = sort_direction.upper()
+    if sort_field is None:
+        return f"rf.feature_id {direction}"
+    field = next((f for f in fields if f.field_id == sort_field), None)
+    if field is None:
+        raise PlatformValidationError("unknown sort field", code="UNKNOWN_SORT_FIELD")
+    typed = typed_column_expr(f"(rf.attributes ->> '{field.field_id}')", field)
+    return f"{typed} {direction} NULLS LAST, rf.feature_id ASC"
 
 
-def _coerce_value(val: Any, field: SourceField) -> Any:
-    if val is None:
+def parse_drawn_area(value: Any, crs_code: Any) -> NativeGeometry:
+    """Accept only bounded native XY Polygon with explicitly declared supported CRS."""
+    if type(crs_code) is not int or crs_code not in READABLE_CRS_CODES:
         raise PlatformValidationError(
-            f"use 'is_null' instead of null value for {field.field_id!r}",
-            code="INVALID_FILTER",
+            "drawn area requires explicit supported CRS", code="UNSUPPORTED_CRS"
         )
-    if field.type == FieldType.INTEGER:
-        if isinstance(val, bool):
-            raise PlatformValidationError("expected integer", code="INVALID_FILTER")
-        return int(val)
-    if field.type == FieldType.DECIMAL:
-        if isinstance(val, bool):
-            raise PlatformValidationError("expected decimal", code="INVALID_FILTER")
-        return float(val)
-    if field.type == FieldType.BOOLEAN:
-        if isinstance(val, bool):
-            return val
-        if str(val).lower() in ("true", "false"):
-            return str(val).lower() == "true"
-        raise PlatformValidationError("expected boolean", code="INVALID_FILTER")
-    return str(val)
+    if (
+        not isinstance(value, Mapping)
+        or set(value) != {"type", "coordinates"}
+        or value["type"] != "Polygon"
+    ):
+        raise PlatformValidationError(
+            "drawn geometry must be a Polygon", code="INVALID_SPATIAL_FILTER"
+        )
+    rings = value["coordinates"]
+    if not isinstance(rings, list) or not 1 <= len(rings) <= 128:
+        raise PlatformValidationError("invalid drawn polygon rings", code="INVALID_SPATIAL_FILTER")
+    total = 0
+    for ring in rings:
+        if not isinstance(ring, list) or len(ring) < 4:
+            raise PlatformValidationError(
+                "invalid drawn polygon ring", code="INVALID_SPATIAL_FILTER"
+            )
+        total += len(ring)
+        if total > MAX_DRAWN_POSITIONS:
+            raise PlatformValidationError(
+                "drawn polygon exceeds position limit", code="QUERY_TOO_COMPLEX"
+            )
+        if any(not isinstance(pos, list) or len(pos) != 2 for pos in ring):
+            raise PlatformValidationError(
+                "drawn geometry requires XY coordinates", code="INVALID_SPATIAL_FILTER"
+            )
+    try:
+        geometry = NativeGeometry("Polygon", rings, crs_code)
+        validate_ready_geometry(geometry, GeometryFamily.POLYGON, crs_code)
+    except SpatialValidationError as exc:
+        raise PlatformValidationError(
+            "invalid drawn polygon or CRS domain", code="INVALID_SPATIAL_FILTER"
+        ) from exc
+    return geometry

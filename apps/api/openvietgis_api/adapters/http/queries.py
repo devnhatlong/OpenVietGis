@@ -46,10 +46,12 @@ class ExecuteQueryRequest(BaseModel):
     attribute_filter: dict[str, Any] | None = None
     spatial_filter: dict[str, Any] | None = None
     expected_content_revision: str | None = None
+    expected_schema_revision: str | None = None
+    expected_query_fingerprint: str | None = None
     sort_field: str | None = None
     sort_direction: str = "asc"
-    limit: int = Field(default=100, ge=1, le=500)
-    offset: int = Field(default=0, ge=0)
+    limit: int = Field(default=100, ge=1, le=500, strict=True)
+    offset: int = Field(default=0, ge=0, le=25000, strict=True)
 
 
 class CreateSavedQueryRequest(BaseModel):
@@ -80,6 +82,8 @@ def execute_layer_query(
         attribute_filter=body.attribute_filter,
         spatial_filter=body.spatial_filter,
         expected_content_revision=body.expected_content_revision,
+        expected_schema_revision=body.expected_schema_revision,
+        expected_query_fingerprint=body.expected_query_fingerprint,
         sort_field=body.sort_field,
         sort_direction=body.sort_direction,
         limit=body.limit,
