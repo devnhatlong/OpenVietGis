@@ -190,6 +190,15 @@ export interface OfflinePackage {
   layer_pins: Array<Record<string, unknown>>;
 }
 
+export interface OfficialExtensionCatalogItem {
+  extension_key: string;
+  version: string;
+  display_name: string;
+  description: string;
+  capabilities: string[];
+  ui_contributions: Array<Record<string, unknown>>;
+}
+
 export interface ExtensionManifest {
   id: string;
   extension_key: string;
@@ -612,6 +621,27 @@ export function syncOfflineOutbox(
 }
 
 // R014 Extensions
+export function listOfficialExtensions(
+  client: ApiClient,
+  orgId: string
+): Promise<{ items: OfficialExtensionCatalogItem[] }> {
+  return client.request<{ items: OfficialExtensionCatalogItem[] }>(
+    `/organizations/${encodeURIComponent(orgId)}/extensions/official`
+  );
+}
+
+export function registerOfficialExtension(
+  client: ApiClient,
+  orgId: string,
+  extensionKey: string,
+  csrf: string
+): Promise<ExtensionManifest> {
+  return client.request<ExtensionManifest>(
+    `/organizations/${encodeURIComponent(orgId)}/extensions/official/${encodeURIComponent(extensionKey)}/register`,
+    { method: "POST", headers: csrfHeaders(csrf) }
+  );
+}
+
 export function listExtensionManifests(
   client: ApiClient,
   orgId: string

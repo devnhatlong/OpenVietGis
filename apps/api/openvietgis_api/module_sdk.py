@@ -44,7 +44,7 @@ __all__ = [
     "read_module_artifact",
     "prepare_module_scope",
     "require_csrf",
-    "set_private_data_access",
+    "set_extension_private_access",
 ]
 
 
@@ -62,11 +62,14 @@ def prepare_module_scope(
     prepare_project_scope(session, context, permission=permission)
 
 
-def set_private_data_access(session: Session, *, enabled: bool) -> None:
-    """Explicit transaction-local guard used by private module tables' RLS policy."""
+def set_extension_private_access(session: Session, *, extension_key: str, enabled: bool) -> None:
+    """Bind a transaction-local private-data namespace for one trusted extension."""
+    allowed = "abcdefghijklmnopqrstuvwxyz0123456789_-"
+    if not extension_key or any(ch not in allowed for ch in extension_key):
+        raise ValueError("invalid extension key")
     session.execute(
-        text("SELECT set_config('openvietgis.house_numbering_private_access', :flag, true)"),
-        {"flag": "on" if enabled else "off"},
+        text("SELECT set_config('openvietgis.extension_private_access', :value, true)"),
+        {"value": extension_key if enabled else ""},
     )
 
 

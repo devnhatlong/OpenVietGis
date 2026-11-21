@@ -35,7 +35,7 @@ def _rls(
     op.execute(f"ALTER TABLE house_numbering.{table} ENABLE ROW LEVEL SECURITY")
     op.execute(f"ALTER TABLE house_numbering.{table} FORCE ROW LEVEL SECURITY")
     private_guard = (
-        " AND current_setting('openvietgis.house_numbering_private_access', true) = 'on'"
+        " AND current_setting('openvietgis.extension_private_access', true) = 'house_numbering'"
         if private
         else ""
     )

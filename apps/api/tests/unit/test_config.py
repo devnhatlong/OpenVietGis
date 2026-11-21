@@ -32,9 +32,31 @@ def test_settings_require_security_and_database_configuration(
 
 def test_settings_reject_unknown_environment() -> None:
     values = _valid_settings_kwargs()
-    values["environment"] = "production"
+    values["environment"] = "staging"
     with pytest.raises(ValidationError):
         Settings(**values, _env_file=None)
+
+
+def test_production_requires_distinct_databases_and_secure_cookie() -> None:
+    values = _valid_settings_kwargs()
+    values.update(
+        environment="production",
+        migration_database_url="postgresql+psycopg://admin/db",
+        runtime_database_url="postgresql+psycopg://runtime/db",
+        session_cookie_secure=True,
+    )
+    settings = Settings(**values, _env_file=None)
+    assert settings.environment == "production"
+
+    insecure = dict(values)
+    insecure["session_cookie_secure"] = False
+    with pytest.raises(ValidationError, match="secure session cookies"):
+        Settings(**insecure, _env_file=None)
+
+    same_database = dict(values)
+    same_database["runtime_database_url"] = same_database["migration_database_url"]
+    with pytest.raises(ValidationError, match="must be distinct"):
+        Settings(**same_database, _env_file=None)
 
 
 def test_settings_reject_empty_database_url() -> None:

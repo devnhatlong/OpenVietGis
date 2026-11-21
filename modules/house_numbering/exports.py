@@ -395,7 +395,11 @@ class HouseNumberingExportService:
         data, ext, content_type = self._encode(records, output_format)
         artifact = put_module_artifact(
             self.context,
-            namespace="house-numbering-exports",
+            namespace=(
+                "house-numbering-private-exports"
+                if include_private
+                else "house-numbering-exports"
+            ),
             filename=f"house-numbering-{datetime.now(UTC).strftime('%Y%m%dT%H%M%SZ')}.{ext}",
             content_type=content_type,
             data=data,
@@ -425,16 +429,26 @@ class HouseNumberingExportService:
 
     def download(self, artifact_id: UUID) -> tuple[dict[str, Any], bytes]:
         self.repo.prepare("read")
-        artifact, data = read_module_artifact(
-            self.context,
-            namespace="house-numbering-exports",
-            artifact_id=artifact_id,
-        )
+        is_private = False
+        try:
+            artifact, data = read_module_artifact(
+                self.context,
+                namespace="house-numbering-exports",
+                artifact_id=artifact_id,
+            )
+        except FileNotFoundError:
+            self.repo.enable_private_access()
+            is_private = True
+            artifact, data = read_module_artifact(
+                self.context,
+                namespace="house-numbering-private-exports",
+                artifact_id=artifact_id,
+            )
         self.repo.audit(
             "house_numbering.export.download",
             "house_numbering_export",
             artifact_id,
-            {"sha256": artifact.sha256},
+            {"sha256": artifact.sha256, "include_private": is_private},
         )
         self.session.commit()
         return {
@@ -442,4 +456,5 @@ class HouseNumberingExportService:
             "content_type": artifact.content_type,
             "byte_size": artifact.byte_size,
             "sha256": artifact.sha256,
+            "include_private": is_private,
         }, data

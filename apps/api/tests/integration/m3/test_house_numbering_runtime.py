@@ -113,7 +113,10 @@ def test_house_numbering_us1_us3_real_postgis(migrated_database: None) -> None:
         assert registered.status_code == 201, registered.text
         manifest_id = registered.json()["id"]
         assert registered.json()["version"] == "2.0.0"
-        assert registered.json()["ui_contributions"][0]["route_suffix"] == "/house-numbering"
+        assert (
+            registered.json()["ui_contributions"][0]["route_suffix"]
+            == "/extensions/house_numbering"
+        )
 
         activated = client.post(
             f"{proj_base}/extensions/activations", json={"manifest_id": manifest_id}
@@ -250,9 +253,7 @@ def test_house_numbering_us1_us3_real_postgis(migrated_database: None) -> None:
         assert recheck.json()["suggestion"]["reason"] == "existing_number"
 
         # US4/US5: import certificate + survey evidence, replay safely, reconcile.
-        certificate_csv = (
-            f"building_id,route_id,raw_number\n{building_id},{route_id},2\n".encode()
-        )
+        certificate_csv = f"building_id,route_id,raw_number\n{building_id},{route_id},2\n".encode()
         import_form = {
             "source_format": "csv",
             "origin": "certificate",
@@ -319,14 +320,10 @@ def test_house_numbering_us1_us3_real_postgis(migrated_database: None) -> None:
             "condition": "house",
             "photo_artifact_ids": [],
         }
-        synced = client.post(
-            f"{module_base}/survey/sync", json={"operations": [survey_operation]}
-        )
+        synced = client.post(f"{module_base}/survey/sync", json={"operations": [survey_operation]})
         assert synced.status_code == 200, synced.text
         survey_id = synced.json()["applied"][0]
-        replay = client.post(
-            f"{module_base}/survey/sync", json={"operations": [survey_operation]}
-        )
+        replay = client.post(f"{module_base}/survey/sync", json={"operations": [survey_operation]})
         assert replay.status_code == 200, replay.text
         assert replay.json()["replayed"] == [survey_id]
 

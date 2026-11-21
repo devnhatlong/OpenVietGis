@@ -3,7 +3,7 @@ from __future__ import annotations
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import BaseModel, Field, SecretStr
+from pydantic import BaseModel, Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -21,7 +21,7 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    environment: Literal["development", "test"]
+    environment: Literal["development", "test", "production"]
     database_url: str = Field(min_length=1)
     migration_database_url: str | None = None
     runtime_database_url: str | None = None
@@ -37,6 +37,22 @@ class Settings(BaseSettings):
     csrf_secret: SecretStr
     bootstrap_secret: SecretStr
     oidc_providers: dict[str, OidcProviderSettings] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def validate_production_profile(self) -> Settings:
+        if self.environment != "production":
+            return self
+        if not self.migration_database_url or not self.runtime_database_url:
+            raise ValueError(
+                "production requires explicit migration_database_url and runtime_database_url"
+            )
+        if self.migration_database_url == self.runtime_database_url:
+            raise ValueError(
+                "production runtime and migration database credentials must be distinct"
+            )
+        if not self.session_cookie_secure:
+            raise ValueError("production requires secure session cookies")
+        return self
 
     @property
     def migration_db_url(self) -> str:

@@ -16,9 +16,14 @@ from openvietgis_api.adapters.persistence.rls import (
     bind_authenticated_service_actor,
     require_member_context,
 )
-from openvietgis_api.adapters.persistence.scope_helper import prepare_project_scope
+from openvietgis_api.adapters.persistence.scope_helper import (
+    append_project_audit,
+    prepare_project_scope,
+)
+from openvietgis_api.adapters.persistence.tenancy_repository import SqlTenancyRepository
 from openvietgis_api.domains.authorization.context import AuthorizationContext
 from openvietgis_api.domains.authorization.permissions import Permission
+from openvietgis_api.domains.authorization.roles import ORGANIZATION_ROLE_PERMISSIONS
 from openvietgis_api.domains.extensions.domain import (
     ExtensionDataRecord,
     ExtensionManifestRecord,
@@ -28,8 +33,10 @@ from openvietgis_api.domains.extensions.domain import (
 )
 from openvietgis_api.domains.platform_errors import (
     PlatformConflictError,
+    PlatformForbiddenError,
     PlatformNotFoundError,
 )
+from openvietgis_api.domains.tenancy.domain import MembershipStatus, OrganizationStatus
 
 
 def _manifest_from_row(row: RowMapping) -> ExtensionManifestRecord:
@@ -122,6 +129,31 @@ class SqlExtensionsRepository:
     ) -> ExtensionManifestRecord:
         self._bind_org(context)
         assert context.organization_id is not None and context.actor.actor_id is not None
+        tenancy = SqlTenancyRepository(self._session)
+        organization = tenancy.get_organization(
+            context.organization_id, context=context, for_update=True
+        )
+        if organization is None or organization.status != OrganizationStatus.ACTIVE:
+            raise PlatformNotFoundError("organization not found")
+        if context.actor.actor_type != "human":
+            raise PlatformForbiddenError(
+                "manifest registration requires organization administrator"
+            )
+        membership = tenancy.get_membership_for_user(
+            context=context,
+            organization_id=context.organization_id,
+            user_id=context.actor.actor_id,
+            for_update=True,
+        )
+        if (
+            membership is None
+            or membership.status != MembershipStatus.ACTIVE
+            or Permission.ORGANIZATION_MANAGE_SETTINGS
+            not in ORGANIZATION_ROLE_PERMISSIONS[membership.role]
+        ):
+            raise PlatformForbiddenError(
+                "manifest registration requires organization settings authority"
+            )
         validate_manifest_contract(
             extension_key=extension_key,
             version=version,
@@ -202,7 +234,7 @@ class SqlExtensionsRepository:
     def activate_for_project(
         self, *, context: AuthorizationContext, manifest_id: UUID
     ) -> ProjectActivationRecord:
-        prepare_project_scope(self._session, context, permission=Permission.PROJECT_EDIT)
+        prepare_project_scope(self._session, context, permission=Permission.PROJECT_MANAGE)
         assert context.organization_id is not None and context.project_id is not None
         assert context.actor.actor_id is not None
 
@@ -219,6 +251,26 @@ class SqlExtensionsRepository:
         )
         if mrow is None:
             raise PlatformNotFoundError("extension manifest not found")
+
+        existing_manifest_id = self._session.execute(
+            text("""
+                SELECT manifest_id
+                FROM extensions.project_activations
+                WHERE organization_id = :org AND project_id = :proj
+                  AND extension_key = :key
+                FOR UPDATE
+            """),
+            {
+                "org": context.organization_id,
+                "proj": context.project_id,
+                "key": str(mrow["extension_key"]),
+            },
+        ).scalar_one_or_none()
+        if existing_manifest_id is not None and existing_manifest_id != manifest_id:
+            raise PlatformConflictError(
+                "version transition requires a verified module migration",
+                code="EXTENSION_VERSION_TRANSITION_REQUIRED",
+            )
 
         now = datetime.now(UTC)
         row = (
@@ -254,13 +306,27 @@ class SqlExtensionsRepository:
             .mappings()
             .one()
         )
+        append_project_audit(
+            self._session,
+            context,
+            audit_id=uuid4(),
+            action="extension.activate",
+            resource_type="extension_activation",
+            resource_id=row["id"],
+            metadata={
+                "manifest_id": str(row["manifest_id"]),
+                "extension_key": str(row["extension_key"]),
+                "revision": int(row["revision"]),
+            },
+            created_at=now,
+        )
         self._session.commit()
         return _act_from_row(row)
 
     def disable_for_project(
         self, *, context: AuthorizationContext, extension_key: str
     ) -> ProjectActivationRecord:
-        prepare_project_scope(self._session, context, permission=Permission.PROJECT_EDIT)
+        prepare_project_scope(self._session, context, permission=Permission.PROJECT_MANAGE)
         assert context.organization_id is not None and context.project_id is not None
         assert context.actor.actor_id is not None
         now = datetime.now(UTC)
@@ -288,6 +354,7 @@ class SqlExtensionsRepository:
             .mappings()
             .first()
         )
+        changed = row is not None
         if row is None:
             row = (
                 self._session.execute(
@@ -307,6 +374,21 @@ class SqlExtensionsRepository:
             )
         if row is None:
             raise PlatformNotFoundError("project extension activation not found")
+        if changed:
+            append_project_audit(
+                self._session,
+                context,
+                audit_id=uuid4(),
+                action="extension.disable",
+                resource_type="extension_activation",
+                resource_id=row["id"],
+                metadata={
+                    "manifest_id": str(row["manifest_id"]),
+                    "extension_key": str(row["extension_key"]),
+                    "revision": int(row["revision"]),
+                },
+                created_at=now,
+            )
         self._session.commit()
         return _act_from_row(row)
 

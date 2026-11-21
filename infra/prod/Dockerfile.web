@@ -1,9 +1,10 @@
-FROM node:22-alpine AS builder
+FROM node:26-alpine AS builder
 WORKDIR /app
-RUN corepack enable
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+RUN npm install --global pnpm@12.21.0
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
 COPY packages/client-sdk ./packages/client-sdk
 COPY apps/web ./apps/web
+COPY modules ./modules
 RUN pnpm install --frozen-lockfile && pnpm --filter @openvietgis/web build
 
 FROM nginx:1.27-alpine

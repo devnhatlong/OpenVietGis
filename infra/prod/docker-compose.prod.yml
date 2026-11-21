@@ -14,6 +14,22 @@ services:
       timeout: 5s
       retries: 10
 
+  db-bootstrap:
+    image: postgis/postgis:18-3.7
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGHOST: postgres
+      PGUSER: ${POSTGRES_USER:-openvietgis}
+      PGDATABASE: ${POSTGRES_DB:-openvietgis}
+      PGPASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      RUNTIME_DB_PASSWORD: ${RUNTIME_DB_PASSWORD:?set RUNTIME_DB_PASSWORD}
+    volumes:
+      - ./postgres/ensure-runtime-role.sh:/scripts/ensure-runtime-role.sh:ro
+    command: ["/bin/sh", "/scripts/ensure-runtime-role.sh"]
+
   keycloak:
     image: quay.io/keycloak/keycloak:26.8.2
     restart: unless-stopped
@@ -28,18 +44,44 @@ services:
       timeout: 5s
       retries: 10
 
+  migrate:
+    build:
+      context: ../..
+      dockerfile: infra/prod/Dockerfile.api
+    restart: "no"
+    depends_on:
+      db-bootstrap:
+        condition: service_completed_successfully
+    environment:
+      OPENVIETGIS_ENVIRONMENT: production
+      OPENVIETGIS_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-openvietgis}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-openvietgis}
+      OPENVIETGIS_MIGRATION_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-openvietgis}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-openvietgis}
+      OPENVIETGIS_RUNTIME_DATABASE_URL: postgresql+psycopg://openvietgis_runtime:${RUNTIME_DB_PASSWORD}@postgres:5432/${POSTGRES_DB:-openvietgis}
+      OPENVIETGIS_APPLICATION_SESSION_SECRET: ${SESSION_SECRET:?set SESSION_SECRET}
+      OPENVIETGIS_CSRF_SECRET: ${CSRF_SECRET:?set CSRF_SECRET}
+      OPENVIETGIS_BOOTSTRAP_SECRET: ${BOOTSTRAP_SECRET:?set BOOTSTRAP_SECRET}
+      OPENVIETGIS_SESSION_COOKIE_SECURE: "true"
+      OPENVIETGIS_ARTIFACT_STORE_DIR: /var/lib/openvietgis/artifacts
+    command:
+      - sh
+      - -c
+      - >-
+        uv run --project /app/apps/api alembic -c /app/apps/api/alembic.ini upgrade head &&
+        uv run --project /app/apps/api python /app/tools/migrate_official_modules.py
+
   api:
     build:
       context: ../..
       dockerfile: infra/prod/Dockerfile.api
     restart: unless-stopped
     depends_on:
-      postgres:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     environment:
       OPENVIETGIS_ENVIRONMENT: production
+      OPENVIETGIS_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-openvietgis}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-openvietgis}
       OPENVIETGIS_MIGRATION_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-openvietgis}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-openvietgis}
-      OPENVIETGIS_RUNTIME_DATABASE_URL: postgresql+psycopg://openvietgis_runtime:${RUNTIME_DB_PASSWORD:?set RUNTIME_DB_PASSWORD}@postgres:5432/${POSTGRES_DB:-openvietgis}
+      OPENVIETGIS_RUNTIME_DATABASE_URL: postgresql+psycopg://openvietgis_runtime:${RUNTIME_DB_PASSWORD}@postgres:5432/${POSTGRES_DB:-openvietgis}
       OPENVIETGIS_APPLICATION_SESSION_SECRET: ${SESSION_SECRET:?set SESSION_SECRET}
       OPENVIETGIS_CSRF_SECRET: ${CSRF_SECRET:?set CSRF_SECRET}
       OPENVIETGIS_BOOTSTRAP_SECRET: ${BOOTSTRAP_SECRET:?set BOOTSTRAP_SECRET}

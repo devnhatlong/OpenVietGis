@@ -11,7 +11,7 @@
     "dev:db": "docker compose -f infra/dev/compose.yaml up -d postgres postgres-test",
     "dev:api": "uv run --project apps/api uvicorn openvietgis_api.main:app --reload --no-access-log --app-dir apps/api",
     "dev:web": "pnpm --filter @openvietgis/web dev",
-    "db:migrate": "uv run --project apps/api alembic -c apps/api/alembic.ini upgrade head",
+    "db:migrate": "uv run --project apps/api alembic -c apps/api/alembic.ini upgrade head && uv run --project apps/api python tools/migrate_official_modules.py",
     "dev:reset": "uv run --project apps/api python tools/reset_dev.py",
     "validate:runtime": "node tools/check_node_runtime.mjs",
     "validate:ts": "pnpm -r lint && pnpm -r typecheck && pnpm -r test && pnpm --filter @openvietgis/web build",

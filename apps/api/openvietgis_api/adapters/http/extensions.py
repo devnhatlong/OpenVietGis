@@ -22,7 +22,10 @@ from openvietgis_api.domains.extensions.domain import (
     ExtensionManifestRecord,
     ProjectActivationRecord,
 )
-from openvietgis_api.domains.extensions.runtime import official_manifest
+from openvietgis_api.domains.extensions.runtime import (
+    discover_official_module_runtimes,
+    official_manifest,
+)
 from openvietgis_api.domains.platform_errors import PlatformNotFoundError
 
 router = APIRouter(tags=["extensions"])
@@ -134,6 +137,31 @@ def register_extension_manifest(
         ui_contributions=body.ui_contributions,
     )
     return _manifest_wire(rec)
+
+
+@router.get(f"{_ORG}/extensions/official")
+def list_official_extension_catalog(
+    organization_id: UUID,
+    auth: Annotated[AuthenticatedRequest, Depends(authenticate_request)],
+    session: Annotated[Session, Depends(get_db_session, scope="function")],
+) -> dict[str, Any]:
+    # Bind membership context before disclosing which trusted modules are available.
+    ctx = context_for(auth, organization_id=organization_id)
+    SqlExtensionsRepository(session).list_manifests(context=ctx)
+    items = []
+    for runtime in discover_official_module_runtimes():
+        manifest = runtime.manifest
+        items.append(
+            {
+                "extension_key": runtime.extension_key,
+                "version": manifest.get("version"),
+                "display_name": manifest.get("display_name"),
+                "description": manifest.get("description", ""),
+                "capabilities": list(manifest.get("capabilities", [])),
+                "ui_contributions": list(manifest.get("ui_contributions", [])),
+            }
+        )
+    return {"items": items}
 
 
 @router.post(f"{_ORG}/extensions/official/{{extension_key}}/register", status_code=201)

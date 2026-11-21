@@ -16,7 +16,7 @@ from openvietgis_api.module_sdk import (
     AuthorizationContext,
     append_project_audit,
     prepare_module_scope,
-    set_private_data_access,
+    set_extension_private_access,
 )
 from sqlalchemy import text
 from sqlalchemy.engine import RowMapping
@@ -1216,4 +1216,6 @@ class HouseNumberingRepository:
 
     def enable_private_access(self) -> None:
         self.prepare("manage")
-        set_private_data_access(self.session, enabled=True)
+        set_extension_private_access(
+            self.session, extension_key="house_numbering", enabled=True
+        )

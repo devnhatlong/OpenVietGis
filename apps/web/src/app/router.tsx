@@ -15,6 +15,7 @@ import { QueryWorkbenchPage } from "../features/platform/QueryWorkbenchPage";
 import { ProcessingWorkbenchPage } from "../features/platform/ProcessingWorkbenchPage";
 import { CartographyWorkbenchPage } from "../features/platform/CartographyWorkbenchPage";
 import { PlatformHubPage } from "../features/platform/PlatformHubPage";
+import { ExtensionModulePage } from "../features/extensions/ExtensionModulePage";
 
 export const router = createBrowserRouter([
   { path: "/", element: <OrganizationHome /> },
@@ -29,6 +30,7 @@ export const router = createBrowserRouter([
   { path: "/organizations/:organizationId/projects/:projectId/processing", element: <ProcessingWorkbenchPage /> },
   { path: "/organizations/:organizationId/projects/:projectId/cartography", element: <CartographyWorkbenchPage /> },
   { path: "/organizations/:organizationId/projects/:projectId/platform-hub", element: <PlatformHubPage /> },
+  { path: "/organizations/:organizationId/projects/:projectId/extensions/:extensionKey/*", element: <ExtensionModulePage /> },
   { path: "/organizations/:organizationId/membership", element: <MembershipPage /> },
   { path: "/invitations/accept", element: <InvitationAcceptPage /> },
   { path: "/identity", element: <IdentityPage /> }
