@@ -1,6 +1,8 @@
 # Preliminary gap register (open, requires exact-candidate reproduction)
 
 Source review for G003–G006: [candidate observations and original FR/SC traceability](evidence/source-gap-review.md). These strengthen the hypotheses but do not close runtime acceptance gates.
+
+Confirmed blocker remediation drafts: [G009 processing output](remediation/G009-processing-output/spec.md) and [G010 recoverable backup](remediation/G010-recoverable-backup/spec.md), each with plan/tasks. Separate implementation branch/base/owner coordination required; no product changes in the frozen audit.
 | ID | Roadmap | Severity | Observation and retest |
 | --- | --- | --- | --- |
 | G001 | R001–R015 | high | Divergent main and deployed integration; freeze and retest exact candidate, independently review before promotion. |
