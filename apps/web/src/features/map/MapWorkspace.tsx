@@ -10,16 +10,18 @@ import { Link,useParams } from "react-router-dom";
 import { apiClient } from "../../app/api";
 import { currentProtectedData,protectedQueryOptions } from "../../app/protected-query";
 import { FreshAccount } from "../auth/FreshAccount";
+import { AddDataDialog } from "./AddDataDialog";
 import { AttributeTable } from "./AttributeTable";
 import { CommandBar } from "./CommandBar";
 import { FeatureInspector } from "./FeatureInspector";
 import { LayerTree } from "./LayerTree";
 import { WorkspaceLayout } from "./WorkspaceLayout";
+import { buildAddDataCandidates } from "./add-data";
 import { createCommands,invokeCommand,type MapCommandId } from "./commands";
 import { BASEMAP_OPTIONS,type BasemapId,type MapEngine,type RenderLayer } from "./engine";
 import { createMapLibreEngine } from "./maplibre-engine";
 import { beginSave,markUnresolved,receiptMatches,saveErrorState,type PendingSave } from "./save";
-import { boundsOfGeometry,capability,combineBounds,mapResponseMatches,positionCount,selectionKey,toggleSelection,viewportMatches,type Bounds,type SelectionScope } from "./workspace";
+import { boundsOfGeometry,capability,combineBounds,defaultStyle,mapResponseMatches,positionCount,selectionKey,toggleSelection,viewportMatches,type Bounds,type SelectionScope } from "./workspace";
 import {
  loadWorkspaceLayoutPreference,normalizeWorkspaceLayoutPreference,saveWorkspaceLayoutPreference,
  type WorkspaceLayoutPreference
@@ -48,6 +50,16 @@ function requiresRevalidation(error:unknown):boolean {
 function pinnedMatches(scope:SelectionScope,context:SpatialFeatureReadContext):boolean {
  return context.organization_id===scope.organizationId&&context.project_id===scope.projectId&&context.layer_id===scope.layerId&&context.source_id===scope.sourceId&&context.content_revision===scope.contentRevision&&context.schema_revision===scope.schemaRevision;
 }
+function mapStateLabel(state:string):string {
+ return {
+  loading:"Đang tải",
+  stale:"Cần xác thực lại",
+  partial:"Hiển thị một phần",
+  usable:"Sẵn sàng",
+  unavailable:"Không khả dụng",
+  empty:"Không có dữ liệu"
+ }[state]??"Đang kiểm tra";
+}
 
 function Workspace({organizationId,projectId,accountId,project,initial,canEdit}:{organizationId:string;projectId:string;accountId:string;project:Project;initial:ProjectMap;canEdit:boolean}) {
  const queryClient=useQueryClient(),canvas=useRef<HTMLDivElement>(null),engine=useRef<MapEngine|null>(null),alive=useRef(true);
@@ -61,7 +73,7 @@ function Workspace({organizationId,projectId,accountId,project,initial,canEdit}:
  const [viewpointIntent,setViewpointIntent]=useState<SaveMapInput["default_viewpoint"]>({mode:"preserve"});
  const [pending,setPending]=useState<PendingSave|null>(null),[notice,setNotice]=useState(""),[working,setWorking]=useState(false);
  const [showHistory,setShowHistory]=useState(false),[historyCursor,setHistoryCursor]=useState<number|undefined>();
- const [contextMenu,setContextMenu]=useState(false);
+ const [contextMenu,setContextMenu]=useState(false),[addDataOpen,setAddDataOpen]=useState(false);
  const [layoutPreference,setLayoutPreference]=useState<WorkspaceLayoutPreference>(()=>loadWorkspaceLayoutPreference());
  const [basemap,setBasemap]=useState<BasemapId>(()=>window.location.protocol==="https:"?"google-hybrid":"grid");
  useEffect(()=>{engine.current?.setBasemap(basemap);},[basemap]);
@@ -217,6 +229,7 @@ function Workspace({organizationId,projectId,accountId,project,initial,canEdit}:
  }
  function execute(id:MapCommandId):void {
   setContextMenu(false);
+  if(id==="map.add-data")setAddDataOpen(true);
   if(id==="map.fit-layer"&&active)void fitLayers([active]);
   if(id==="map.fit-all")void fitLayers(visibleRenderableIds);
   if(id==="map.fit-selection")void fitSelection();
@@ -227,7 +240,7 @@ function Workspace({organizationId,projectId,accountId,project,initial,canEdit}:
  }
  const visibleMetadataPending=configuration.layers.some((ref,index)=>ref.visible&&!metadata[index]&&!metadataQueries[index]?.error);
  const visibleRenderableIds=configuration.layers.filter((ref,index)=>ref.visible&&capability(metadata[index],"render")).map(ref=>ref.layer_id);
- const commands=createCommands({hasActive:capability(activeLayer,"render"),hasVisible:!visibleMetadataPending&&visibleRenderableIds.length>0,hasSelection:selected.length>0&&capability(activeLayer,"render"),canSave:writable,busy:locked},execute);
+ const commands=createCommands({hasActive:capability(activeLayer,"render"),hasVisible:!visibleMetadataPending&&visibleRenderableIds.length>0,hasSelection:selected.length>0&&capability(activeLayer,"render"),canSave:writable,canAddData:configuration.layers.length<32,busy:locked},execute);
  const commandRef=useRef(commands);commandRef.current=commands;
  useEffect(()=>{
   const key=(event:KeyboardEvent)=>{if(event.target instanceof HTMLElement&&(event.target.closest("input,textarea,select,[contenteditable=true]")))return;
@@ -242,6 +255,14 @@ function Workspace({organizationId,projectId,accountId,project,initial,canEdit}:
   const normalized=normalizeWorkspaceLayoutPreference(value);
   setLayoutPreference(normalized);
   saveWorkspaceLayoutPreference(normalized);
+ }
+ const addDataCandidates=buildAddDataCandidates(catalog?.items??[],configuration.layers);
+ function addLayerToMap(layerId:string):void {
+  const candidate=addDataCandidates.find(item=>item.layerId===layerId);
+  if(locked||configuration.layers.length>=32||!candidate?.addable)return;
+  change([...configuration.layers,{layer_id:layerId,visible:true,style:{...defaultStyle}}]);
+  choose(layerId);
+  setAddDataOpen(false);
  }
  return <main className="gis-workspace" data-testid="map-workspace">
   <header className="gis-header"><div><Link to={"/app/organizations/"+organizationId+"/projects"}>← Dự án</Link><span className="gis-logo">OVG</span><h1>{project.name}<small>Không gian bản đồ</small></h1></div><div className="gis-header-meta"><span>{project.status==="archived"?"Chỉ đọc":writable?"Chế độ chỉnh sửa":"Chế độ xem"}</span><Link to={"/app/organizations/"+organizationId+"/projects/"+projectId+"/spatial"}>Danh mục GIS</Link><Link to={"/app/organizations/"+organizationId+"/projects/"+projectId+"/transfers"}>Nhập / Xuất</Link><Link to={"/app/organizations/"+organizationId+"/projects/"+projectId+"/editing"}>Biên tập</Link><Link to={"/app/organizations/"+organizationId+"/projects/"+projectId+"/queries"}>Truy vấn</Link><Link to={"/app/organizations/"+organizationId+"/projects/"+projectId+"/processing"}>Xử lý</Link><Link to={"/app/organizations/"+organizationId+"/projects/"+projectId+"/cartography"}>In ấn</Link><Link to={"/app/organizations/"+organizationId+"/projects/"+projectId+"/platform-hub"}>Công cụ nâng cao</Link></div></header>
@@ -258,15 +279,13 @@ function Workspace({organizationId,projectId,accountId,project,initial,canEdit}:
   <WorkspaceLayout
    preference={layoutPreference}
    onPreferenceChange={updateLayoutPreference}
-   left={<LayerTree layers={configuration.layers} metadata={metadata} active={active} catalog={catalog?.items} locked={locked} states={states} choose={choose} change={change}
-    importPath={"/app/organizations/"+organizationId+"/projects/"+projectId+"/transfers"}
-    catalogPath={"/app/organizations/"+organizationId+"/projects/"+projectId+"/spatial"}
-    nextCatalog={catalog?.next_after_id?()=>{setCatalogPages([...catalogPages,catalogCursor]);setCatalogCursor(catalog.next_after_id);}:null}
-    previousCatalog={catalogPages.length?()=>{setCatalogCursor(catalogPages[catalogPages.length-1]??null);setCatalogPages(catalogPages.slice(0,-1));}:null}/>}
+   left={<LayerTree layers={configuration.layers} metadata={metadata} active={active} locked={locked} states={states} choose={choose} change={change}
+    zoom={id=>void fitLayers([id])}
+    openAddData={()=>invokeCommand(commands,"map.add-data","toolbar")}/>}
    map={<section className="map-stage" aria-label="Khung bản đồ" onContextMenu={e=>{e.preventDefault();setContextMenu(!contextMenu);}}>
     <div ref={canvas} className="map-canvas" data-testid="map-canvas"/>
     <div className="map-engine-signal" data-testid="map-engine-ready" data-ready={ready?"true":"false"} aria-hidden="true"/>
-    <div className="map-stage-status" role="status"><strong data-testid="map-status">{state}</strong><span>Lưới cục bộ · Hiển thị EPSG:3857 · Tọa độ địa lý đầu vào EPSG:4326 X/Y</span></div>
+    <div className="map-stage-status" role="status"><strong data-testid="map-status" data-state={state}>{mapStateLabel(state)}</strong><span>Lưới cục bộ · Hiển thị EPSG:3857 · Tọa độ địa lý đầu vào EPSG:4326 X/Y</span></div>
     {state==="empty"?<div className="map-blank-message"><h2>Bản đồ dự án</h2><p>{configuration.layers.length?"Không có hình học có thể đọc trong khung nhìn này.":"Hãy thêm một lớp dữ liệu từ bảng bên trái để bắt đầu."}</p></div>:null}
     {state==="partial"?<div className="map-partial" role="status">Khung nhìn đang hiển thị một phần dữ liệu. Hãy phóng to để xem chi tiết hơn. Bảng thuộc tính đọc độc lập các bản ghi đúng phiên bản.</div>:null}
     {contextMenu?<div className="map-context-menu" role="menu">{commands.map(c=><button role="menuitem" key={c.id} disabled={!c.enabled} title={c.reason??c.label} onClick={()=>invokeCommand(commands,c.id,"context")}>{c.label}</button>)}</div>:null}
@@ -276,7 +295,18 @@ function Workspace({organizationId,projectId,accountId,project,initial,canEdit}:
     previous={pages.length?()=>{setCursor(pages[pages.length-1]??null);setPages(pages.slice(0,-1));}:null}
     next={page?.next_after_feature_id?()=>{setPages([...pages,cursor]);setCursor(page.next_after_feature_id);}:null}/>}
   />
-  <div className="map-sessionbar"><span>Shift/Ctrl-click to toggle selection · {selected.length}/100 đang chọn</span><span>Tọa độ tâm {camera.longitude.toFixed(5)}, {camera.latitude.toFixed(5)} · mức thu phóng {camera.zoom.toFixed(2)}</span><button onClick={()=>void revalidate()}>Kiểm tra lại quyền truy cập</button></div>
+  <AddDataDialog
+   open={addDataOpen}
+   candidates={addDataCandidates}
+   locked={locked}
+   importPath={"/app/organizations/"+organizationId+"/projects/"+projectId+"/transfers"}
+   catalogPath={"/app/organizations/"+organizationId+"/projects/"+projectId+"/spatial"}
+   nextCatalog={catalog?.next_after_id?()=>{setCatalogPages([...catalogPages,catalogCursor]);setCatalogCursor(catalog.next_after_id);}:null}
+   previousCatalog={catalogPages.length?()=>{setCatalogCursor(catalogPages[catalogPages.length-1]??null);setCatalogPages(catalogPages.slice(0,-1));}:null}
+   onAdd={addLayerToMap}
+   onClose={()=>setAddDataOpen(false)}
+  />
+  <div className="map-sessionbar"><span>Giữ Shift hoặc Ctrl khi bấm để chọn nhiều · {selected.length}/100 đang chọn</span><span>Tọa độ tâm {camera.longitude.toFixed(5)}, {camera.latitude.toFixed(5)} · mức thu phóng {camera.zoom.toFixed(2)}</span><button onClick={()=>void revalidate()}>Kiểm tra lại quyền truy cập</button></div>
   <section className="map-save-panel" aria-label="Cấu hình bản đồ dùng chung"><div><h2>Cấu hình bản đồ dùng chung</h2><p data-testid="map-save-status">{pending?.status??(dirty?"chưa lưu":"đã lưu")} · phiên bản {saved.configuration_revision} · góc nhìn mặc định: {viewpointIntent.mode==="preserve"?(saved.configuration.default_viewpoint?"giữ nguyên":"chưa đặt"):viewpointIntent.mode==="clear"?"xóa khi lưu":"cập nhật khi lưu"}</p></div>
    <button disabled={!writable||locked} onClick={()=>invokeCommand(commands,"map.set-default-viewpoint","toolbar")}>Đặt góc nhìn mặc định</button>
    <button disabled={!writable||locked} onClick={()=>{setViewpointIntent({mode:"clear"});setPending(null);}}>Xóa góc nhìn mặc định</button>

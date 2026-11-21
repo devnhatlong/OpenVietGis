@@ -45,18 +45,20 @@ test("M1 end-to-end: import GeoJSON, view/select/save in Map Workspace, export f
   // 3. Open Map Workspace, add imported Layer, select feature, inspect, save and reload
   await page.goto(`${fixture.root}/map`);
   await expect(page.getByTestId("map-workspace")).toBeVisible();
-  const addSelect = page.getByTestId("add-map-layer");
-  const optionValue = await addSelect
-    .locator("option")
-    .filter({ hasText: "m1_stations" })
-    .first()
-    .getAttribute("value");
-  expect(optionValue).toBeTruthy();
-  await addSelect.selectOption(optionValue!);
-  await page.getByRole("button", { name: "+ Thêm lớp có sẵn", exact: true }).click();
+  await page
+    .getByRole("navigation", { name: "Lệnh bản đồ" })
+    .getByRole("button", { name: "Thêm dữ liệu", exact: true })
+    .click();
+  const addDialog = page.getByRole("dialog", { name: "Thêm dữ liệu" });
+  const importedCandidate = addDialog.locator("li").filter({ hasText: "m1_stations" });
+  await expect(importedCandidate).toContainText("Sẵn sàng");
+  await importedCandidate
+    .getByRole("button", { name: "Thêm vào bản đồ", exact: true })
+    .click();
+  await expect(addDialog).not.toBeVisible();
   await page.getByRole("button", { name: "Thu phóng toàn bộ lớp hiển thị", exact: true }).click();
   await expect(page.getByTestId("map-engine-ready")).toHaveAttribute("data-ready", "true");
-  await expect(page.getByTestId("map-status")).toHaveText("usable");
+  await expect(page.getByTestId("map-status")).toHaveAttribute("data-state", "usable");
 
   await page.getByRole("button", { name: "Chọn m1_stations làm lớp hiện hành", exact: true }).click();
   const table = page.getByRole("table", { name: "Bảng thuộc tính theo phiên bản" });
@@ -71,7 +73,14 @@ test("M1 end-to-end: import GeoJSON, view/select/save in Map Workspace, export f
   // 4. Return to Import & Export, preview and confirm lossless GeoPackage export of the fixed revision
   await page.goto(`${fixture.root}/transfers`);
   await expect(page.getByTestId("transfers-page")).toBeVisible();
-  await page.getByTestId("export-layer-select").selectOption(optionValue!);
+  const exportLayerSelect = page.getByTestId("export-layer-select");
+  const exportLayerId = await exportLayerSelect
+    .locator("option")
+    .filter({ hasText: "m1_stations" })
+    .first()
+    .getAttribute("value");
+  expect(exportLayerId).toBeTruthy();
+  await exportLayerSelect.selectOption(exportLayerId!);
   await page.getByTestId("export-format-select").selectOption("geopackage");
   await page.getByTestId("preview-export-btn").click();
   await expect(page.getByTestId("export-preview")).toBeVisible();

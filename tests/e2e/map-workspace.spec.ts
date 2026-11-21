@@ -22,16 +22,41 @@ test("opens a real empty grid and arranges, renders, selects and saves catalog L
   });
   await page.goto(fixture.root + "/map");
   await expect(page.getByTestId("map-workspace")).toBeVisible();
-  await expect(page.getByTestId("map-status")).toHaveText("empty");
+  await expect(page.getByTestId("map-status")).toHaveAttribute("data-state", "empty");
+  await expect(page.getByTestId("map-status")).toHaveText("Không có dữ liệu");
+  await expect(page.getByTestId("map-workspace-layout")).toHaveAttribute("data-responsive-mode", "desktop");
   expect((await currentMap(page, fixture)).configuration_revision).toBe(0);
 
   await registerMapReferences(page, fixture);
   await page.reload();
+  const addDataCommand = page
+    .getByRole("navigation", { name: "Lệnh bản đồ" })
+    .getByRole("button", { name: "Thêm dữ liệu", exact: true });
   for (const layer of fixture.layers) {
-    await page.getByTestId("add-map-layer").selectOption(layer.id);
-    await page.getByRole("button", { name: "+ Thêm lớp có sẵn", exact: true }).click();
+    await addDataCommand.click();
+    const dialog = page.getByRole("dialog", { name: "Thêm dữ liệu" });
+    await expect(dialog).toBeVisible();
+    const candidate = dialog.locator("li").filter({ hasText: layer.name });
+    await expect(candidate).toContainText("Sẵn sàng");
+    await candidate
+      .getByRole("button", { name: "Thêm vào bản đồ", exact: true })
+      .click();
+    await expect(dialog).not.toBeVisible();
     await expect(page.getByTestId("map-layer-" + layer.id)).toBeVisible();
   }
+
+  await addDataCommand.click();
+  const duplicateDialog = page.getByRole("dialog", { name: "Thêm dữ liệu" });
+  const duplicateCandidate = duplicateDialog
+    .locator("li")
+    .filter({ hasText: fixture.layers[0]!.name });
+  await expect(duplicateCandidate).toContainText("Đã có trên bản đồ");
+  await expect(
+    duplicateCandidate.getByRole("button", { name: "Đã thêm", exact: true })
+  ).toBeDisabled();
+  await duplicateDialog
+    .getByRole("button", { name: "Đóng hộp Thêm dữ liệu" })
+    .click();
   const fittedLayers = new Set<string>();
   const fittedViewport = async (response: import("@playwright/test").Response) => {
     const url = new URL(response.url());
@@ -52,11 +77,20 @@ test("opens a real empty grid and arranges, renders, selects and saves catalog L
     page.off("response", fittedViewport);
   }
   await expect(page.getByTestId("map-engine-ready")).toHaveAttribute("data-ready", "true");
-  await expect(page.getByTestId("map-status")).toHaveText("partial", {
+  await expect(page.getByTestId("map-status")).toHaveAttribute("data-state", "partial", {
     timeout: 15_000
   });
+  await expect(page.getByTestId("map-status")).toHaveText("Hiển thị một phần");
 
   const points = fixture.layers[0]!;
+  const pointViewport = page.waitForResponse((response) =>
+    new URL(response.url()).pathname.endsWith("/layers/" + points.id + "/viewport") &&
+    response.request().method() === "GET"
+  );
+  await page
+    .getByRole("button", { name: "Thu phóng tới " + points.name, exact: true })
+    .click();
+  expect((await pointViewport).status()).toBe(200);
   await page.getByRole("button", { name: "Chọn Points làm lớp hiện hành", exact: true }).click();
   const table = page.getByRole("table", { name: "Bảng thuộc tính theo phiên bản" });
   await expect(table.getByRole("button", { name: "point-000001", exact: true })).toBeVisible();
@@ -114,6 +148,24 @@ test("opens a real empty grid and arranges, renders, selects and saves catalog L
     const after = await mapRead<typeof original>(page, fixture.api + "/spatial/sources/" + original.id);
     expect(after).toEqual(original);
   }
+
+  const removable = fixture.layers.find((layer) => layer.id !== points.id)!;
+  const originalSource = fixture.sources.find(
+    (source) => source.id === removable.source_id
+  )!;
+  await page
+    .getByRole("button", {
+      name: "Gỡ " + removable.name + " khỏi bản đồ",
+      exact: true
+    })
+    .click();
+  await expect(page.getByTestId("map-layer-" + removable.id)).toHaveCount(0);
+  const sourceAfterRemove = await mapRead<typeof originalSource>(
+    page,
+    fixture.api + "/spatial/sources/" + originalSource.id
+  );
+  expect(sourceAfterRemove).toEqual(originalSource);
+
   expect(externalRequests).toEqual([]);
 });
 

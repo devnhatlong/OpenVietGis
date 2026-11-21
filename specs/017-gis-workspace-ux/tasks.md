@@ -44,12 +44,12 @@ description: "Dependency-ordered implementation tasks for OpenVietGIS GIS Worksp
 
 **Independent Test**: Open prepared and empty Projects at desktop width; identify each workspace region and inspect a feature without seeing primary UUID/roadmap clutter.
 
-- [ ] T015 [P] [US1] Add failing desktop workspace/empty-state Playwright assertions in `tests/e2e/map-workspace.spec.ts`
+- [x] T015 [P] [US1] Add failing desktop workspace/empty-state Playwright assertions in `tests/e2e/map-workspace.spec.ts`
 - [ ] T016 [P] [US1] Add deterministic chrome screenshot cases for empty and populated workspace using local/grid or masked map pixels in `tests/e2e/map-workspace-visual.spec.ts`
-- [ ] T017 [US1] Refactor `apps/web/src/features/map/MapWorkspace.tsx` to render through `WorkspaceLayout.tsx` while keeping the existing Map engine instance stable
-- [ ] T018 [US1] Replace raw organization/project/revision context in primary chrome with human-readable project/mode/save labels in `apps/web/src/features/map/MapWorkspace.tsx`
-- [ ] T019 [US1] Implement explicit empty/loading/unsupported/unavailable/stale/partial workspace states in `apps/web/src/features/map/MapWorkspace.tsx` and `apps/web/src/features/map/layer-view.ts`
-- [ ] T020 [US1] Ensure primary map header/sidebar labels are Vietnamese-first and contain no roadmap IDs in `apps/web/src/features/map/MapWorkspace.tsx`, `LayerTree.tsx`, `AttributeTable.tsx`, and `FeatureInspector.tsx`
+- [x] T017 [US1] Refactor `apps/web/src/features/map/MapWorkspace.tsx` to render through `WorkspaceLayout.tsx` while keeping the existing Map engine instance stable
+- [x] T018 [US1] Replace raw organization/project/revision context in primary chrome with human-readable project/mode/save labels in `apps/web/src/features/map/MapWorkspace.tsx`
+- [x] T019 [US1] Implement explicit empty/loading/unsupported/unavailable/stale/partial workspace states in `apps/web/src/features/map/MapWorkspace.tsx` and `apps/web/src/features/map/layer-view.ts`
+- [x] T020 [US1] Ensure primary map header/sidebar labels are Vietnamese-first and contain no roadmap IDs in `apps/web/src/features/map/MapWorkspace.tsx`, `LayerTree.tsx`, `AttributeTable.tsx`, and `FeatureInspector.tsx`
 
 **Checkpoint**: US1 provides the usable workstation shell independently of Add Data or advanced technical details.
 
@@ -59,13 +59,13 @@ description: "Dependency-ordered implementation tasks for OpenVietGIS GIS Worksp
 
 **Independent Test**: Add an existing Layer, visibility/order/active/zoom/remove it, confirm source remains intact, and verify duplicate/no-candidate states.
 
-- [ ] T021 [P] [US2] Add failing unit tests for `AddDataCandidateView` authorized/addable/already-present behavior from `specs/017-gis-workspace-ux/data-model.md` in `apps/web/src/features/map/add-data.test.ts`
-- [ ] T022 [P] [US2] Add failing browser coverage for add-existing-Layer, duplicate prevention, reorder, visibility, active Layer, Zoom to Layer and remove-reference in `tests/e2e/map-workspace.spec.ts`
-- [ ] T023 [US2] Implement `AddDataCandidateView` mapping and catalog filtering in `apps/web/src/features/map/add-data.ts`
-- [ ] T024 [US2] Implement the capability-aware Add Data dialog/handoff defined by `contracts/add-data-handoff.md` in `apps/web/src/features/map/AddDataDialog.tsx`
-- [ ] T025 [US2] Refactor `apps/web/src/features/map/LayerTree.tsx` to expose active, visibility, order, Zoom to Layer, remove-reference, and Move Up/Move Down controls using stable Layer identities
-- [ ] T026 [US2] If accepted R005 import route/capability exists on the implementation baseline, wire only the canonical handoff from `apps/web/src/features/map/AddDataDialog.tsx`; otherwise render the documented unavailable/omitted state without inventing import behavior
-- [ ] T027 [US2] Register Add Data, Zoom to Layer, Move Up/Down, visibility and remove-reference commands through the accepted map command registry in `apps/web/src/features/map/commands.ts`
+- [x] T021 [P] [US2] Add failing unit tests for `AddDataCandidateView` authorized/addable/already-present behavior from `specs/017-gis-workspace-ux/data-model.md` in `apps/web/src/features/map/add-data.test.ts`
+- [x] T022 [P] [US2] Add failing browser coverage for add-existing-Layer, duplicate prevention, reorder, visibility, active Layer, Zoom to Layer and remove-reference in `tests/e2e/map-workspace.spec.ts`
+- [x] T023 [US2] Implement `AddDataCandidateView` mapping and catalog filtering in `apps/web/src/features/map/add-data.ts`
+- [x] T024 [US2] Implement the capability-aware Add Data dialog/handoff defined by `contracts/add-data-handoff.md` in `apps/web/src/features/map/AddDataDialog.tsx`
+- [x] T025 [US2] Refactor `apps/web/src/features/map/LayerTree.tsx` to expose active, visibility, order, Zoom to Layer, remove-reference, and Move Up/Move Down controls using stable Layer identities
+- [x] T026 [US2] If accepted R005 import route/capability exists on the implementation baseline, wire only the canonical handoff from `apps/web/src/features/map/AddDataDialog.tsx`; otherwise render the documented unavailable/omitted state without inventing import behavior
+- [x] T027 [US2] Register Add Data, Zoom to Layer, Move Up/Down, visibility and remove-reference commands through the accepted map command registry in `apps/web/src/features/map/commands.ts`
 
 **Checkpoint**: Layer organization and Add Data work without requiring users to understand Source/Layer internals.
 

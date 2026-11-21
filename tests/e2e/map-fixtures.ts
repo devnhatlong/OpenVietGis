@@ -127,7 +127,7 @@ export async function saveFixtureMap(page: Page, fixture: MapFixture): Promise<v
 export async function expectUsableMap(page: Page): Promise<void> {
   await expect(page.getByTestId("map-workspace")).toBeVisible();
   await expect(page.getByTestId("map-engine-ready")).toHaveAttribute("data-ready", "true");
-  await expect(page.getByTestId("map-status")).toHaveText("usable");
+  await expect(page.getByTestId("map-status")).toHaveAttribute("data-state", "usable");
 }
 
 export async function openFixtureMap(page: Page, fixture: MapFixture): Promise<void> {
