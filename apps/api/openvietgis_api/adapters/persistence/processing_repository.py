@@ -10,6 +10,7 @@ from uuid import UUID, uuid4
 
 from sqlalchemy import text
 from sqlalchemy.engine import RowMapping
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from openvietgis_api.adapters.persistence.scope_helper import (
@@ -17,7 +18,7 @@ from openvietgis_api.adapters.persistence.scope_helper import (
     prepare_project_scope,
 )
 from openvietgis_api.adapters.persistence.spatial_repository import (
-    SqlSpatialRepository,
+    _read_native_wkb,
     _source_from_row,
 )
 from openvietgis_api.domains.authorization.context import AuthorizationContext
@@ -25,6 +26,7 @@ from openvietgis_api.domains.authorization.permissions import Permission
 from openvietgis_api.domains.editing.domain import validate_operation_id
 from openvietgis_api.domains.platform_errors import (
     PlatformConflictError,
+    PlatformDomainError,
     PlatformNotFoundError,
     PlatformValidationError,
 )
@@ -35,16 +37,67 @@ from openvietgis_api.domains.processing.domain import (
     validate_algorithm_parameters,
 )
 from openvietgis_api.domains.spatial.domain import (
+    DataSource,
     FieldType,
     GeometryDimensions,
     GeometryFamily,
+    GeometryState,
     Lifecycle,
+    NativeGeometry,
+    ReferenceFeature,
     SourceField,
     SpatialValidationError,
     ValidationState,
     canonical_attribute_value,
+    content_revision_digest,
     schema_revision_digest,
+    validate_ready_geometry,
 )
+
+# Bounds for the first synchronous processing slice. Output is also constrained
+# by the Core reader's per-feature geometry limits and transfer feature cap.
+MAX_PROCESSING_FEATURES = 25_000
+MAX_PROCESSING_POSITIONS = 1_000_000
+PROCESSING_STATEMENT_TIMEOUT = "30s"
+
+# Return no binary geometry when the result exceeds either resource bound.
+# All output rows are counted *before* the LIMIT, never silently truncated.
+_RESULT_GEOMETRY_COLUMNS = """
+    ST_SRID(geom) AS srid,
+    COUNT(*) OVER () AS total_count,
+    SUM(ST_NPoints(geom)) OVER () AS total_positions,
+    CASE WHEN COUNT(*) OVER () <= :max_features
+        AND SUM(ST_NPoints(geom)) OVER () <= :max_positions
+        AND ST_Zmflag(geom)=0
+        AND ST_NPoints(geom) BETWEEN 1 AND 4096
+        AND ST_IsValid(geom)
+      THEN ST_AsBinary(geom, 'NDR')
+      ELSE NULL END AS wkb
+"""
+
+
+def _bounded_native_geometry(
+    row: RowMapping, expected_family: GeometryFamily, srid: int
+) -> NativeGeometry:
+    if (
+        row["total_count"] > MAX_PROCESSING_FEATURES
+        or row["total_positions"] > MAX_PROCESSING_POSITIONS
+    ):
+        raise PlatformValidationError(
+            "processing output exceeds resource bounds", code="PROCESSING_LIMIT"
+        )
+    if row["wkb"] is None or row["srid"] != srid:
+        raise PlatformValidationError(
+            "invalid derived output geometry", code="INVALID_DERIVED_OUTPUT"
+        )
+    try:
+        geometry = _read_native_wkb(bytes(row["wkb"]), srid)
+        validate_ready_geometry(geometry, expected_family, srid)
+    except SpatialValidationError as exc:
+        raise PlatformValidationError(
+            "invalid derived output geometry", code="INVALID_DERIVED_OUTPUT"
+        ) from exc
+    return geometry
 
 
 def _job_from_row(row: RowMapping) -> ProcessingJobRecord:
@@ -80,12 +133,11 @@ def _job_from_row(row: RowMapping) -> ProcessingJobRecord:
 class SqlProcessingRepository:
     def __init__(self, session: Session) -> None:
         self._session = session
-        self._spatial = SqlSpatialRepository(session)
 
     def _prepare(self, context: AuthorizationContext, *, permission: Permission) -> None:
         prepare_project_scope(self._session, context, permission=permission)
 
-    def _resolve_layer(self, org_id: UUID, project_id: UUID, layer_id: UUID) -> Any:
+    def _resolve_layer(self, org_id: UUID, project_id: UUID, layer_id: UUID) -> DataSource:
         row = (
             self._session.execute(
                 text("""
@@ -97,6 +149,7 @@ class SqlProcessingRepository:
                  AND s.id = l.source_id
                 WHERE l.organization_id = :org AND l.project_id = :proj AND l.id = :lid
                   AND l.lifecycle = 'active'
+                FOR SHARE OF s, l
             """),
                 {"org": org_id, "proj": project_id, "lid": layer_id},
             )
@@ -109,6 +162,69 @@ class SqlProcessingRepository:
         if source.lifecycle != Lifecycle.ACTIVE or source.validation_state != ValidationState.READY:
             raise PlatformValidationError(
                 "input layer source is not ready", code="SOURCE_NOT_READY"
+            )
+        return source
+
+    def _validate_pinned_source(self, job: ProcessingJobRecord, prefix: str) -> DataSource:
+        refs = job.input_refs
+        # Legacy queued results without schema pins cannot be executed honestly.
+        # Resubmit using a new operation_id rather than repinning in place.
+        if not refs.get(f"{prefix}_schema_revision"):
+            raise PlatformConflictError(
+                "job input has no immutable schema pin; submit a new job",
+                code="MISSING_INPUT_PIN",
+            )
+        try:
+            source = self._resolve_layer(
+                job.organization_id, job.project_id, UUID(refs[f"{prefix}_layer_id"])
+            )
+        except (PlatformNotFoundError, PlatformValidationError) as exc:
+            raise PlatformConflictError(
+                "job input is no longer active and ready", code="STALE_INPUT_PIN"
+            ) from exc
+        if (
+            str(source.id) != refs[f"{prefix}_source_id"]
+            or source.content_revision != refs[f"{prefix}_content_revision"]
+            or source.schema_revision != refs[f"{prefix}_schema_revision"]
+            or source.stored_crs != refs[f"{prefix}_stored_crs"]
+        ):
+            raise PlatformConflictError(
+                "job input changed; submit a new job", code="STALE_INPUT_PIN"
+            )
+        stats = (
+            self._session.execute(
+                text("""
+                SELECT COUNT(*) AS cnt, COALESCE(SUM(ST_NPoints(geometry)),0) AS positions,
+                    COUNT(*) FILTER (WHERE
+                        content_revision <> :crev OR schema_revision <> :srev
+                        OR geometry_state <> 'present' OR geometry IS NULL
+                        OR ST_SRID(geometry) <> :srid
+                        OR ST_GeometryType(geometry) <> :gtype
+                        OR ST_Zmflag(geometry) <> 0 OR ST_IsEmpty(geometry)
+                        OR NOT ST_IsValid(geometry)) AS invalid
+                FROM spatial.reference_features
+                WHERE organization_id=:org AND project_id=:proj AND source_id=:src
+            """),
+                {
+                    "org": job.organization_id,
+                    "proj": job.project_id,
+                    "src": source.id,
+                    "crev": source.content_revision,
+                    "srev": source.schema_revision,
+                    "srid": source.stored_crs,
+                    "gtype": f"ST_{source.geometry_family.value}",
+                },
+            )
+            .mappings()
+            .one()
+        )
+        if stats["cnt"] != source.feature_count or stats["invalid"]:
+            raise PlatformValidationError(
+                "input content does not match ready pins", code="INVALID_INPUT"
+            )
+        if stats["cnt"] > MAX_PROCESSING_FEATURES or stats["positions"] > MAX_PROCESSING_POSITIONS:
+            raise PlatformValidationError(
+                "processing input exceeds resource bounds", code="PROCESSING_LIMIT"
             )
         return source
 
@@ -131,8 +247,13 @@ class SqlProcessingRepository:
         clean_op_id = validate_operation_id(operation_id)
         clean_out_name = output_name.strip()[:200] or f"{algorithm_id.value} output"
         clean_params = validate_algorithm_parameters(algorithm_id, parameters)
+        if algorithm_id != AlgorithmId.CLIP and overlay_layer_id is not None:
+            raise PlatformValidationError(
+                "only clip accepts overlay_layer_id", code="INVALID_PARAMETERS"
+            )
 
-        # Idempotency check
+        # Idempotency check: same operation_id must denote the same submitted request.
+        # Source pins themselves stay immutable even when the input changes later.
         existing = (
             self._session.execute(
                 text("""
@@ -145,9 +266,17 @@ class SqlProcessingRepository:
             .first()
         )
         if existing is not None:
-            if str(existing["algorithm_id"]) != algorithm_id.value:
+            previous_refs = existing["input_refs"]
+            if (
+                str(existing["algorithm_id"]) != algorithm_id.value
+                or previous_refs.get("input_layer_id") != str(input_layer_id)
+                or previous_refs.get("overlay_layer_id")
+                != (str(overlay_layer_id) if overlay_layer_id is not None else None)
+                or existing["parameters"] != clean_params
+                or existing["output_name"] != clean_out_name
+            ):
                 raise PlatformConflictError(
-                    "operation_id already used for a different algorithm",
+                    "operation_id already used for a different processing request",
                     code="OPERATION_ID_CONFLICT",
                 )
             return _job_from_row(existing)
@@ -158,6 +287,7 @@ class SqlProcessingRepository:
             "input_layer_id": str(input_layer_id),
             "input_source_id": str(input_source.id),
             "input_content_revision": input_source.content_revision,
+            "input_schema_revision": input_source.schema_revision,
             "input_stored_crs": input_source.stored_crs,
         }
         if algorithm_id == AlgorithmId.CLIP:
@@ -166,9 +296,14 @@ class SqlProcessingRepository:
                     "clip requires overlay_layer_id", code="MISSING_OVERLAY_LAYER"
                 )
             overlay_source = self._resolve_layer(org_id, project_id, overlay_layer_id)
+            if overlay_source.geometry_family != GeometryFamily.POLYGON:
+                raise PlatformValidationError(
+                    "clip overlay must be Polygon", code="INVALID_OVERLAY"
+                )
             input_refs["overlay_layer_id"] = str(overlay_layer_id)
             input_refs["overlay_source_id"] = str(overlay_source.id)
             input_refs["overlay_content_revision"] = overlay_source.content_revision
+            input_refs["overlay_schema_revision"] = overlay_source.schema_revision
             input_refs["overlay_stored_crs"] = overlay_source.stored_crs
 
         pg_ver = str(self._session.execute(text("SELECT PostGIS_Lib_Version()")).scalar_one())
@@ -239,11 +374,73 @@ class SqlProcessingRepository:
         if job.status in (ProcessingStatus.SUCCEEDED, ProcessingStatus.CANCELLED):
             return job
 
+        # Keep the locked job and scope outside a savepoint. Any computation or
+        # publication failure rolls back every output write; the job itself is
+        # thereafter persisted as failed without exposing database internals.
+        try:
+            with self._session.begin_nested():
+                # RLS authorization is scoped to the current savepoint. Rebind
+                # with verified permission, never reuse outer transaction claims.
+                self._prepare(context, permission=Permission.PROJECT_EDIT)
+                self._session.execute(
+                    text("SELECT set_config('statement_timeout', :timeout, true)"),
+                    {"timeout": PROCESSING_STATEMENT_TIMEOUT},
+                )
+                done = self._execute_locked_job(context, job)
+                # Validate deferred pin FKs within the savepoint, not after success.
+                self._session.execute(text("SET CONSTRAINTS ALL IMMEDIATE"))
+        except PlatformDomainError as exc:
+            self._prepare(context, permission=Permission.PROJECT_EDIT)
+            done = self._fail_job(job, exc.code, exc.message)
+        except (SpatialValidationError, SQLAlchemyError):
+            self._prepare(context, permission=Permission.PROJECT_EDIT)
+            done = self._fail_job(
+                job, "PROCESSING_FAILED", "processing could not safely publish output"
+            )
+        self._session.commit()
+        return done
+
+    def _fail_job(self, job: ProcessingJobRecord, code: str, message: str) -> ProcessingJobRecord:
+        row = (
+            self._session.execute(
+                text("""
+                UPDATE processing.jobs
+                SET status='failed', error_code=:code, error_message=:message,
+                    output_source_id=NULL, output_layer_id=NULL, output_content_revision=NULL,
+                    feature_count=NULL, updated_at=:now, completed_at=:now
+                WHERE organization_id=:org AND project_id=:proj AND id=:jid
+                RETURNING *
+            """),
+                {
+                    "org": job.organization_id,
+                    "proj": job.project_id,
+                    "jid": job.id,
+                    "code": code[:64],
+                    "message": message[:500],
+                    "now": datetime.now(UTC),
+                },
+            )
+            .mappings()
+            .one()
+        )
+        return _job_from_row(row)
+
+    def _execute_locked_job(
+        self, context: AuthorizationContext, job: ProcessingJobRecord
+    ) -> ProcessingJobRecord:
+        org_id, project_id, job_id = job.organization_id, job.project_id, job.id
+        input_source = self._validate_pinned_source(job, "input")
+        if job.algorithm_id == AlgorithmId.CLIP:
+            overlay_source = self._validate_pinned_source(job, "overlay")
+            if overlay_source.geometry_family != GeometryFamily.POLYGON:
+                raise PlatformValidationError(
+                    "clip overlay must be Polygon", code="INVALID_OVERLAY"
+                )
         now = datetime.now(UTC)
         self._session.execute(
             text("""
                 UPDATE processing.jobs
-                SET status = 'running', updated_at = :now
+                SET status = 'running', updated_at = :now, completed_at=NULL
                 WHERE organization_id = :org AND project_id = :proj AND id = :jid
             """),
             {"org": org_id, "proj": project_id, "jid": job_id, "now": now},
@@ -253,8 +450,13 @@ class SqlProcessingRepository:
         input_srid = int(job.input_refs["input_stored_crs"])
 
         # Compute derived geometries via PostGIS without mutating input sources
-        derived_rows: list[tuple[str, dict[str, Any], bytes]] = []
-        output_family = "Polygon"
+        derived_rows: list[tuple[str, dict[str, Any], bytes, NativeGeometry]] = []
+        output_family = input_source.geometry_family
+        bound_params = {
+            "max_features": MAX_PROCESSING_FEATURES,
+            "max_positions": MAX_PROCESSING_POSITIONS,
+            "max_rows": MAX_PROCESSING_FEATURES + 1,
+        }
         output_fields: list[tuple[str, str, FieldType, bool]] = []
 
         if job.algorithm_id == AlgorithmId.BUFFER:
@@ -273,15 +475,16 @@ class SqlProcessingRepository:
                 self._session.execute(
                     text(f"""
                     WITH dumped AS (
-                        SELECT rf.feature_id, rf.attributes,
-                               (ST_Dump(ST_MakeValid({buf_expr}))).geom AS geom
+                        SELECT rf.feature_id, part.geom, part.path
                         FROM spatial.reference_features rf
+                        CROSS JOIN LATERAL ST_Dump(ST_MakeValid({buf_expr})) AS part
                         WHERE rf.organization_id = :org AND rf.project_id = :proj
                           AND rf.source_id = :src
                     )
-                    SELECT feature_id, attributes, ST_AsEWKB(ST_Force2D(geom)) AS wkb
+                    SELECT feature_id, {_RESULT_GEOMETRY_COLUMNS}
                     FROM dumped
-                    WHERE ST_GeometryType(geom) = 'ST_Polygon' AND NOT ST_IsEmpty(geom)
+                    WHERE NOT ST_IsEmpty(geom)
+                    ORDER BY feature_id, path LIMIT :max_rows
                 """),
                     {
                         "org": org_id,
@@ -290,12 +493,13 @@ class SqlProcessingRepository:
                         "dist": dist,
                         "qsegs": quad_segs,
                         "srid": input_srid,
+                        **bound_params,
                     },
                 )
                 .mappings()
                 .all()
             )
-            output_family = "Polygon"
+            output_family = GeometryFamily.POLYGON
             output_fields = [
                 ("source_feature_id", "Source Feature ID", FieldType.TEXT, False),
                 ("buffer_meters", "Buffer Distance (m)", FieldType.DECIMAL, False),
@@ -308,7 +512,8 @@ class SqlProcessingRepository:
                             "source_feature_id": str(qr["feature_id"]),
                             "buffer_meters": str(dist),
                         },
-                        bytes(qr["wkb"]),
+                        bytes(qr["wkb"]) if qr["wkb"] is not None else b"",
+                        _bounded_native_geometry(qr, output_family, input_srid),
                     )
                 )
 
@@ -330,19 +535,20 @@ class SqlProcessingRepository:
                           AND ov.source_id = :ov_src
                     ),
                     clipped AS (
-                        SELECT rf.feature_id,
-                               (ST_Dump(ST_Intersection(rf.geometry, mask.mgeom))).geom AS geom
-                        FROM spatial.reference_features rf, mask
+                        SELECT rf.feature_id, part.geom, part.path
+                        FROM spatial.reference_features rf CROSS JOIN mask
+                        CROSS JOIN LATERAL ST_Dump(ST_Intersection(rf.geometry, mask.mgeom)) AS part
                         WHERE rf.organization_id = :org AND rf.project_id = :proj
                           AND rf.source_id = :src
                           AND mask.mgeom IS NOT NULL
                           AND ST_Intersects(rf.geometry, mask.mgeom)
                     )
-                    SELECT feature_id, ST_GeometryType(geom) AS gtype,
-                           ST_AsEWKB(ST_Force2D(geom)) AS wkb
+                    SELECT feature_id, {_RESULT_GEOMETRY_COLUMNS}
                     FROM clipped
-                    WHERE ST_GeometryType(geom) IN ('ST_Point', 'ST_LineString', 'ST_Polygon')
-                      AND NOT ST_IsEmpty(geom)
+                    -- A polygon touching a mask along an edge is not a clipped
+                    -- polygon. Keep the input dimension; discard lower-dimensional contacts.
+                    WHERE ST_GeometryType(geom) = :gtype AND NOT ST_IsEmpty(geom)
+                    ORDER BY feature_id, path LIMIT :max_rows
                 """),
                     {
                         "org": org_id,
@@ -350,29 +556,25 @@ class SqlProcessingRepository:
                         "src": input_src_id,
                         "ov_src": overlay_src_id,
                         "srid": input_srid,
+                        "gtype": f"ST_{output_family.value}",
+                        **bound_params,
                     },
                 )
                 .mappings()
                 .all()
             )
-            # Keep homogeneous dominant geometry family
-            type_map = {"ST_Point": "Point", "ST_LineString": "LineString", "ST_Polygon": "Polygon"}
-            if qrows:
-                output_family = type_map[str(qrows[0]["gtype"])]
-            else:
-                output_family = "Polygon"
             output_fields = [
                 ("source_feature_id", "Source Feature ID", FieldType.TEXT, False),
             ]
             for idx, qr in enumerate(qrows):
-                if type_map[str(qr["gtype"])] == output_family:
-                    derived_rows.append(
-                        (
-                            f"clip_{idx + 1}",
-                            {"source_feature_id": str(qr["feature_id"])},
-                            bytes(qr["wkb"]),
-                        )
+                derived_rows.append(
+                    (
+                        f"clip_{idx + 1}",
+                        {"source_feature_id": str(qr["feature_id"])},
+                        bytes(qr["wkb"]) if qr["wkb"] is not None else b"",
+                        _bounded_native_geometry(qr, output_family, input_srid),
                     )
+                )
 
         elif job.algorithm_id == AlgorithmId.DISSOLVE:
             group_field = job.parameters.get("group_by_field")
@@ -391,7 +593,7 @@ class SqlProcessingRepository:
                         f"unknown dissolve group_by_field {group_field!r}",
                         code="UNKNOWN_FIELD",
                     )
-                group_expr = f"COALESCE(rf.attributes ->> '{group_field}', '__null__')"
+                group_expr = "rf.attributes ->> CAST(:group_field AS text)"
             else:
                 group_expr = "'all'"
 
@@ -408,38 +610,41 @@ class SqlProcessingRepository:
                         GROUP BY 1
                     ),
                     dumped AS (
-                        SELECT grp_val, merged_count, (ST_Dump(ugeom)).geom AS geom
-                        FROM grouped
+                        SELECT grp_val, merged_count, part.geom, part.path
+                        FROM grouped CROSS JOIN LATERAL ST_Dump(ugeom) AS part
                     )
-                    SELECT grp_val, merged_count, ST_GeometryType(geom) AS gtype,
-                           ST_AsEWKB(ST_Force2D(geom)) AS wkb
+                    SELECT grp_val, merged_count, {_RESULT_GEOMETRY_COLUMNS}
                     FROM dumped
-                    WHERE ST_GeometryType(geom) IN ('ST_Point', 'ST_LineString', 'ST_Polygon')
-                      AND NOT ST_IsEmpty(geom)
+                    WHERE NOT ST_IsEmpty(geom)
+                    ORDER BY grp_val NULLS FIRST, path LIMIT :max_rows
                 """),
-                    {"org": org_id, "proj": project_id, "src": input_src_id},
+                    {
+                        "org": org_id,
+                        "proj": project_id,
+                        "src": input_src_id,
+                        "group_field": group_field,
+                        **bound_params,
+                    },
                 )
                 .mappings()
                 .all()
             )
-            type_map = {"ST_Point": "Point", "ST_LineString": "LineString", "ST_Polygon": "Polygon"}
-            output_family = type_map[str(qrows[0]["gtype"])] if qrows else "Polygon"
             output_fields = [
-                ("group_value", "Group Value", FieldType.TEXT, False),
+                ("group_value", "Group Value", FieldType.TEXT, True),
                 ("merged_count", "Merged Feature Count", FieldType.INTEGER, False),
             ]
             for idx, qr in enumerate(qrows):
-                if type_map[str(qr["gtype"])] == output_family:
-                    derived_rows.append(
-                        (
-                            f"dis_{idx + 1}",
-                            {
-                                "group_value": str(qr["grp_val"]),
-                                "merged_count": int(qr["merged_count"]),
-                            },
-                            bytes(qr["wkb"]),
-                        )
+                derived_rows.append(
+                    (
+                        f"dis_{idx + 1}",
+                        {
+                            "group_value": qr["grp_val"],
+                            "merged_count": int(qr["merged_count"]),
+                        },
+                        bytes(qr["wkb"]) if qr["wkb"] is not None else b"",
+                        _bounded_native_geometry(qr, output_family, input_srid),
                     )
+                )
 
         # Atomically publish a NEW project-owned data_source + layer
         out_source_id = uuid4()
@@ -470,7 +675,7 @@ class SqlProcessingRepository:
         expected_fields = {field.field_id for field in schema_fields}
         canonical_rows = []
         try:
-            for feat_id, attrs, wkb in derived_rows:
+            for feat_id, attrs, wkb, geometry in derived_rows:
                 if attrs.keys() != expected_fields:
                     raise SpatialValidationError("derived attributes do not match output schema")
                 canonical_rows.append(
@@ -481,6 +686,7 @@ class SqlProcessingRepository:
                             for field in schema_fields
                         },
                         wkb,
+                        geometry,
                     )
                 )
         except SpatialValidationError as exc:
@@ -488,20 +694,34 @@ class SqlProcessingRepository:
                 "invalid derived output attributes", code="INVALID_DERIVED_OUTPUT"
             ) from exc
         derived_rows = canonical_rows
-        schema_rev = schema_revision_digest(
-            schema_fields, GeometryFamily(output_family), GeometryDimensions.XY
+        schema_rev = schema_revision_digest(schema_fields, output_family, GeometryDimensions.XY)
+        # Content pins cover actual canonical attributes and native geometry,
+        # not just job identity and an output row count.
+        content_rev = content_revision_digest(
+            [
+                ReferenceFeature(
+                    organization_id=org_id,
+                    project_id=project_id,
+                    source_id=out_source_id,
+                    feature_id=feat_id,
+                    attributes=attrs,
+                    geometry=geometry,
+                    geometry_state=GeometryState.PRESENT,
+                    content_revision=dummy_rev,
+                    schema_revision=schema_rev,
+                )
+                for feat_id, attrs, _, geometry in derived_rows
+            ],
+            schema_fields,
+            input_srid,
+            input_srid,
+            geometry_family=output_family,
+            dimensions=GeometryDimensions.XY,
         )
-        content_rev = hashlib.sha256(
-            f"{out_source_id}:{len(derived_rows)}:{manifest_digest}".encode()
-        ).hexdigest()
         ref_key = f"proc_{job.algorithm_id.value}_{str(out_source_id).replace('-', '')[:12]}"
 
-        # Compute extent across derived geometries
-        if derived_rows:
-            # Compute extent after insert; initialize as empty then update before commit
-            init_ext_state = "empty"
-        else:
-            init_ext_state = "empty"
+        # Initialize as empty then compute exact extent before the transaction commits.
+        init_ext_state = "empty"
 
         self._session.execute(
             text("""
@@ -530,7 +750,7 @@ class SqlProcessingRepository:
                 "fver": f"{job.algorithm_id.value}@{job.engine_version}",
                 "mdig": manifest_digest,
                 "crs": input_srid,
-                "gfam": output_family,
+                "gfam": output_family.value,
                 "estate": init_ext_state,
                 "crev": content_rev,
                 "srev": schema_rev,
@@ -559,7 +779,7 @@ class SqlProcessingRepository:
                 },
             )
 
-        for feat_id, attrs, wkb in derived_rows:
+        for feat_id, attrs, wkb, _ in derived_rows:
             self._session.execute(
                 text("""
                     INSERT INTO spatial.reference_features (
@@ -567,7 +787,7 @@ class SqlProcessingRepository:
                         attributes, geometry, geometry_state, content_revision, schema_revision
                     ) VALUES (
                         :org, :proj, :src, :fid,
-                        CAST(:attrs AS jsonb), ST_GeomFromEWKB(:wkb), 'present', :crev, :srev
+                        CAST(:attrs AS jsonb), ST_GeomFromWKB(:wkb, :srid), 'present', :crev, :srev
                     )
                 """),
                 {
@@ -577,6 +797,7 @@ class SqlProcessingRepository:
                     "fid": feat_id,
                     "attrs": json.dumps(attrs),
                     "wkb": wkb,
+                    "srid": input_srid,
                     "crev": content_rev,
                     "srev": schema_rev,
                 },
@@ -755,7 +976,6 @@ class SqlProcessingRepository:
             .mappings()
             .one()
         )
-        self._session.commit()
         return _job_from_row(done_row)
 
     def cancel_job(self, *, context: AuthorizationContext, job_id: UUID) -> ProcessingJobRecord:
@@ -825,7 +1045,7 @@ class SqlProcessingRepository:
             text("""
                 UPDATE processing.jobs
                 SET status = 'queued', attempt_count = attempt_count + 1,
-                    error_code = NULL, error_message = NULL, updated_at = :now
+                    error_code = NULL, error_message = NULL, updated_at = :now, completed_at = NULL
                 WHERE organization_id = :org AND project_id = :proj AND id = :jid
             """),
             {"org": context.organization_id, "proj": context.project_id, "jid": job_id, "now": now},

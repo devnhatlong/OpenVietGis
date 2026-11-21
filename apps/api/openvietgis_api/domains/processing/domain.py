@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
@@ -38,7 +39,10 @@ ALGORITHM_REGISTRY: dict[AlgorithmId, AlgorithmDescriptor] = {
     AlgorithmId.BUFFER: AlgorithmDescriptor(
         id=AlgorithmId.BUFFER,
         name="Buffer",
-        description="Creates metric buffers around geometries and publishes a new Polygon layer.",
+        description=(
+            "Creates projected-distance buffers (Web Mercator for geographic inputs) "
+            "and publishes a new Polygon layer."
+        ),
         required_inputs=("input_layer_id",),
         parameters_schema={
             "distance_meters": {"type": "number", "min": 0.1, "max": 500000.0},
@@ -96,25 +100,33 @@ def validate_algorithm_parameters(
     parameters: dict[str, Any],
 ) -> dict[str, Any]:
     if algorithm_id == AlgorithmId.BUFFER:
+        if parameters.keys() - {"distance_meters", "quad_segs"}:
+            raise PlatformValidationError("unknown buffer parameter", code="INVALID_PARAMETERS")
         raw_dist = parameters.get("distance_meters")
-        if raw_dist is None or isinstance(raw_dist, bool):
+        # The public contract is a JSON number, not a coercible string or boolean.
+        if type(raw_dist) not in (int, float) or not (0.1 <= raw_dist <= 500_000.0):
             raise PlatformValidationError(
-                "buffer requires numeric distance_meters > 0", code="INVALID_PARAMETERS"
+                "distance_meters must be a number between 0.1 and 500000",
+                code="INVALID_PARAMETERS",
             )
         dist = float(raw_dist)
-        if not (0.1 <= dist <= 500_000.0):
+        if not math.isfinite(dist):
             raise PlatformValidationError(
                 "distance_meters must be between 0.1 and 500000", code="INVALID_PARAMETERS"
             )
-        quad_segs = int(parameters.get("quad_segs", 8))
-        if not (2 <= quad_segs <= 16):
+        quad_segs = parameters.get("quad_segs", 8)
+        if type(quad_segs) is not int or not (2 <= quad_segs <= 16):
             raise PlatformValidationError(
                 "quad_segs must be between 2 and 16", code="INVALID_PARAMETERS"
             )
         return {"distance_meters": dist, "quad_segs": quad_segs}
     if algorithm_id == AlgorithmId.CLIP:
+        if parameters:
+            raise PlatformValidationError("unknown clip parameter", code="INVALID_PARAMETERS")
         return {}
     if algorithm_id == AlgorithmId.DISSOLVE:
+        if parameters.keys() - {"group_by_field"}:
+            raise PlatformValidationError("unknown dissolve parameter", code="INVALID_PARAMETERS")
         group_field = parameters.get("group_by_field")
         if group_field is not None and not isinstance(group_field, str):
             raise PlatformValidationError(
