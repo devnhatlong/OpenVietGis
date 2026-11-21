@@ -1,6 +1,29 @@
-import { QueryClient } from "@tanstack/react-query";
+import { ApiError } from "@openvietgis/client-sdk";
+import {
+  MutationCache,
+  QueryCache,
+  QueryClient
+} from "@tanstack/react-query";
 
-export const queryClient = new QueryClient({
+let queryClient: QueryClient;
+
+function revalidateSessionOnUnauthorized(error: unknown) {
+  if (!(error instanceof ApiError) || error.status !== 401 || !queryClient) return;
+  void queryClient.invalidateQueries({ queryKey: ["me"] });
+}
+
+queryClient = new QueryClient({
+  queryCache: new QueryCache({
+    onError: (error, query) => {
+      if (query.queryKey[0] === "me") return;
+      revalidateSessionOnUnauthorized(error);
+    }
+  }),
+  mutationCache: new MutationCache({
+    onError: (error) => {
+      revalidateSessionOnUnauthorized(error);
+    }
+  }),
   defaultOptions: {
     queries: {
       retry: false,
@@ -8,3 +31,5 @@ export const queryClient = new QueryClient({
     }
   }
 });
+
+export { queryClient };

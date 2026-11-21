@@ -1,50 +1,29 @@
 import { NavLink, useParams } from "react-router-dom";
 
-interface NavItem {
-  label: string;
-  to: string;
-  short: string;
-}
+import { buildNavigationItems } from "./navigation-model";
 
 export function AppNavigation({ collapsed }: { collapsed: boolean }) {
   const { organizationId, projectId } = useParams();
-  const items: NavItem[] = [
-    { label: "Tổng quan", short: "TQ", to: "/app" }
-  ];
-
-  if (organizationId) {
-    const org = "/app/organizations/" + encodeURIComponent(organizationId);
-    items.push(
-      { label: "Dự án", short: "DA", to: org + "/projects" },
-      { label: "Không gian làm việc", short: "KG", to: org + "/workspaces" },
-      { label: "Thành viên & phân quyền", short: "TV", to: org + "/membership" }
-    );
-
-    if (projectId) {
-      const project = org + "/projects/" + encodeURIComponent(projectId);
-      items.splice(
-        2,
-        0,
-        { label: "Bản đồ", short: "BD", to: project + "/map" },
-        { label: "Dữ liệu GIS", short: "DL", to: project + "/spatial" },
-        { label: "Nhập / Xuất", short: "NX", to: project + "/transfers" },
-        { label: "Công cụ", short: "CC", to: project + "/platform-hub" }
-      );
-    }
-  }
+  const items = buildNavigationItems(organizationId, projectId).filter(
+    (item) => item.availability !== "omitted"
+  );
 
   return (
     <nav className="ovg-app-nav" aria-label="Điều hướng chính">
       {items.map((item) => (
         <NavLink
-          key={item.to}
-          to={item.to}
-          end={item.to === "/app"}
-          title={collapsed ? item.label : undefined}
+          key={item.id}
+          to={item.destination}
+          end={item.destination === "/app"}
+          title={collapsed ? item.labelKey : undefined}
+          aria-disabled={item.availability === "disabled" ? true : undefined}
+          onClick={(event) => {
+            if (item.availability === "disabled") event.preventDefault();
+          }}
           className={({ isActive }) => isActive ? "is-active" : undefined}
         >
           <span className="ovg-app-nav-icon" aria-hidden="true">{item.short}</span>
-          {collapsed ? null : <span>{item.label}</span>}
+          {collapsed ? null : <span>{item.labelKey}</span>}
         </NavLink>
       ))}
     </nav>

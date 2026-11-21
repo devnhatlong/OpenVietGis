@@ -18,7 +18,7 @@ description: "Dependency-ordered implementation tasks for OpenVietGIS App Shell 
 - [x] T002 [P] Create semantic light-theme design tokens and spacing/typography/focus variables in `apps/web/src/ui/tokens.css`
 - [x] T003 [P] Create global reset, skip-link, reduced-motion and responsive shell foundations in `apps/web/src/ui/global.css`
 - [x] T004 Wire `apps/web/src/ui/tokens.css` and `apps/web/src/ui/global.css` exactly once from `apps/web/src/main.tsx`
-- [ ] T005 [P] Add accessible shared Button/IconButton/StatusMessage primitives in `apps/web/src/ui/primitives/Button.tsx`, `apps/web/src/ui/primitives/IconButton.tsx`, and `apps/web/src/ui/primitives/StatusMessage.tsx`
+- [x] T005 [P] Add accessible shared Button/IconButton/StatusMessage primitives in `apps/web/src/ui/primitives/Button.tsx`, `apps/web/src/ui/primitives/IconButton.tsx`, and `apps/web/src/ui/primitives/StatusMessage.tsx`
 
 **Checkpoint**: Shared styling exists without changing routing/auth behavior.
 
@@ -32,11 +32,11 @@ description: "Dependency-ordered implementation tasks for OpenVietGIS App Shell 
 - [x] T009 Implement same-origin relative return-destination parsing/serialization in `apps/web/src/app/session/return-destination.ts` using `ReturnDestination.pathname`, `ReturnDestination.search`, and `ReturnDestination.hash` from `specs/016-app-shell-identity-ux/data-model.md`
 - [ ] T010 Add failing component tests proving background `/me` checks do not unmount a previously authenticated shell and confirmed 401 does clear it in `apps/web/src/app/session/SessionBoundary.test.tsx`
 - [x] T011 Implement `SessionBoundary` and session context in `apps/web/src/app/session/SessionBoundary.tsx` while leaving strict tenant/resource reads on existing `protectedQueryOptions`
-- [ ] T012 Implement authorization-loss cache/session coordination for confirmed protected-request auth loss in `apps/web/src/app/session/session-auth-loss.ts` and integrate only the necessary hook points in `apps/web/src/app/protected-query.ts`
+- [x] T012 Implement authorization-loss cache/session coordination for confirmed protected-request auth loss in `apps/web/src/app/session/session-auth-loss.ts` and integrate only the necessary hook points in `apps/web/src/app/protected-query.ts`
 - [x] T013 [P] Implement `ShellPreference.navigationCollapsed` from `specs/016-app-shell-identity-ux/data-model.md` with non-sensitive local persistence in `apps/web/src/app/shell/shell-preference.ts`
-- [ ] T014 Implement `AppNavigationItem.id`, `AppNavigationItem.labelKey`, `AppNavigationItem.destination`, `AppNavigationItem.scope`, and `AppNavigationItem.availability` from `specs/016-app-shell-identity-ux/data-model.md` in `apps/web/src/app/shell/navigation-model.ts`
+- [x] T014 Implement `AppNavigationItem.id`, `AppNavigationItem.labelKey`, `AppNavigationItem.destination`, `AppNavigationItem.scope`, and `AppNavigationItem.availability` from `specs/016-app-shell-identity-ux/data-model.md` in `apps/web/src/app/shell/navigation-model.ts`
 - [x] T015 Build the reusable authenticated chrome in `apps/web/src/app/shell/AppShell.tsx`, `apps/web/src/app/shell/AppNavigation.tsx`, and `apps/web/src/app/shell/Breadcrumbs.tsx` without exposing roadmap IDs or UUIDs as primary labels
-- [ ] T016 Add the shared command-palette foundation and navigation command registry in `apps/web/src/app/shell/CommandPalette.tsx` and `apps/web/src/app/shell/command-registry.ts`
+- [x] T016 Add the shared command-palette foundation and navigation command registry in `apps/web/src/app/shell/CommandPalette.tsx` and `apps/web/src/app/shell/command-registry.ts`
 
 **Checkpoint**: Foundational session/shell architecture is independently testable before page migration.
 

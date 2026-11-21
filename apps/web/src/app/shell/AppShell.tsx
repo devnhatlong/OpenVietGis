@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import { AccountMenu } from "../../features/auth/AccountMenu";
 import { AppNavigation } from "./AppNavigation";
 import { Breadcrumbs } from "./Breadcrumbs";
+import { CommandPalette } from "./CommandPalette";
 import {
   loadShellPreference,
   saveShellPreference
@@ -49,9 +50,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         <header className="ovg-app-topbar">
           <Breadcrumbs />
           <div className="ovg-app-topbar-actions">
-            <span className="ovg-command-hint" title="Command palette sẽ được mở rộng theo capability">
-              Ctrl K · Lệnh nhanh
-            </span>
+            <CommandPalette />
             <AccountMenu />
           </div>
         </header>
