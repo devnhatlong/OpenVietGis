@@ -1,9 +1,9 @@
-# Initial status matrix — source inspection only
-Candidate c6d449fc0ead93e259b79b87e63c1c894bd16c93; rows are provisional; none is newly accepted. Original R001–R003 evidence remains historical, not fresh exact candidate verification.
+# Status matrix — source inspection and initial foundation test
+Candidate c6d449fc0ead93e259b79b87e63c1c894bd16c93; rows are provisional; none is newly accepted; backend evidence is linked separately. Original R001–R003 evidence remains historical, not fresh exact candidate verification.
 
 | R | Capability | Initial observation | Verification pending |
 | --- | --- | --- | --- |
-| R001 | Foundation | code present; prior accepted | exact CI, restart |
+| R001 | Foundation | real backend tests 8/8 on candidate; see [R001](evidence/r001.md) | full exact validation and human/CI gates |
 | R002 | Identity/tenancy | prior integration evidence; human gate outstanding | OIDC, two tenants, revocation; manual SC-013 |
 | R003 | Catalog/CRS | prior exact CI and controls | regression, independent CRS/identity |
 | R004 | Map | UI + backend present | browser workflow, manual SC-009 |

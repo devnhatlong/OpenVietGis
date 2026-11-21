@@ -12,16 +12,16 @@ Audit tasks only; implementation fixes require separately scoped child specs. Al
 - [x] T005 Inspect original specs and approved draft decision register, recover canonical R006–R015 requirements into specs/018-full-product-audit/evidence/requirements.md; record requirement provenance and approval state (FR-002).
 - [x] T006 Create requirement-level register per data-model.md RequirementEvidence.requirement_id, RequirementEvidence.status, RequirementEvidence.artifacts, RequirementEvidence.candidate in specs/018-full-product-audit/evidence/requirements.md; map 15/15 groups (FR-002, FR-003, SC-001).
 - [ ] T007 Verify version pins, frozen dependency policy and disposable DB/test realm/artifact guard; record commands and environment in specs/018-full-product-audit/evidence/baseline.md (FR-011).
-- [ ] T008 Prepare synthetic GIS fixtures and independent oracle; record format/CRS control/checksum, expected results and source in specs/018-full-product-audit/evidence/fixtures.md (FR-004, FR-011).
+- [x] T008 Prepare synthetic GIS fixtures and independent oracle; record format/CRS control/checksum, expected results and source in specs/018-full-product-audit/evidence/fixtures.md (FR-004, FR-011).
 - [ ] T009 Check redaction and production isolation before any test, record gate in specs/018-full-product-audit/evidence/baseline.md (FR-011, SC-006).
 
 ## Phase 3: US1 — Establish actual baseline (P1)
-- [ ] T010 [US1] Review main/candidate/UX branch ancestry and integration ownership in specs/018-full-product-audit/evidence/baseline.md (FR-001, FR-015).
+- [x] T010 [US1] Review main/candidate/UX branch ancestry and integration ownership in specs/018-full-product-audit/evidence/baseline.md (FR-001, FR-015).
 - [ ] T011 [US1] Enumerate actual routes, UI commands, storage effects and existing evidence by requirement in specs/018-full-product-audit/evidence/requirements.md; mark missing or draft scope, never infer acceptance (FR-002, FR-003, FR-013).
 - [ ] T012 [US1] Check static capability assertions against independent evidence, update specs/018-full-product-audit/status-matrix.md (FR-013, SC-002).
 
 ## Phase 4: US2 — M1 Core verification (P1)
-- [ ] T013 [US2] Run exact baseline foundation, migration, restart and health validation; save results under specs/018-full-product-audit/evidence/r001.md (FR-004).
+- [x] T013 [US2] Run exact baseline foundation, migration, restart and health validation; save results under specs/018-full-product-audit/evidence/r001.md (FR-004).
 - [ ] T014 [US2] Exercise real OIDC session, project hierarchy, two-tenant deny, revocation in apps/api/tests/integration/identity and tenancy; record specs/018-full-product-audit/evidence/r002.md and pending SC-013 human gate (FR-004).
 - [ ] T015 [US2] Verify R003 CRS controls, catalog pins, scope and benchmark from specs/003-spatial-catalog-crs; record specs/018-full-product-audit/evidence/r003.md (FR-004).
 - [ ] T016 [US2] Verify layer tree, map pan/select/table/extent/save/reopen and stale/revoked behavior via tests/e2e/map-workspace.spec.ts; record specs/018-full-product-audit/evidence/r004.md and pending SC-009 human gate (FR-004).
