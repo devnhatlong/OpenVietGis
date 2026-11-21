@@ -9,6 +9,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { apiClient } from "../../app/api";
 import { useOptionalSession } from "../../app/session/SessionBoundary";
 import { buildAccountMenuState } from "./account-menu-state";
+import { lockOfflineActor } from "../offline/offline-store";
 import "./account-menu.css";
 
 export function AccountMenu() {
@@ -18,6 +19,7 @@ export function AccountMenu() {
 
   const signOut = useMutation({
     mutationFn: async () => {
+      lockOfflineActor();
       await loadCsrfToken(apiClient);
       await logout(apiClient);
     },

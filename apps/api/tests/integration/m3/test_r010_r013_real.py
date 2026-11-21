@@ -175,17 +175,19 @@ def test_r011_r012_r013_collaboration_cad_and_field_offline(migrated_database: N
 
         # --- R013: Offline GeoPackage bundle, revocation, outbox sync + conflict ---
         # First import an editable Point layer in WGS84
-        gj = json.dumps({
-            "type": "FeatureCollection",
-            "features": [
-                {
-                    "type": "Feature",
-                    "id": "pole_1",
-                    "properties": {"status": "ok"},
-                    "geometry": {"type": "Point", "coordinates": [105.85, 21.02]},
-                }
-            ],
-        }).encode("utf-8")
+        gj = json.dumps(
+            {
+                "type": "FeatureCollection",
+                "features": [
+                    {
+                        "type": "Feature",
+                        "id": "pole_1",
+                        "properties": {"status": "ok"},
+                        "geometry": {"type": "Point", "coordinates": [105.85, 21.02]},
+                    }
+                ],
+            }
+        ).encode("utf-8")
         up = client.post(
             f"{base}/imports/upload",
             files={"file": ("poles.geojson", gj, "application/geo+json")},
@@ -216,6 +218,7 @@ def test_r011_r012_r013_collaboration_cad_and_field_offline(migrated_database: N
                 "layer_id": pole_layer,
                 "aoi_bbox": {"min_x": 105.0, "min_y": 20.0, "max_x": 106.5, "max_y": 22.0},
                 "ttl_hours": 48,
+                "local_storage_confirmed": True,
             },
         )
         assert pkg.status_code == 201, pkg.text
@@ -226,6 +229,33 @@ def test_r011_r012_r013_collaboration_cad_and_field_offline(migrated_database: N
         assert dl.status_code == 200
         assert dl.content[:16] == b"SQLite format 3\x00"
         assert hashlib.sha256(dl.content).hexdigest() == pkg_data["sha256"]
+        snapshot = client.get(f"{base}/field/packages/{pkg_data['id']}/snapshot")
+        assert snapshot.status_code == 200, snapshot.text
+        assert (
+            hashlib.sha256(snapshot.content).hexdigest()
+            == pkg_data["layer_pins"][0]["snapshot_sha256"]
+        )
+        assert snapshot.json()["features"][0]["feature_id"] == "pole_1"
+        assert snapshot.json()["features"][0]["properties"] == {"status": "ok"}
+
+        for invalid in [
+            {
+                "op_type": "create",
+                "feature_id": "outside",
+                "geometry": {"type": "Point", "coordinates": [1, 1]},
+                "properties": {"status": "new"},
+            },
+            {"op_type": "update", "feature_id": "not-packaged", "properties": {"status": "new"}},
+            {"op_type": "delete", "feature_id": "pole_1", "properties": {"status": "new"}},
+        ]:
+            result = client.post(
+                f"{base}/field/packages/{pkg_data['id']}/sync",
+                json={
+                    "operation_id": str(uuid4()),
+                    "operations": [invalid],
+                },
+            )
+            assert result.status_code == 422, result.text
 
         # Sync offline field point capture cleanly through R006 changeset
         sync1 = client.post(
@@ -245,6 +275,25 @@ def test_r011_r012_r013_collaboration_cad_and_field_offline(migrated_database: N
         assert sync1.status_code == 201, sync1.text
         assert sync1.json()["status"] == "applied"
         cs_id = sync1.json()["applied_changeset_ids"][0]
+        replay_body = {
+            "operation_id": "sync-batch-1",
+            "operations": [
+                {
+                    "op_type": "create",
+                    "feature_id": "pole_2",
+                    "geometry": {"type": "Point", "coordinates": [105.86, 21.03]},
+                    "properties": {"status": "new_field"},
+                }
+            ],
+        }
+        replay = client.post(f"{base}/field/packages/{pkg_data['id']}/sync", json=replay_body)
+        assert replay.status_code == 201, replay.text
+        assert replay.json()["id"] == sync1.json()["id"]
+        replay_body["operations"][0]["properties"]["status"] = "changed intent"
+        changed_replay = client.post(
+            f"{base}/field/packages/{pkg_data['id']}/sync", json=replay_body
+        )
+        assert changed_replay.status_code == 409, changed_replay.text
 
         # Second sync from same stale package hits explicit conflict (never blind merge!)
         sync2 = client.post(

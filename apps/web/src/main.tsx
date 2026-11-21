@@ -10,6 +10,12 @@ if (!root) {
   throw new Error("Missing #root element");
 }
 
+if (import.meta.env.PROD && "serviceWorker" in navigator && window.isSecureContext) {
+  void navigator.serviceWorker.register("/offline-shell-sw.js").catch(error => {
+    console.warn("Offline shell unavailable", error);
+  });
+}
+
 createRoot(root).render(
   <StrictMode>
     <App />

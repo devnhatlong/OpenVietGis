@@ -65,6 +65,7 @@ class CreateOfflinePackageRequest(BaseModel):
     layer_id: UUID
     aoi_bbox: dict[str, float]
     ttl_hours: int = 72
+    local_storage_confirmed: bool = False
 
 
 class SyncOutboxRequest(BaseModel):
@@ -89,6 +90,7 @@ def create_offline_package(
             layer_id=body.layer_id,
             aoi_bbox=body.aoi_bbox,
             ttl_hours=body.ttl_hours,
+            local_storage_confirmed=body.local_storage_confirmed,
         )
     )
 
@@ -120,6 +122,27 @@ def download_offline_package(
         headers={
             "Content-Disposition": f'attachment; filename="offline-{pkg.id}.gpkg"',
             "X-Content-SHA256": pkg.sha256,
+            "Cache-Control": "no-store",
+        },
+    )
+
+
+@router.get(f"{_BASE}/field/packages/{{package_id}}/snapshot")
+def download_browser_snapshot(
+    organization_id: UUID,
+    project_id: UUID,
+    package_id: UUID,
+    auth: Annotated[AuthenticatedRequest, Depends(authenticate_request)],
+    session: Annotated[Session, Depends(get_db_session, scope="function")],
+) -> Response:
+    ctx = context_for(auth, organization_id=organization_id, project_id=project_id)
+    pkg, payload = _repo(session).download_snapshot(context=ctx, package_id=package_id)
+    return Response(
+        content=payload,
+        media_type="application/json",
+        headers={
+            "Cache-Control": "no-store",
+            "X-Content-SHA256": str(pkg.layer_pins[0]["snapshot_sha256"]),
         },
     )
 

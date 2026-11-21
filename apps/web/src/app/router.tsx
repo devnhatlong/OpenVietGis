@@ -19,6 +19,7 @@ import { InvitationAcceptPage } from "../features/invitations/InvitationAcceptPa
 import { LandingPage } from "../features/landing/LandingPage";
 import { MapWorkspace } from "../features/map/MapWorkspace";
 import { MembershipPage } from "../features/membership/MembershipPage";
+import { OfflineFieldPage } from "../features/offline/OfflineFieldPage";
 import { OrganizationHome } from "../features/organizations/OrganizationHome";
 import { CartographyWorkbenchPage } from "../features/platform/CartographyWorkbenchPage";
 import { EditingWorkbenchPage } from "../features/platform/EditingWorkbenchPage";
@@ -81,6 +82,7 @@ export const router = createBrowserRouter(
     },
     { path: "/landing", element: <LandingPage /> },
     { path: "/login", element: <LoginPage /> },
+    { path: "/offline-field/:organizationId/:projectId", element: <OfflineFieldPage /> },
 
     {
       path: "/app",

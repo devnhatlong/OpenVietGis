@@ -1,7 +1,6 @@
 import {
   cogoTraverse,
   createExternalConnection,
-  createOfflinePackage,
   decideChangeReview,
   getOpsHealthReady,
   getOpsReleaseCapabilities,
@@ -11,16 +10,13 @@ import {
   listChangeReviews,
   listExtensionManifests,
   listExternalConnections,
-  listOfflinePackages,
   listProjectActivities,
-  listSpatialLayers,
   loadCsrfToken,
-  offlinePackageDownloadUrl,
   registerAllowlistedHost
 } from "@openvietgis/client-sdk";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { apiClient } from "../../app/api";
 import { ProjectToolbar } from "./ProjectToolbar";
 import {
@@ -115,14 +111,6 @@ export function PlatformHubPage() {
   const [azimuth, setAzimuth] = useState("90");
   const [cogoOut, setCogoOut] = useState<string | null>(null);
 
-  // R013 Field state
-  const [pkgName, setPkgName] = useState("Field Offline Bundle");
-
-  const layersQ = useQuery({
-    queryKey: ["hub", organizationId, projectId, "layers"],
-    queryFn: () => listSpatialLayers(apiClient, organizationId, projectId),
-    enabled: Boolean(organizationId && projectId)
-  });
   const allowlistQ = useQuery({
     queryKey: ["hub", organizationId, "allowlist"],
     queryFn: () => listAllowlistedHosts(apiClient, organizationId),
@@ -146,11 +134,6 @@ export function PlatformHubPage() {
   const cadQ = useQuery({
     queryKey: ["hub", organizationId, projectId, "cad"],
     queryFn: () => listCadConversions(apiClient, organizationId, projectId),
-    enabled: Boolean(organizationId && projectId)
-  });
-  const fieldQ = useQuery({
-    queryKey: ["hub", organizationId, projectId, "field"],
-    queryFn: () => listOfflinePackages(apiClient, organizationId, projectId),
     enabled: Boolean(organizationId && projectId)
   });
   const extManifestsQ = useQuery({
@@ -445,58 +428,14 @@ export function PlatformHubPage() {
 
         {tab === "field" && (
           <section className="ovg-card">
-            <h2>Gói dữ liệu Hiện trường & Ngoại tuyến (GeoPackage)</h2>
-            <div className="ovg-form-row">
-              <label>
-                Tên gói ngoại tuyến
-                <input value={pkgName} onChange={(e) => setPkgName(e.target.value)} />
-              </label>
-              <button
-                type="button"
-                className="ovg-btn"
-                disabled={(layersQ.data?.items.length ?? 0) === 0}
-                onClick={async () => {
-                  const first = layersQ.data?.items[0];
-                  if (!first) return;
-                  setError(null);
-                  try {
-                    const csrf = await loadCsrfToken(apiClient);
-                    const pk = await createOfflinePackage(
-                      apiClient,
-                      organizationId,
-                      projectId,
-                      {
-                        name: pkgName,
-                        layer_id: first.id,
-                        aoi_bbox: { min_x: 100, min_y: 8, max_x: 112, max_y: 24 },
-                        ttl_hours: 48
-                      },
-                      csrf
-                    );
-                    setNotice(`Đã tạo GeoPackage ngoại tuyến ${pk.name} (${pk.feature_count} đối tượng).`);
-                    await qc.invalidateQueries({ queryKey: ["hub", organizationId, projectId, "field"] });
-                  } catch (err) {
-                    setError(err instanceof Error ? err.message : "Tạo gói dữ liệu không thành công.");
-                  }
-                }}
-              >
-                Đóng gói GeoPackage ngoại tuyến
-              </button>
-            </div>
-            <ul>
-              {(fieldQ.data?.items ?? []).map((p) => (
-                <li key={p.id}>
-                  <strong>{p.name}</strong> ({p.feature_count} đối tượng, hết hạn {p.expires_at}) —{" "}
-                  <a
-                    href={offlinePackageDownloadUrl(organizationId, projectId, p.id)}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    Tải xuống .gpkg
-                  </a>
-                </li>
-              ))}
-            </ul>
+            <h2>Không gian hiện trường ngoại tuyến</h2>
+            <p>Chọn vùng dữ liệu có quyền, tải và xác minh GeoPackage; lưu bản nháp trên thiết bị, đồng bộ khi có kết nối.</p>
+            <Link
+              className="ovg-btn"
+              to={`/offline-field/${encodeURIComponent(organizationId)}/${encodeURIComponent(projectId)}`}
+            >
+              Mở không gian hiện trường
+            </Link>
           </section>
         )}
 

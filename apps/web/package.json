@@ -8,7 +8,7 @@
   },
   "scripts": {
     "dev": "vite --host 127.0.0.1 --port 5173",
-    "build": "tsc --noEmit && vite build",
+    "build": "tsc --noEmit && vite build && node scripts/build-offline-shell.mjs",
     "lint": "eslint src vite.config.ts --max-warnings=0",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --passWithNoTests"

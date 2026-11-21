@@ -17,6 +17,7 @@ import {
   protectedQueryOptions
 } from "../../app/protected-query";
 import { FreshAccount } from "./FreshAccount";
+import { lockOfflineActor } from "../offline/offline-store";
 import "./account-page.css";
 
 function IdentityDetails({ account }: { account: CurrentUser }) {
@@ -61,6 +62,8 @@ function IdentityDetails({ account }: { account: CurrentUser }) {
 
   const signOut = useMutation({
     mutationFn: async () => {
+      // Lock local ordinary access even if the logout acknowledgement is lost.
+      lockOfflineActor();
       await loadCsrfToken(apiClient);
       await logout(apiClient);
     },

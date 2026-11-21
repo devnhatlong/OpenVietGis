@@ -16,6 +16,7 @@ import { Navigate, useLocation } from "react-router-dom";
 
 import { apiClient } from "../api";
 import { currentBrowserDestination } from "./return-destination";
+import { observeOnlineActor } from "../../features/offline/offline-store";
 
 interface SessionContextValue {
   account: CurrentUser;
@@ -57,6 +58,15 @@ export function SessionBoundary({ children }: { children: ReactNode }) {
   const account = unauthorized ? null : user.data?.status === "active"
     ? user.data
     : confirmedAccount.current;
+
+  // Confirmed account changes or authorization loss lock the separate local field workspace.
+  useEffect(() => {
+    if (user.error instanceof ApiError && [401, 403].includes(user.error.status)) {
+      observeOnlineActor(null);
+    } else if (user.data && !user.error && user.fetchStatus === "idle") {
+      observeOnlineActor(user.data.status === "active" ? user.data.id : null);
+    }
+  }, [user.data, user.error, user.fetchStatus]);
 
   useEffect(() => {
     if (!unauthorized) return;
