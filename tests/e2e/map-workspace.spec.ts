@@ -179,7 +179,7 @@ test("technical details drawer returns focus and clears on active-layer scope ch
     page,
     Date.now().toString() + "-technical-drawer"
   );
-  await registerMapReferences(page, fixture, false);
+  await registerMapReferences(page, fixture, true);
   await saveFixtureMap(page, fixture);
   await openFixtureMap(page, fixture);
 
@@ -200,8 +200,12 @@ test("technical details drawer returns focus and clears on active-layer scope ch
   await expect(drawer).toContainText(fixture.organizationId);
   await expect(drawer).toContainText(fixture.projectId);
   await expect(drawer).toContainText(current.map_id);
-  await expect(drawer).toContainText(fixture.layers[0]!.id);
-  await expect(drawer).toContainText(fixture.layers[0]!.source_id);
+  const initialLayerId = current.configuration.layers[0]!.layer_id;
+  const initialLayer = fixture.layers.find(
+    (layer) => layer.id === initialLayerId
+  )!;
+  await expect(drawer).toContainText(initialLayer.id);
+  await expect(drawer).toContainText(initialLayer.source_id);
 
   await drawer
     .getByRole("button", { name: "Đóng thông tin kỹ thuật" })
@@ -209,7 +213,9 @@ test("technical details drawer returns focus and clears on active-layer scope ch
   await expect(drawer).not.toBeVisible();
   await expect(trigger).toBeFocused();
 
-  const secondLayer = fixture.layers[1]!;
+  const secondLayer = fixture.layers.find(
+    (layer) => layer.id !== initialLayer.id
+  )!;
   await trigger.click();
   await expect(drawer).toBeVisible();
 
@@ -229,7 +235,7 @@ test("technical details drawer returns focus and clears on active-layer scope ch
   await expect(drawer).toBeVisible();
   await expect(drawer).toContainText(secondLayer.id);
   await expect(drawer).toContainText(secondLayer.source_id);
-  await expect(drawer).not.toContainText(fixture.layers[0]!.id);
+  await expect(drawer).not.toContainText(initialLayer.id);
 });
 
 test("preserves the designated camera and reconciles a genuinely committed lost acknowledgement after a later save", async ({ page }) => {
