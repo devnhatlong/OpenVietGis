@@ -527,6 +527,17 @@ export interface ExternalProviderPreview {
   image_png_base64?: string;
   width?: number;
   height?: number;
+  sample?:
+    | { kind: "xyz" | "wmts"; z: number; x: number; y: number }
+    | {
+        kind: "geotiff_range_sample";
+        tile_width: number;
+        tile_height: number;
+        tile_count: number;
+        pixel_size: [number, number];
+        band_count: number;
+        range_bytes: number;
+      };
   feature_collection?: {
     type: "FeatureCollection";
     features: Array<{

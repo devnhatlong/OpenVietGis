@@ -112,6 +112,7 @@ class FixtureSocket:
         assert "Accept-Encoding: identity" in headers
         assert not any(line.startswith(("Authorization:", "Cookie:")) for line in headers)
         self.factory.requests.append(path)
+        self.factory.request_headers.append(headers)
         status, media, data, extra = self.factory.response(path)
         return io.BytesIO(
             f"HTTP/1.1 {status}\r\nContent-Type: {media}\r\n"
@@ -130,6 +131,7 @@ class FixtureProvider:
     def __init__(self, monkeypatch: pytest.MonkeyPatch):
         self.addresses: list[tuple[str, int]] = []
         self.requests: list[str] = []
+        self.request_headers: list[list[str]] = []
         self.sni: list[str] = []
         self.dns = [PINNED_IP]
         self.peer = PINNED_IP

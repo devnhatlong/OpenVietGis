@@ -1,8 +1,7 @@
 """Restricted, request-time provider profiles for R010.
 
-Only explicitly operator-approved public WMS 1.1.1 and WFS 1.0.0
-sample regions are supported. No user-supplied URL, credentials, or geometry
-ever reaches the outbound transport.
+Only explicitly operator-approved public sample regions are supported.
+No user-supplied URL, credentials, or geometry reaches outbound transport.
 """
 
 from __future__ import annotations
@@ -55,6 +54,29 @@ class ProviderUnavailable(PlatformDomainError):
         )
 
 
+WEB_MERCATOR_RADIUS = 6378137.0
+WEB_MERCATOR_HALF = math.pi * WEB_MERCATOR_RADIUS
+
+
+@dataclass(frozen=True, slots=True)
+class TileProfile:
+    kind: str
+    z: int
+    x: int
+    y: int
+    template: str | None = None
+    matrix_set: str | None = None
+    matrix: str | None = None
+    style: str | None = None
+
+    @property
+    def bbox(self) -> BBox:
+        step = 2 * WEB_MERCATOR_HALF / 2**self.z
+        left = -WEB_MERCATOR_HALF + step * self.x
+        top = WEB_MERCATOR_HALF - step * self.y
+        return left, top - step, left + step, top
+
+
 @dataclass(frozen=True, slots=True)
 class ProviderProfile:
     endpoint: str
@@ -64,6 +86,7 @@ class ProviderProfile:
     bbox: BBox
     attribution: str
     license_text: str
+    tile: TileProfile | None = None
 
 
 def _bbox(raw: Any, crs: int) -> BBox:
@@ -104,6 +127,62 @@ def endpoint_is_public_profile(endpoint: str) -> bool:
         return False
 
 
+def _near_bbox(a: BBox, b: BBox) -> bool:
+    return all(math.isclose(x, y, rel_tol=0, abs_tol=1e-5) for x, y in zip(a, b, strict=True))
+
+
+def _tile_profile(raw: Any, endpoint: str, bbox: BBox) -> TileProfile:
+    if not isinstance(raw, dict):
+        raise ValueError("tile profile required")
+    kind, z, x, y = (raw.get(k) for k in ("kind", "z", "x", "y"))
+    if not (
+        kind in ("xyz", "wmts")
+        and type(z) is int
+        and 0 <= z <= 20
+        and type(x) is int
+        and 0 <= x < 2**z
+        and type(y) is int
+        and 0 <= y < 2**z
+    ):
+        raise ValueError("invalid fixed tile coordinates")
+    if kind == "xyz":
+        if set(raw) - {"kind", "z", "x", "y", "template", "matrix_set", "matrix", "style"}:
+            raise ValueError("unknown tile fields")
+        template = raw.get("template")
+        if not isinstance(template, str) or any(
+            template.count(token) != 1 for token in ("{z}", "{x}", "{y}")
+        ):
+            raise ValueError("invalid tile template")
+        rendered = template.replace("{z}", str(z)).replace("{x}", str(x)).replace("{y}", str(y))
+        if (
+            "{" in rendered
+            or "}" in rendered
+            or not endpoint_is_public_profile(rendered)
+            or urlsplit(rendered).netloc != urlsplit(endpoint).netloc
+            or any(raw.get(k) is not None for k in ("matrix_set", "matrix", "style"))
+        ):
+            raise ValueError("unsafe tile template")
+        tile = TileProfile(kind, z, x, y, template=template)
+    else:
+        if (
+            set(raw) - {"kind", "z", "x", "y", "template", "matrix_set", "matrix", "style"}
+            or raw.get("template") is not None
+        ):
+            raise ValueError("unknown tile fields")
+        matrix_set, matrix, style = (raw.get(k) for k in ("matrix_set", "matrix", "style"))
+        if not all(
+            isinstance(value, str)
+            and 1 <= len(value) <= 200
+            and all(c.isascii() and (c.isalnum() or c in "_-.:") for c in value)
+            for value in (matrix_set, matrix, style)
+        ):
+            raise ValueError("invalid fixed WMTS matrix/style")
+        tile = TileProfile(kind, z, x, y, matrix_set=matrix_set, matrix=matrix, style=style)
+    if not _near_bbox(tile.bbox, bbox):
+        raise ValueError("tile coordinates do not match approved extent")
+    return tile
+
+
 def load_profiles() -> tuple[ProviderProfile, ...]:
     """Invalid deployment policy is fail-closed, never a wildcard."""
     try:
@@ -115,7 +194,7 @@ def load_profiles() -> tuple[ProviderProfile, ...]:
             return ()
         profiles = []
         for entry in entries:
-            if not isinstance(entry, dict) or set(entry) != {
+            required = {
                 "endpoint",
                 "protocol",
                 "layer",
@@ -123,7 +202,8 @@ def load_profiles() -> tuple[ProviderProfile, ...]:
                 "bbox",
                 "attribution",
                 "license_text",
-            }:
+            }
+            if not isinstance(entry, dict) or not required <= set(entry) <= required | {"tile"}:
                 return ()
             endpoint = entry["endpoint"]
             protocol = ExternalProtocol(entry["protocol"])
@@ -133,10 +213,11 @@ def load_profiles() -> tuple[ProviderProfile, ...]:
             if (
                 not isinstance(endpoint, str)
                 or not endpoint_is_public_profile(endpoint)
-                or protocol not in (ExternalProtocol.WMS, ExternalProtocol.WFS_OGC_FEATURES)
                 or type(crs) is not int
                 or crs not in (4326, 3857)
                 or (protocol == ExternalProtocol.WFS_OGC_FEATURES and crs != 4326)
+                or (protocol == ExternalProtocol.WMTS_XYZ and crs != 3857)
+                or (protocol != ExternalProtocol.WMTS_XYZ and entry.get("tile") is not None)
                 or not isinstance(layer, str)
                 or not (1 <= len(layer) <= 200)
                 or not all(c.isascii() and (c.isalnum() or c in "_-.:") for c in layer)
@@ -148,15 +229,15 @@ def load_profiles() -> tuple[ProviderProfile, ...]:
                 or license_text.startswith("Provider License Terms")
             ):
                 return ()
+            bbox = _bbox(entry["bbox"], crs)
+            tile = (
+                _tile_profile(entry.get("tile"), endpoint, bbox)
+                if protocol == ExternalProtocol.WMTS_XYZ
+                else None
+            )
             profiles.append(
                 ProviderProfile(
-                    endpoint,
-                    protocol,
-                    layer,
-                    crs,
-                    _bbox(entry["bbox"], crs),
-                    attribution,
-                    license_text,
+                    endpoint, protocol, layer, crs, bbox, attribution, license_text, tile
                 )
             )
         return tuple(profiles)
@@ -356,6 +437,10 @@ def _wms_preview(profile: ProviderProfile, fetch: Fetch) -> dict[str, Any]:
         "png",
         MAP_MAX,
     )
+    return _verified_png(raw)
+
+
+def _verified_png(raw: bytes) -> dict[str, Any]:
     try:
         if len(raw) > MAP_MAX:
             raise ValueError("response too large")
@@ -565,6 +650,16 @@ def provider_preview(profile: ProviderProfile, fetch: Fetch) -> dict[str, Any]:
         content = _wfs_preview(profile, fetch)
         caps["feature_read"] = True
         caps["query"] = True  # only fixed approved bounding-box sample query
+    elif profile.protocol == ExternalProtocol.WMTS_XYZ and profile.tile is not None:
+        from openvietgis_api.domains.external_sources.tile_provider import tile_preview
+
+        content = tile_preview(profile, fetch)
+        caps["render"] = True
+    elif profile.protocol == ExternalProtocol.COG_GEOTIFF:
+        from openvietgis_api.domains.external_sources.geotiff_provider import geotiff_preview
+
+        content = geotiff_preview(profile, fetch)
+        caps["render"] = True
     else:
         raise PlatformForbiddenError("unsupported provider protocol", code="PROVIDER_DISABLED")
     return {

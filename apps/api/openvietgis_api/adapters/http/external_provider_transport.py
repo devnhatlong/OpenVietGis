@@ -30,9 +30,11 @@ _MEDIA_TYPES = {
         "application/xml",
         "application/vnd.ogc.wms_xml",
         "application/vnd.ogc.wfs_xml",
+        "application/vnd.ogc.wmts_xml",
     },
     "png": {"image/png"},
     "json": {"application/json", "application/geo+json"},
+    "tiff": {"image/tiff", "image/geotiff", "application/geotiff"},
 }
 
 
@@ -143,20 +145,21 @@ def fetch_provider_bytes(url: str, expected: str, limit: int) -> bytes:
         connection = http.client.HTTPConnection(parsed.hostname, 443, timeout=_remaining(deadline))
         connection.sock = connected
         path = parsed.path + (f"?{parsed.query}" if parsed.query else "")
-        connection.request(
-            "GET",
-            path,
-            headers={
-                "Host": parsed.hostname,
-                "Accept": ", ".join(sorted(_MEDIA_TYPES[expected])),
-                "Accept-Encoding": "identity",
-                "Connection": "close",
-                "User-Agent": "OpenVietGIS-restricted-provider/1",
-            },
-        )
+        headers = {
+            "Host": parsed.hostname,
+            "Accept": ", ".join(sorted(_MEDIA_TYPES[expected])),
+            "Accept-Encoding": "identity",
+            "Connection": "close",
+            "User-Agent": "OpenVietGIS-restricted-provider/1",
+        }
+        if expected == "tiff":
+            headers["Range"] = f"bytes=0-{limit - 1}"
+        connection.request("GET", path, headers=headers)
         response = connection.getresponse()
         # Never follow even same-origin redirects.
-        if response.status != 200 or response.getheader("Location"):
+        if response.status != (206 if expected == "tiff" else 200) or response.getheader(
+            "Location"
+        ):
             raise ProviderUnavailable()
         if response.getheader("Content-Encoding", "identity").lower().strip() != "identity":
             raise ProviderUnavailable()
@@ -165,6 +168,19 @@ def fetch_provider_bytes(url: str, expected: str, limit: int) -> bytes:
             raise ProviderUnavailable()
         declared = response.getheader("Content-Length")
         if declared is not None and (not declared.isdecimal() or int(declared) > limit):
+            raise ProviderUnavailable()
+        if expected == "tiff":
+            # A single bounded complete-object range: an ignored range (200),
+            # truncated or multipart response, unknown size, or large file is
+            # never considered a verified raster sample.
+            content_range = response.getheader("Content-Range", "")
+            match = re.fullmatch(r"bytes 0-([0-9]{1,10})/([0-9]{1,10})", content_range)
+            if match is None or declared is None:
+                raise ProviderUnavailable()
+            last, total = int(match[1]), int(match[2])
+            if not (0 < total <= limit and last == total - 1 and int(declared) == total):
+                raise ProviderUnavailable()
+        elif response.getheader("Content-Range") is not None:
             raise ProviderUnavailable()
         payload = response.read(limit + 1)
         _remaining(deadline)

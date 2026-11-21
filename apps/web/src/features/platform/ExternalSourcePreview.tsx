@@ -20,7 +20,7 @@ export function ExternalSourcePreview({ connection, organizationId, projectId }:
   const [preview, setPreview] = useState<ExternalProviderPreview | null>(null);
   const [pending, setPending] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
-  const supported = connection.protocol === "wms" || connection.protocol === "wfs_ogc_features";
+  const supported = ["wms", "wfs_ogc_features", "wmts_xyz", "cog_geotiff"].includes(connection.protocol);
 
   if (connection.lifecycle === "revoked" || connection.availability === "revoked") {
     return <span> — {externalAvailabilityLabel(connection)}</span>;
@@ -71,12 +71,22 @@ export function ExternalSourcePreview({ connection, organizationId, projectId }:
           <p>Vùng mẫu do quản trị viên duyệt: {preview.bbox.join(", ")}</p>
           {preview.image_png_base64 && preview.capabilities.render && (
             <img
-              alt={`Ảnh WMS ${preview.layer_identifier} tại vùng mẫu đã duyệt`}
+              alt={`Ảnh raster ${preview.layer_identifier} tại vùng mẫu đã duyệt`}
               width={preview.width}
               height={preview.height}
               src={`data:image/png;base64,${preview.image_png_base64}`}
               style={{ maxWidth: "100%", height: "auto" }}
             />
+          )}
+          {preview.sample?.kind === "geotiff_range_sample" && (
+            <p>
+              Mẫu GeoTIFF range: {preview.sample.tile_count} tile, {preview.sample.band_count} kênh,
+              kích thước pixel {preview.sample.pixel_size.join(" × ")};
+              chưa hỗ trợ đọc cửa sổ COG lớn.
+            </p>
+          )}
+          {(preview.sample?.kind === "xyz" || preview.sample?.kind === "wmts") && (
+            <p>Tile {preview.sample.kind.toUpperCase()}: z={preview.sample.z}, x={preview.sample.x}, y={preview.sample.y}</p>
           )}
           {preview.feature_collection && preview.capabilities.feature_read && (
             <>

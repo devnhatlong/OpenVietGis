@@ -99,7 +99,7 @@ export function PlatformHubPage() {
   // R010 state
   const [extHost, setExtHost] = useState("tiles.example.org");
   const [extUrl, setExtUrl] = useState("https://tiles.example.org/wms");
-  const [extProtocol, setExtProtocol] = useState<"wms" | "wfs_ogc_features">("wms");
+  const [extProtocol, setExtProtocol] = useState<"wms" | "wfs_ogc_features" | "wmts_xyz" | "cog_geotiff">("wms");
   const [extLayer, setExtLayer] = useState("default");
   const [extAttribution, setExtAttribution] = useState("External Provider");
   const [extLicense, setExtLicense] = useState("Provider License Terms");
@@ -285,10 +285,16 @@ export function PlatformHubPage() {
                 Giao thức xem mẫu
                 <select
                   value={extProtocol}
-                  onChange={(e) => setExtProtocol(e.target.value === "wms" ? "wms" : "wfs_ogc_features")}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    if (value === "wms" || value === "wfs_ogc_features" ||
+                        value === "wmts_xyz" || value === "cog_geotiff") setExtProtocol(value);
+                  }}
                 >
                   <option value="wms">WMS 1.1.1</option>
                   <option value="wfs_ogc_features">WFS 1.0.0</option>
+                  <option value="wmts_xyz">WMTS / XYZ (một tile)</option>
+                  <option value="cog_geotiff">GeoTIFF (mẫu range giới hạn)</option>
                 </select>
               </label>
               <label>
