@@ -20,11 +20,18 @@ def parse_dxf_2d(
     """Parse 2D DXF entities into GeoJSON-like features + explicit entity/loss report."""
     scale = UNIT_TO_METERS[units]
     try:
-        text_stream = io.StringIO(payload.decode("utf-8", errors="replace"))
+        text_stream = io.StringIO(payload.decode("utf-8", errors="strict"))
         doc = ezdxf.read(text_stream)
     except Exception as exc:
         raise PlatformValidationError(f"invalid DXF document: {exc}", code="INVALID_DXF") from exc
 
+    declared_units = int(doc.header.get("$INSUNITS", 0))
+    expected_units = {CadUnit.METER: 6, CadUnit.CENTIMETER: 5, CadUnit.MILLIMETER: 4}[units]
+    if declared_units not in (0, expected_units):
+        raise PlatformValidationError(
+            "DXF declared units do not match the selected supported units",
+            code="CAD_UNIT_MISMATCH",
+        )
     msp = doc.modelspace()
     points: list[dict[str, Any]] = []
     lines: list[dict[str, Any]] = []
@@ -39,6 +46,17 @@ def parse_dxf_2d(
         entity_counts[etype] = entity_counts.get(etype, 0) + 1
         layer_name = str(ent.dxf.get("layer", "0"))
         idx += 1
+        if idx > 10000:
+            raise PlatformValidationError("DXF entity limit exceeded", code="CAD_ENTITY_LIMIT")
+        if etype in ("LWPOLYLINE", "CIRCLE") and tuple(ent.dxf.get("extrusion", (0, 0, 1))) != (
+            0,
+            0,
+            1,
+        ):
+            raise PlatformValidationError(
+                "nonstandard object-coordinate extrusion cannot be imported safely",
+                code="CAD_OCS_UNSUPPORTED",
+            )
 
         if etype == "POINT":
             loc = ent.dxf.location
@@ -63,7 +81,13 @@ def parse_dxf_2d(
             )
         elif etype == "LWPOLYLINE":
             lw: Any = ent
-            pts = [[float(p[0]) * scale, float(p[1]) * scale] for p in lw.get_points("xy")]
+            points_with_bulges = lw.get_points("xyb")
+            if any(float(p[2]) != 0 for p in points_with_bulges):
+                raise PlatformValidationError(
+                    "curved LWPOLYLINE bulges require a verified tessellation profile",
+                    code="CAD_BULGE_UNSUPPORTED",
+                )
+            pts = [[float(p[0]) * scale, float(p[1]) * scale] for p in points_with_bulges]
             if len(pts) < 2:
                 unsupported_counts["DEGENERATE_LWPOLYLINE"] = (
                     unsupported_counts.get("DEGENERATE_LWPOLYLINE", 0) + 1
@@ -126,6 +150,7 @@ def parse_dxf_2d(
     entity_summary = {
         "dxf_version": doc.dxfversion,
         "units": units.value,
+        "declared_insunits": declared_units,
         "scale_to_meters": scale,
         "entity_counts": entity_counts,
         "published_family": dominant_family,

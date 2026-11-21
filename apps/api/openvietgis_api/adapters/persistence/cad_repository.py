@@ -21,7 +21,7 @@ from openvietgis_api.adapters.storage.local_object_store import LocalObjectStore
 from openvietgis_api.domains.authorization.context import AuthorizationContext
 from openvietgis_api.domains.authorization.permissions import Permission
 from openvietgis_api.domains.cad.domain import CadConversionRecord, CadUnit
-from openvietgis_api.domains.editing.domain import geometry_to_wkt
+from openvietgis_api.domains.editing.domain import geometry_to_wkt, validate_geometry_payload
 from openvietgis_api.domains.platform_errors import (
     PlatformConflictError,
     PlatformNotFoundError,
@@ -93,11 +93,12 @@ class SqlCadRepository:
         lower = filename.lower()
         fmt = "dwg" if lower.endswith(".dwg") else "dxf"
         skey = f"cad/{org_id}/{project_id}/{conv_id}.{fmt}"
-        sha256_hex, byte_size = self._store.put_bytes(skey, payload)
+        sha256_hex, byte_size = hashlib.sha256(payload).hexdigest(), len(payload)
         now = datetime.now(UTC)
 
         if fmt == "dwg":
-            # Preserve original evidence and reject DWG without licensed adapter
+            # Preserve original evidence and reject DWG without licensed adapter.
+            self._store.put_bytes(skey, payload)
             row = (
                 self._session.execute(
                     text("""
@@ -145,6 +146,8 @@ class SqlCadRepository:
             )
 
         family, features, entity_summary, loss_report = parse_dxf_2d(payload, units=units)
+        for feature in features:
+            validate_geometry_payload(feature["geometry"], GeometryFamily(family))
 
         # Publish as a new project-owned spatial source & layer (kind='derived_processing')
         out_source_id = uuid4()
@@ -253,6 +256,19 @@ class SqlCadRepository:
                 },
             )
 
+        invalid = self._session.execute(
+            text("""
+                SELECT count(*) FROM spatial.reference_features
+                WHERE organization_id = :org AND project_id = :proj AND source_id = :src
+                  AND (ST_IsEmpty(geometry) OR NOT ST_IsValid(geometry))
+            """),
+            {"org": org_id, "proj": project_id, "src": out_source_id},
+        ).scalar_one()
+        if invalid:
+            raise PlatformValidationError(
+                "invalid DXF geometry; publication rejected", code="INVALID_GEOMETRY"
+            )
+
         stats = (
             self._session.execute(
                 text("""
@@ -359,6 +375,9 @@ class SqlCadRepository:
             .mappings()
             .one()
         )
+        # Publish original bytes only after parsing, geometry validation and
+        # transaction writes succeeded; rejected DXF must not leave orphan files.
+        self._store.put_bytes(skey, payload)
         self._session.commit()
         return _conv_from_row(row)
 
