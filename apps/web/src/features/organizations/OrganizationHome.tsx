@@ -13,7 +13,6 @@ import { Link, useParams } from "react-router-dom";
 
 import { apiClient } from "../../app/api";
 import { currentProtectedData, protectedQueryOptions } from "../../app/protected-query";
-import { AccountMenu } from "../auth/AccountMenu";
 import { FreshAccount } from "../auth/FreshAccount";
 import { BootstrapPage } from "./BootstrapPage";
 import "./organization-home.css";
@@ -86,17 +85,7 @@ function OrganizationList({ organizationId, account }: { organizationId: string 
   }
 
   return (
-    <div className="org-shell">
-      <header className="org-topbar">
-        <div className="org-topbar-brand">
-          <span className="org-topbar-mark">OVG</span>
-          <span>OpenVietGIS</span>
-        </div>
-        <div className="org-topbar-actions">
-          <AccountMenu />
-        </div>
-      </header>
-
+    <div className="org-content-shell">
       <main className="org-page">
         <section className="org-hero">
           <div>
@@ -116,7 +105,7 @@ function OrganizationList({ organizationId, account }: { organizationId: string 
                   {visibleOrganizations.map((organization) => (
                     <li key={organization.id} className={organization.id === organizationId ? "is-active" : ""}>
                       <Link
-                        to={"/organizations/" + organization.id}
+                        to={"/app/organizations/" + organization.id}
                         aria-current={organization.id === organizationId ? "page" : undefined}
                       >
                         {organization.name}
@@ -133,25 +122,29 @@ function OrganizationList({ organizationId, account }: { organizationId: string 
                 <h2 id="active-organization-title">Làm việc với {activeOrganization.name}</h2>
                 <p className="org-card-sub">Đi nhanh tới các khu vực quản trị và dữ liệu chính.</p>
                 <div className="org-shortcuts">
-                  <Link className="org-shortcut" to={"/organizations/" + activeOrganization.id + "/projects"}>
+                  <Link className="org-shortcut" to={"/app/organizations/" + activeOrganization.id + "/projects"}>
                     <strong>Dự án</strong>
                     <small>Bản đồ, lớp dữ liệu và công cụ GIS</small>
                   </Link>
-                  <Link className="org-shortcut" to={"/organizations/" + activeOrganization.id + "/workspaces"}>
+                  <Link className="org-shortcut" to={"/app/organizations/" + activeOrganization.id + "/workspaces"}>
                     <strong>Không gian làm việc</strong>
                     <small>Sắp xếp dự án theo nhóm làm việc</small>
                   </Link>
-                  <Link className="org-shortcut" to={"/organizations/" + activeOrganization.id + "/membership"}>
+                  <Link className="org-shortcut" to={"/app/organizations/" + activeOrganization.id + "/membership"}>
                     <strong>Thành viên & phân quyền</strong>
                     <small>Quản lý người dùng và quyền truy cập</small>
                   </Link>
                 </div>
-                <dl className="org-meta" data-testid="active-organization">
-                  <dt>Vai trò</dt>
-                  <dd>{organizationRoleLabel(activeOrganization.role)}</dd>
-                  <dt>Mã tổ chức</dt>
-                  <dd>{activeOrganization.id}</dd>
-                </dl>
+                <p className="org-card-sub" data-testid="active-organization">
+                  Vai trò hiện tại: <strong>{organizationRoleLabel(activeOrganization.role)}</strong>
+                </p>
+                <details className="org-technical">
+                  <summary>Thông tin kỹ thuật</summary>
+                  <dl>
+                    <dt>Mã tổ chức</dt>
+                    <dd>{activeOrganization.id}</dd>
+                  </dl>
+                </details>
               </section>
             ) : null}
           </div>

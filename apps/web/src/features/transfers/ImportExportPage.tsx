@@ -284,16 +284,16 @@ function TransfersWorkspace({
     <main className="transfers-page" data-testid="transfers-page">
       <header className="transfers-header">
         <div>
-          <Link to={`/organizations/${organizationId}/projects`}>← Dự án</Link>
+          <Link to={`/app/organizations/${organizationId}/projects`}>← Dự án</Link>
           <h1>
             {project.name} <small>Nhập / Xuất dữ liệu</small>
           </h1>
         </div>
         <nav className="transfers-nav">
-          <Link to={`/organizations/${organizationId}/projects/${projectId}/spatial`}>
+          <Link to={`/app/organizations/${organizationId}/projects/${projectId}/spatial`}>
             Danh mục GIS
           </Link>
-          <Link to={`/organizations/${organizationId}/projects/${projectId}/map`}>
+          <Link to={`/app/organizations/${organizationId}/projects/${projectId}/map`}>
             Không gian bản đồ
           </Link>
         </nav>
@@ -628,7 +628,7 @@ function TransfersWorkspace({
                         </small>
                       </div>
                     ) : job.target_layer_id ? (
-                      <Link to={`/organizations/${organizationId}/projects/${projectId}/map`}>
+                      <Link to={`/app/organizations/${organizationId}/projects/${projectId}/map`}>
                         Mở trên bản đồ
                       </Link>
                     ) : null}
@@ -686,7 +686,7 @@ function ProtectedTransfers({
     const error = projectQuery.error || permissionQuery.error;
     return (
       <main className="transfers-page">
-        <Link to={`/organizations/${organizationId}/projects`}>← Dự án</Link>
+        <Link to={`/app/organizations/${organizationId}/projects`}>← Dự án</Link>
         <h1>Nhập / Xuất dữ liệu</h1>
         <p role={error ? "alert" : "status"}>
           {error

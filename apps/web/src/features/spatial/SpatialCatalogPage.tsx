@@ -402,7 +402,7 @@ function CatalogView({ organizationId, projectId, accountId }: {
 
   return (
     <main style={{ maxWidth: 1100, margin: "32px auto", padding: "0 16px", fontFamily: "system-ui, sans-serif" }}>
-      <p><Link to={"/organizations/" + encodeURIComponent(organizationId) + "/projects"}>← Danh sách Dự án</Link></p>
+      <p><Link to={"/app/organizations/" + encodeURIComponent(organizationId) + "/projects"}>← Danh sách Dự án</Link></p>
       <h1>Danh mục nguồn dữ liệu không gian</h1>
       <p>Đăng ký và kiểm tra các nguồn tham chiếu tin cậy.</p>
       {!project || !hasProjectAccess || !catalog ? (

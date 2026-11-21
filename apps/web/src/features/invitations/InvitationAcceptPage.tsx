@@ -36,7 +36,7 @@ function AcceptForm({ userId }: { userId: string }) {
       const result = await acceptInvitation(apiClient, input);
       setHandoff("");
       await queryClient.invalidateQueries({ queryKey: ["my-organizations", userId] });
-      await navigate("/organizations/" + encodeURIComponent(result.membership.organization_id));
+      await navigate("/app/organizations/" + encodeURIComponent(result.membership.organization_id));
     } catch (error) {
       setError("Không thể chấp nhận lời mời. Hãy kiểm tra thông tin và đăng nhập đúng tài khoản người nhận.");
       setHandoff("");

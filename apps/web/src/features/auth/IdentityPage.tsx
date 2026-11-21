@@ -74,7 +74,7 @@ function IdentityDetails({ account }: { account: CurrentUser }) {
   return (
     <main style={{ maxWidth: 800, margin: "40px auto", fontFamily: "system-ui, sans-serif" }}>
       <p>
-        <Link to="/">← Tổ chức</Link>
+        <Link to="/app">← Trang làm việc</Link>
       </p>
       <h1>Danh tính & phiên đăng nhập</h1>
       <p>

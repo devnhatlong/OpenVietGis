@@ -65,3 +65,30 @@ body{margin:0;background:#f6f9fb}
 .ovg-landing-footer .ovg-brand-mark{width:34px;height:34px;font-size:11px}
 @media(max-width:900px){.ovg-landing-header nav{display:none}.ovg-hero{grid-template-columns:1fr;padding-top:48px}.ovg-hero h1{font-size:42px}.ovg-feature-grid{grid-template-columns:1fr 1fr}.ovg-workflow{padding:70px 28px;grid-template-columns:1fr}.ovg-login-section{grid-template-columns:1fr;gap:42px}.ovg-login-card{max-width:520px}.ovg-map-stage-preview{height:330px}}
 @media(max-width:580px){.ovg-hero h1{font-size:36px}.ovg-proof-row,.ovg-feature-grid,.ovg-workflow ol{grid-template-columns:1fr}.ovg-map-preview{display:none}.ovg-landing-footer{align-items:flex-start;gap:20px;flex-direction:column}}
+
+.ovg-public-cta{padding:76px 28px;text-align:center;background:#0e2c40;color:#f6fbfd}
+.ovg-public-cta h2{font-size:36px;letter-spacing:-.025em;margin:12px 0}
+.ovg-public-cta p{max-width:650px;margin:0 auto 24px;color:#b6cbd7;line-height:1.7}
+.ovg-public-cta .ovg-primary-link{background:#fff;color:#0b5f58;box-shadow:none}
+
+.ovg-login-page{min-height:100vh;background:linear-gradient(135deg,#f8fbfd 0%,#edf5f4 100%);color:#123047}
+.ovg-login-page-header{height:76px;max-width:1184px;margin:0 auto;padding:0 28px;display:flex;align-items:center;justify-content:space-between}
+.ovg-login-page-header a{text-decoration:none}
+.ovg-back-link{font-size:13px;font-weight:700;color:#526b7c}
+.ovg-login-page-main{max-width:1080px;margin:0 auto;min-height:calc(100vh - 76px);padding:72px 28px 96px;display:grid;grid-template-columns:minmax(0,1fr) 420px;gap:88px;align-items:center}
+.ovg-login-intro h1{font-size:43px;line-height:1.1;letter-spacing:-.035em;margin:14px 0 18px;max-width:620px}
+.ovg-login-intro p{font-size:16px;line-height:1.7;color:#617887;max-width:610px}
+.ovg-login-intro ul{margin:24px 0 0;padding-left:20px;color:#385468;line-height:2}
+.ovg-login-page .ovg-login-card{border:1px solid #dbe5ea;box-shadow:0 24px 58px #17374720}
+.ovg-login-page .ovg-provider-button{text-decoration:none;min-height:48px}
+@media(max-width:900px){
+  .ovg-login-page-main{grid-template-columns:1fr;gap:36px;padding-top:48px}
+  .ovg-login-intro h1{font-size:36px}
+  .ovg-login-page .ovg-login-card{max-width:560px;width:100%}
+}
+@media(max-width:580px){
+  .ovg-login-page-header{height:68px;padding:0 18px}
+  .ovg-login-page-main{padding:36px 18px 64px}
+  .ovg-login-intro h1{font-size:31px}
+  .ovg-back-link{font-size:12px}
+}

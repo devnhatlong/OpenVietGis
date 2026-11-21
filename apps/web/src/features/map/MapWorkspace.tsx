@@ -9,7 +9,6 @@ import { useEffect,useLayoutEffect,useRef,useState } from "react";
 import { Link,useParams } from "react-router-dom";
 import { apiClient } from "../../app/api";
 import { currentProtectedData,protectedQueryOptions } from "../../app/protected-query";
-import { AccountMenu } from "../auth/AccountMenu";
 import { FreshAccount } from "../auth/FreshAccount";
 import { AttributeTable } from "./AttributeTable";
 import { CommandBar } from "./CommandBar";
@@ -232,7 +231,7 @@ function Workspace({organizationId,projectId,accountId,project,initial,canEdit}:
  const dirty=JSON.stringify(configuration.layers)!==JSON.stringify(saved.configuration.layers)||viewpointIntent.mode!=="preserve"||saved.configuration_revision===0;
  function change(layers:MapLayerReference[]):void {if(locked)return;setConfiguration({...configuration,layers});setPending(null);if(active&&!layers.some(l=>l.layer_id===active))choose(layers[0]?.layer_id??"");}
  return <main className="gis-workspace" data-testid="map-workspace">
-  <header className="gis-header"><div><Link to={"/organizations/"+organizationId+"/projects"}>← Dự án</Link><span className="gis-logo">OVG</span><h1>{project.name}<small>Không gian bản đồ</small></h1></div><div className="gis-header-meta"><span>{project.status==="archived"?"Chỉ đọc":writable?"Chế độ chỉnh sửa":"Chế độ xem"}</span><Link to={"/organizations/"+organizationId+"/projects/"+projectId+"/spatial"}>Danh mục GIS</Link><Link to={"/organizations/"+organizationId+"/projects/"+projectId+"/transfers"}>Nhập / Xuất</Link><Link to={"/organizations/"+organizationId+"/projects/"+projectId+"/editing"}>Biên tập</Link><Link to={"/organizations/"+organizationId+"/projects/"+projectId+"/queries"}>Truy vấn</Link><Link to={"/organizations/"+organizationId+"/projects/"+projectId+"/processing"}>Xử lý</Link><Link to={"/organizations/"+organizationId+"/projects/"+projectId+"/cartography"}>In ấn</Link><Link to={"/organizations/"+organizationId+"/projects/"+projectId+"/platform-hub"}>Công cụ nâng cao</Link><AccountMenu /></div></header>
+  <header className="gis-header"><div><Link to={"/app/organizations/"+organizationId+"/projects"}>← Dự án</Link><span className="gis-logo">OVG</span><h1>{project.name}<small>Không gian bản đồ</small></h1></div><div className="gis-header-meta"><span>{project.status==="archived"?"Chỉ đọc":writable?"Chế độ chỉnh sửa":"Chế độ xem"}</span><Link to={"/app/organizations/"+organizationId+"/projects/"+projectId+"/spatial"}>Danh mục GIS</Link><Link to={"/app/organizations/"+organizationId+"/projects/"+projectId+"/transfers"}>Nhập / Xuất</Link><Link to={"/app/organizations/"+organizationId+"/projects/"+projectId+"/editing"}>Biên tập</Link><Link to={"/app/organizations/"+organizationId+"/projects/"+projectId+"/queries"}>Truy vấn</Link><Link to={"/app/organizations/"+organizationId+"/projects/"+projectId+"/processing"}>Xử lý</Link><Link to={"/app/organizations/"+organizationId+"/projects/"+projectId+"/cartography"}>In ấn</Link><Link to={"/app/organizations/"+organizationId+"/projects/"+projectId+"/platform-hub"}>Công cụ nâng cao</Link></div></header>
   <div className="map-context">
     <span><strong>Phiên bản bản đồ:</strong> {saved.configuration_revision}</span>
     <span className={dirty?"map-context-unsaved":"map-context-saved"}>{dirty?"● Có thay đổi chưa lưu":"✓ Đã lưu"}</span>
@@ -245,8 +244,8 @@ function Workspace({organizationId,projectId,accountId,project,initial,canEdit}:
   <div className="map-basemap-bar" style={{display:"flex",flexWrap:"wrap",alignItems:"center",gap:"0.4rem",padding:"0.4rem 0.9rem",background:"#f1f5f9",borderBottom:"1px solid #cbd5e1",fontSize:"0.84rem"}}><strong>Bản đồ nền:</strong>{BASEMAP_OPTIONS.map(opt=><button key={opt.id} type="button" data-testid={"basemap-"+opt.id} style={{padding:"0.25rem 0.65rem",borderRadius:6,border:"1px solid #94a3b8",cursor:"pointer",background:basemap===opt.id?"#0f172a":"#ffffff",color:basemap===opt.id?"#ffffff":"#0f172a",fontWeight:600}} onClick={()=>setBasemap(opt.id)}>{opt.label}</button>)}</div>
   <div className="map-body">
    <LayerTree layers={configuration.layers} metadata={metadata} active={active} catalog={catalog?.items} locked={locked} states={states} choose={choose} change={change}
-    importPath={"/organizations/"+organizationId+"/projects/"+projectId+"/transfers"}
-    catalogPath={"/organizations/"+organizationId+"/projects/"+projectId+"/spatial"}
+    importPath={"/app/organizations/"+organizationId+"/projects/"+projectId+"/transfers"}
+    catalogPath={"/app/organizations/"+organizationId+"/projects/"+projectId+"/spatial"}
     nextCatalog={catalog?.next_after_id?()=>{setCatalogPages([...catalogPages,catalogCursor]);setCatalogCursor(catalog.next_after_id);}:null}
     previousCatalog={catalogPages.length?()=>{setCatalogCursor(catalogPages[catalogPages.length-1]??null);setCatalogPages(catalogPages.slice(0,-1));}:null}/>
    <section className="map-stage" aria-label="Khung bản đồ" onContextMenu={e=>{e.preventDefault();setContextMenu(!contextMenu);}}>
@@ -284,7 +283,7 @@ function ProtectedMap({organizationId,projectId,accountId}:{organizationId:strin
  const project=currentProtectedData(projectQuery),permissions=currentProtectedData(permissionQuery),map=currentProtectedData(mapQuery);
  if(!project||!permissions||!map||project.id!==projectId||project.organization_id!==organizationId||project.status==="deleted"||!mapResponseMatches(organizationId,projectId,map)||!permissions.permissions.includes("project.read")){
   const error=projectQuery.error||permissionQuery.error||mapQuery.error;
-  return <main className="map-access"><Link to={"/organizations/"+organizationId+"/projects"}>← Dự án</Link><h1>Không gian Bản đồ</h1><p role={error?"alert":"status"}>{error?"Không có quyền truy cập bản đồ dự án này.":"Đang kiểm tra quyền truy cập bản đồ dự án…"}</p></main>;
+  return <main className="map-access"><Link to={"/app/organizations/"+organizationId+"/projects"}>← Dự án</Link><h1>Không gian Bản đồ</h1><p role={error?"alert":"status"}>{error?"Không có quyền truy cập bản đồ dự án này.":"Đang kiểm tra quyền truy cập bản đồ dự án…"}</p></main>;
  }
  return <Workspace key={accountId+":"+organizationId+":"+projectId} organizationId={organizationId} projectId={projectId} accountId={accountId} project={project} initial={map} canEdit={permissions.permissions.includes("project.edit")}/>;
 }

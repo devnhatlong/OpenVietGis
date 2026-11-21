@@ -15,9 +15,9 @@ description: "Dependency-ordered implementation tasks for OpenVietGIS App Shell 
 **Purpose**: Establish the shared frontend visual layer and reproducible baseline.
 
 - [ ] T001 Record exact implementation baseline, supported Node/pnpm versions, current web bundle metrics and existing auth/browser test status in `specs/016-app-shell-identity-ux/quickstart.md`
-- [ ] T002 [P] Create semantic light-theme design tokens and spacing/typography/focus variables in `apps/web/src/ui/tokens.css`
-- [ ] T003 [P] Create global reset, skip-link, reduced-motion and responsive shell foundations in `apps/web/src/ui/global.css`
-- [ ] T004 Wire `apps/web/src/ui/tokens.css` and `apps/web/src/ui/global.css` exactly once from `apps/web/src/main.tsx`
+- [x] T002 [P] Create semantic light-theme design tokens and spacing/typography/focus variables in `apps/web/src/ui/tokens.css`
+- [x] T003 [P] Create global reset, skip-link, reduced-motion and responsive shell foundations in `apps/web/src/ui/global.css`
+- [x] T004 Wire `apps/web/src/ui/tokens.css` and `apps/web/src/ui/global.css` exactly once from `apps/web/src/main.tsx`
 - [ ] T005 [P] Add accessible shared Button/IconButton/StatusMessage primitives in `apps/web/src/ui/primitives/Button.tsx`, `apps/web/src/ui/primitives/IconButton.tsx`, and `apps/web/src/ui/primitives/StatusMessage.tsx`
 
 **Checkpoint**: Shared styling exists without changing routing/auth behavior.
@@ -26,16 +26,16 @@ description: "Dependency-ordered implementation tasks for OpenVietGIS App Shell 
 
 **Purpose**: Separate stable application-session chrome from strict protected tenant-data freshness.
 
-- [ ] T006 [P] Add failing state-transition tests for `SessionShellState.phase`, `SessionShellState.account`, `SessionShellState.lastConfirmedAt`, and `SessionShellState.errorKind` as defined in `specs/016-app-shell-identity-ux/data-model.md` to `apps/web/src/app/session/session-state.test.ts`
-- [ ] T007 Implement the tested `SessionShellState` state machine and transition helpers in `apps/web/src/app/session/session-state.ts` using the canonical fields from `specs/016-app-shell-identity-ux/data-model.md`
-- [ ] T008 [P] Add failing tests for safe `ReturnDestination.pathname`, `ReturnDestination.search`, and `ReturnDestination.hash` validation from `specs/016-app-shell-identity-ux/data-model.md` in `apps/web/src/app/session/return-destination.test.ts`
-- [ ] T009 Implement same-origin relative return-destination parsing/serialization in `apps/web/src/app/session/return-destination.ts` using `ReturnDestination.pathname`, `ReturnDestination.search`, and `ReturnDestination.hash` from `specs/016-app-shell-identity-ux/data-model.md`
+- [x] T006 [P] Add failing state-transition tests for `SessionShellState.phase`, `SessionShellState.account`, `SessionShellState.lastConfirmedAt`, and `SessionShellState.errorKind` as defined in `specs/016-app-shell-identity-ux/data-model.md` to `apps/web/src/app/session/session-state.test.ts`
+- [x] T007 Implement the tested `SessionShellState` state machine and transition helpers in `apps/web/src/app/session/session-state.ts` using the canonical fields from `specs/016-app-shell-identity-ux/data-model.md`
+- [x] T008 [P] Add failing tests for safe `ReturnDestination.pathname`, `ReturnDestination.search`, and `ReturnDestination.hash` validation from `specs/016-app-shell-identity-ux/data-model.md` in `apps/web/src/app/session/return-destination.test.ts`
+- [x] T009 Implement same-origin relative return-destination parsing/serialization in `apps/web/src/app/session/return-destination.ts` using `ReturnDestination.pathname`, `ReturnDestination.search`, and `ReturnDestination.hash` from `specs/016-app-shell-identity-ux/data-model.md`
 - [ ] T010 Add failing component tests proving background `/me` checks do not unmount a previously authenticated shell and confirmed 401 does clear it in `apps/web/src/app/session/SessionBoundary.test.tsx`
-- [ ] T011 Implement `SessionBoundary` and session context in `apps/web/src/app/session/SessionBoundary.tsx` while leaving strict tenant/resource reads on existing `protectedQueryOptions`
+- [x] T011 Implement `SessionBoundary` and session context in `apps/web/src/app/session/SessionBoundary.tsx` while leaving strict tenant/resource reads on existing `protectedQueryOptions`
 - [ ] T012 Implement authorization-loss cache/session coordination for confirmed protected-request auth loss in `apps/web/src/app/session/session-auth-loss.ts` and integrate only the necessary hook points in `apps/web/src/app/protected-query.ts`
-- [ ] T013 [P] Implement `ShellPreference.navigationCollapsed` from `specs/016-app-shell-identity-ux/data-model.md` with non-sensitive local persistence in `apps/web/src/app/shell/shell-preference.ts`
+- [x] T013 [P] Implement `ShellPreference.navigationCollapsed` from `specs/016-app-shell-identity-ux/data-model.md` with non-sensitive local persistence in `apps/web/src/app/shell/shell-preference.ts`
 - [ ] T014 Implement `AppNavigationItem.id`, `AppNavigationItem.labelKey`, `AppNavigationItem.destination`, `AppNavigationItem.scope`, and `AppNavigationItem.availability` from `specs/016-app-shell-identity-ux/data-model.md` in `apps/web/src/app/shell/navigation-model.ts`
-- [ ] T015 Build the reusable authenticated chrome in `apps/web/src/app/shell/AppShell.tsx`, `apps/web/src/app/shell/AppNavigation.tsx`, and `apps/web/src/app/shell/Breadcrumbs.tsx` without exposing roadmap IDs or UUIDs as primary labels
+- [x] T015 Build the reusable authenticated chrome in `apps/web/src/app/shell/AppShell.tsx`, `apps/web/src/app/shell/AppNavigation.tsx`, and `apps/web/src/app/shell/Breadcrumbs.tsx` without exposing roadmap IDs or UUIDs as primary labels
 - [ ] T016 Add the shared command-palette foundation and navigation command registry in `apps/web/src/app/shell/CommandPalette.tsx` and `apps/web/src/app/shell/command-registry.ts`
 
 **Checkpoint**: Foundational session/shell architecture is independently testable before page migration.
@@ -48,11 +48,11 @@ description: "Dependency-ordered implementation tasks for OpenVietGIS App Shell 
 
 - [ ] T017 [P] [US1] Add failing Playwright coverage for public `/`, dedicated `/login`, protected deep-link return and invalid external return fallback in `tests/e2e/auth-navigation.spec.ts`
 - [ ] T018 [P] [US1] Add failing Playwright DOM/screenshot sequence asserting no Landing/full-page-loading flash during authenticated focus/revalidation in `tests/e2e/app-shell.spec.ts`
-- [ ] T019 [P] [US1] Implement the public product landing content and accessible CTA structure in `apps/web/src/features/landing/LandingPage.tsx` and `apps/web/src/features/landing/landing.css`
-- [ ] T020 [US1] Replace the embedded login panel with a dedicated provider-neutral Login page using validated `return_to` in `apps/web/src/features/auth/LoginPage.tsx`
-- [ ] T021 [US1] Rebuild route guards/canonical public-authenticated route separation for `/`, `/login`, and `/app` in `apps/web/src/app/router.tsx`
-- [ ] T022 [US1] Remove or reduce legacy `FreshAccount` responsibilities so page components consume `SessionBoundary` without full-screen refetch replacement in `apps/web/src/features/auth/FreshAccount.tsx`
-- [ ] T023 [US1] Make login/provider errors announced and keyboard accessible in `apps/web/src/features/auth/LoginPage.tsx` and `apps/web/src/ui/primitives/StatusMessage.tsx`
+- [x] T019 [P] [US1] Implement the public product landing content and accessible CTA structure in `apps/web/src/features/landing/LandingPage.tsx` and `apps/web/src/features/landing/landing.css`
+- [x] T020 [US1] Replace the embedded login panel with a dedicated provider-neutral Login page using validated `return_to` in `apps/web/src/features/auth/LoginPage.tsx`
+- [x] T021 [US1] Rebuild route guards/canonical public-authenticated route separation for `/`, `/login`, and `/app` in `apps/web/src/app/router.tsx`
+- [x] T022 [US1] Remove or reduce legacy `FreshAccount` responsibilities so page components consume `SessionBoundary` without full-screen refetch replacement in `apps/web/src/features/auth/FreshAccount.tsx`
+- [x] T023 [US1] Make login/provider errors announced and keyboard accessible in `apps/web/src/features/auth/LoginPage.tsx` and `apps/web/src/ui/primitives/StatusMessage.tsx`
 
 **Checkpoint**: US1 is demoable independently as the stable public/auth gateway.
 

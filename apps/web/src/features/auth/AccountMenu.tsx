@@ -1,28 +1,19 @@
 import {
   ApiError,
-  getCurrentUser,
   loadCsrfToken,
   logout
 } from "@openvietgis/client-sdk";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router-dom";
 
 import { apiClient } from "../../app/api";
-import { currentProtectedData } from "../../app/protected-query";
+import { useOptionalSession } from "../../app/session/SessionBoundary";
 import "./account-menu.css";
 
 export function AccountMenu() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
-  const userQuery = useQuery({
-    queryKey: ["me"],
-    queryFn: () => getCurrentUser(apiClient),
-    staleTime: 60_000,
-    refetchOnMount: false,
-    refetchOnWindowFocus: false,
-    refetchOnReconnect: "always"
-  });
-  const account = currentProtectedData(userQuery);
+  const session = useOptionalSession();
 
   const signOut = useMutation({
     mutationFn: async () => {
@@ -42,7 +33,8 @@ export function AccountMenu() {
     }
   });
 
-  if (!account) return null;
+  if (!session) return null;
+  const { account } = session;
 
   const initials = account.display_name
     .split(/\s+/)
@@ -56,17 +48,19 @@ export function AccountMenu() {
       <summary aria-label="Mở menu tài khoản">
         <span className="ovg-account-avatar">{initials || "U"}</span>
         <span className="ovg-account-name">{account.display_name}</span>
-        <span className="ovg-account-caret">⌄</span>
+        <span className="ovg-account-caret" aria-hidden="true">⌄</span>
       </summary>
       <div className="ovg-account-dropdown">
         <div className="ovg-account-profile">
           <strong>{account.display_name}</strong>
           {account.email_snapshot ? <small>{account.email_snapshot}</small> : null}
+          {session.checking ? <small>Đang xác nhận phiên…</small> : null}
+          {session.networkWarning ? <small>Phiên đang dùng; kiểm tra mạng chưa hoàn tất.</small> : null}
         </div>
-        <nav>
-          <Link to="/">Trang làm việc</Link>
-          <Link to="/identity">Tài khoản & phiên đăng nhập</Link>
-          <Link to="/invitations/accept">Lời mời</Link>
+        <nav aria-label="Tài khoản">
+          <Link to="/app">Trang làm việc</Link>
+          <Link to="/app/account">Tài khoản & phiên đăng nhập</Link>
+          <Link to="/app/invitations/accept">Lời mời</Link>
         </nav>
         <button
           type="button"

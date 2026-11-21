@@ -1,0 +1,31 @@
+:root {
+  color-scheme: light;
+  --ovg-primary: #0f766e;
+  --ovg-primary-strong: #0b5f58;
+  --ovg-primary-soft: #e7f3f1;
+  --ovg-accent: #c64d16;
+  --ovg-bg: #f8fafc;
+  --ovg-surface: #ffffff;
+  --ovg-surface-muted: #f1f5f9;
+  --ovg-text: #0f172a;
+  --ovg-text-muted: #475569;
+  --ovg-border: #cbd5e1;
+  --ovg-danger: #b91c1c;
+  --ovg-warning: #a16207;
+  --ovg-success: #166534;
+  --ovg-focus: #0f766e;
+  --ovg-shadow-sm: 0 1px 2px rgb(15 23 42 / 8%);
+  --ovg-shadow-lg: 0 18px 44px rgb(15 23 42 / 14%);
+  --ovg-radius-sm: 6px;
+  --ovg-radius-md: 9px;
+  --ovg-radius-lg: 14px;
+  --ovg-space-1: 4px;
+  --ovg-space-2: 8px;
+  --ovg-space-3: 12px;
+  --ovg-space-4: 16px;
+  --ovg-space-5: 24px;
+  --ovg-space-6: 32px;
+  --ovg-space-7: 48px;
+  --ovg-font-sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --ovg-font-mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+}

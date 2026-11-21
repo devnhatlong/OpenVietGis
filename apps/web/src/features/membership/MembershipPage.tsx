@@ -228,7 +228,7 @@ function OrganizationMembership({ organizationId, userId }: { organizationId: st
 
   return (
     <main style={{ maxWidth: 960, margin: "40px auto", fontFamily: "system-ui, sans-serif" }}>
-      <Link to={"/organizations/" + encodeURIComponent(organizationId)}>← Tổ chức</Link>
+      <Link to={"/app/organizations/" + encodeURIComponent(organizationId)}>← Tổ chức</Link>
       <h1>Thành viên & Phân quyền</h1>
       {effective.fetchStatus !== "idle" || effective.isPending ? <p>Đang kiểm tra quyền của tổ chức…</p> : !current ? (
         <p role="alert">Không thể tải quyền truy cập tổ chức.</p>

@@ -1,5 +1,4 @@
 import { Link } from "react-router-dom";
-import { AccountMenu } from "../auth/AccountMenu";
 import "./platform.css";
 
 interface ProjectToolbarProps {
@@ -15,7 +14,7 @@ export function ProjectToolbar({
   active,
   title
 }: ProjectToolbarProps) {
-  const base = `/organizations/${organizationId}/projects/${projectId}`;
+  const base = `/app/organizations/${organizationId}/projects/${projectId}`;
   return (
     <header className="ovg-toolbar">
       <div>
@@ -40,7 +39,6 @@ export function ProjectToolbar({
         <Link to={`${base}/platform-hub`} className={active === "hub" ? "active" : ""}>
           Công cụ nâng cao
         </Link>
-        <AccountMenu />
       </nav>
     </header>
   );

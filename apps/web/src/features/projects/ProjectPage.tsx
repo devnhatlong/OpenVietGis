@@ -116,8 +116,8 @@ function OrganizationProjects({ organizationId, userId }: { organizationId: stri
   return (
     <main style={{ maxWidth: 960, margin: "40px auto", fontFamily: "system-ui, sans-serif" }}>
       <p>
-        <Link to={"/organizations/" + organizationId}>← Tổ chức</Link>{" "}
-        <Link to={"/organizations/" + organizationId + "/workspaces"}>Không gian làm việc</Link>
+        <Link to={"/app/organizations/" + organizationId}>← Tổ chức</Link>{" "}
+        <Link to={"/app/organizations/" + organizationId + "/workspaces"}>Không gian làm việc</Link>
       </p>
       <h1>Dự án</h1>
 
@@ -169,12 +169,14 @@ function OrganizationProjects({ organizationId, userId }: { organizationId: stri
       <ul data-testid="project-list">
         {visibleProjects.map((project) => {
           const moveTarget = moveTargets[project.id] ?? project.workspace_id ?? "";
+          const workspaceName = project.workspace_id
+            ? visibleWorkspaces.find((workspace) => workspace.id === project.workspace_id)?.name ?? "Không gian làm việc không khả dụng"
+            : "Chưa phân nhóm";
           return (
             <li key={project.id} data-testid={"project-" + project.id}>
-              <strong>{project.name}</strong> — {projectStatusLabel(project.status)} — không gian làm việc{" "}
-              {project.workspace_id ?? "chưa phân nhóm"}{" "}
+              <strong>{project.name}</strong> — {projectStatusLabel(project.status)} — {workspaceName}{" "}
               {project.status !== "deleted" ? (
-                <><Link to={"/organizations/" + encodeURIComponent(organizationId) + "/projects/" + encodeURIComponent(project.id) + "/spatial"}>Danh mục Dữ liệu</Link>{" · "}<Link to={"/organizations/" + encodeURIComponent(organizationId) + "/projects/" + encodeURIComponent(project.id) + "/map"}>Mở Bản đồ</Link></>
+                <><Link to={"/app/organizations/" + encodeURIComponent(organizationId) + "/projects/" + encodeURIComponent(project.id) + "/spatial"}>Danh mục Dữ liệu</Link>{" · "}<Link to={"/app/organizations/" + encodeURIComponent(organizationId) + "/projects/" + encodeURIComponent(project.id) + "/map"}>Mở Bản đồ</Link></>
               ) : null}
               <div>
                 <label>

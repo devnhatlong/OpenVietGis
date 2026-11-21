@@ -97,8 +97,8 @@ function OrganizationWorkspaces({ organizationId, userId }: { organizationId: st
   return (
     <main style={{ maxWidth: 880, margin: "40px auto", fontFamily: "system-ui, sans-serif" }}>
       <p>
-        <Link to={"/organizations/" + organizationId}>← Tổ chức</Link>{" "}
-        <Link to={"/organizations/" + organizationId + "/projects"}>Dự án</Link>
+        <Link to={"/app/organizations/" + organizationId}>← Tổ chức</Link>{" "}
+        <Link to={"/app/organizations/" + organizationId + "/projects"}>Dự án</Link>
       </p>
       <h1>Không gian làm việc</h1>
 
