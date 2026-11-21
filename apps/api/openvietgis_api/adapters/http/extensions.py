@@ -144,6 +144,22 @@ def activate_project_extension(
     )
 
 
+@router.post(f"{_PROJ}/extensions/activations/{{activation_id}}/deactivate")
+def deactivate_project_extension(
+    organization_id: UUID,
+    project_id: UUID,
+    activation_id: UUID,
+    auth: Annotated[AuthenticatedRequest, Depends(require_csrf)],
+    session: Annotated[Session, Depends(get_db_session, scope="function")],
+) -> dict[str, Any]:
+    ctx = context_for(auth, organization_id=organization_id, project_id=project_id)
+    return _act_wire(
+        SqlExtensionsRepository(session).deactivate_for_project(
+            context=ctx, activation_id=activation_id
+        )
+    )
+
+
 @router.get(f"{_PROJ}/extensions/activations")
 def list_project_activations(
     organization_id: UUID,

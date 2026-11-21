@@ -15,6 +15,10 @@ from sqlalchemy.orm import Session
 from openvietgis_api.adapters.persistence.scope_helper import prepare_project_scope
 from openvietgis_api.domains.authorization.context import AuthorizationContext
 from openvietgis_api.domains.authorization.permissions import Permission
+from openvietgis_api.domains.authorization.roles import (
+    ORGANIZATION_ROLE_PERMISSIONS,
+    RESOURCE_ROLE_PERMISSIONS,
+)
 from openvietgis_api.domains.collaboration.domain import (
     ActivityRecord,
     ChangeReviewRecord,
@@ -23,9 +27,12 @@ from openvietgis_api.domains.collaboration.domain import (
     analyze_draft_conflicts,
 )
 from openvietgis_api.domains.platform_errors import (
+    PlatformConflictError,
+    PlatformForbiddenError,
     PlatformNotFoundError,
     PlatformValidationError,
 )
+from openvietgis_api.domains.tenancy.domain import MembershipRole, ResourceRole
 
 
 def _act_from_row(row: RowMapping) -> ActivityRecord:
@@ -138,34 +145,67 @@ class SqlCollaborationRepository:
         assert context.organization_id is not None and context.project_id is not None
         assert context.actor.actor_id is not None
 
-        cs = self._session.execute(
-            text("""
+        cs = (
+            self._session.execute(
+                text("""
                 SELECT id, source_id, resulting_content_revision
                 FROM editing.changesets
                 WHERE organization_id = :org AND project_id = :proj AND id = :cid
             """),
-            {"org": context.organization_id, "proj": context.project_id, "cid": changeset_id},
-        ).mappings().first()
+                {"org": context.organization_id, "proj": context.project_id, "cid": changeset_id},
+            )
+            .mappings()
+            .first()
+        )
         if cs is None:
             raise PlatformNotFoundError("changeset not found")
 
-        # Validate assignee is an active member of this organization (reusing R002 tenancy)
-        member = self._session.execute(
-            text("""
-                SELECT 1 FROM org.organization_memberships
-                WHERE organization_id = :org AND user_id = :uid AND status = 'active'
+        # Resolve the assignee's current human membership and applicable
+        # project grants under the verified tenant scope; never impersonate them.
+        roles = (
+            self._session.execute(
+                text("""
+                SELECT m.role AS membership_role, g.role AS grant_role
+                FROM org.organization_memberships m
+                JOIN workspace.projects p ON p.organization_id = m.organization_id
+                    AND p.id = :proj AND p.status = 'active'
+                LEFT JOIN org.resource_grants g ON g.organization_id = m.organization_id
+                    AND g.membership_id = m.id AND g.subject_kind = 'membership'
+                    AND g.revoked_at IS NULL
+                    AND (g.scope_kind = 'organization'
+                        OR (g.scope_kind = 'workspace' AND g.workspace_id = p.workspace_id)
+                        OR (g.scope_kind = 'project' AND g.project_id = p.id))
+                WHERE m.organization_id = :org AND m.user_id = :uid AND m.status = 'active'
             """),
-            {"org": context.organization_id, "uid": assignee_user_id},
-        ).first()
-        if member is None:
+                {
+                    "org": context.organization_id,
+                    "proj": context.project_id,
+                    "uid": assignee_user_id,
+                },
+            )
+            .mappings()
+            .all()
+        )
+        eligible = any(
+            Permission.PROJECT_EDIT
+            in ORGANIZATION_ROLE_PERMISSIONS[MembershipRole(r["membership_role"])]
+            or (
+                r["grant_role"] is not None
+                and Permission.PROJECT_EDIT
+                in RESOURCE_ROLE_PERMISSIONS[ResourceRole(r["grant_role"])]
+            )
+            for r in roles
+        )
+        if not eligible:
             raise PlatformValidationError(
-                "assignee must be an active member of this organization",
+                "assignee must have current project review eligibility",
                 code="INVALID_ASSIGNEE",
             )
 
         now = datetime.now(UTC)
-        row = self._session.execute(
-            text("""
+        row = (
+            self._session.execute(
+                text("""
                 INSERT INTO collaboration.change_reviews (
                     id, organization_id, project_id, source_id, changeset_id,
                     content_revision, requested_by_actor_id, assignee_user_id,
@@ -177,18 +217,21 @@ class SqlCollaborationRepository:
                 )
                 RETURNING *
             """),
-            {
-                "id": uuid4(),
-                "org": context.organization_id,
-                "proj": context.project_id,
-                "src": cs["source_id"],
-                "cid": changeset_id,
-                "crev": str(cs["resulting_content_revision"]),
-                "req": context.actor.actor_id,
-                "assignee": assignee_user_id,
-                "now": now,
-            },
-        ).mappings().one()
+                {
+                    "id": uuid4(),
+                    "org": context.organization_id,
+                    "proj": context.project_id,
+                    "src": cs["source_id"],
+                    "cid": changeset_id,
+                    "crev": str(cs["resulting_content_revision"]),
+                    "req": context.actor.actor_id,
+                    "assignee": assignee_user_id,
+                    "now": now,
+                },
+            )
+            .mappings()
+            .one()
+        )
         self._record_activity(
             context=context,
             event_kind="review.requested",
@@ -216,25 +259,52 @@ class SqlCollaborationRepository:
             raise PlatformValidationError(
                 "decision status must be 'approved' or 'changes_requested'"
             )
+        existing = (
+            self._session.execute(
+                text("""
+                SELECT assignee_user_id, status FROM collaboration.change_reviews
+                WHERE organization_id = :org AND project_id = :proj AND id = :rid
+                FOR UPDATE
+            """),
+                {"org": context.organization_id, "proj": context.project_id, "rid": review_id},
+            )
+            .mappings()
+            .first()
+        )
+        if existing is None:
+            raise PlatformNotFoundError("change review not found")
+        if (
+            context.actor.actor_type != "human"
+            or existing["assignee_user_id"] != context.actor.actor_id
+        ):
+            raise PlatformForbiddenError("only the assigned current reviewer may decide")
+        if existing["status"] != ReviewStatus.PENDING.value:
+            raise PlatformConflictError(
+                "a completed review cannot be overwritten", code="REVIEW_ALREADY_DECIDED"
+            )
         now = datetime.now(UTC)
-        row = self._session.execute(
-            text("""
+        row = (
+            self._session.execute(
+                text("""
                 UPDATE collaboration.change_reviews
                 SET status = :st, decision_note = :note, decided_by_actor_id = :actor,
                     updated_at = :now, decided_at = :now
                 WHERE organization_id = :org AND project_id = :proj AND id = :rid
                 RETURNING *
             """),
-            {
-                "org": context.organization_id,
-                "proj": context.project_id,
-                "rid": review_id,
-                "st": status.value,
-                "note": decision_note.strip()[:500],
-                "actor": context.actor.actor_id,
-                "now": now,
-            },
-        ).mappings().first()
+                {
+                    "org": context.organization_id,
+                    "proj": context.project_id,
+                    "rid": review_id,
+                    "st": status.value,
+                    "note": decision_note.strip()[:500],
+                    "actor": context.actor.actor_id,
+                    "now": now,
+                },
+            )
+            .mappings()
+            .first()
+        )
         if row is None:
             raise PlatformNotFoundError("change review not found")
         self._record_activity(
@@ -263,18 +333,23 @@ class SqlCollaborationRepository:
         clean_body = body.strip()
         if not clean_body or len(clean_body) > 2000:
             raise PlatformValidationError("comment body must be 1..2000 characters")
-        rev = self._session.execute(
-            text("""
+        rev = (
+            self._session.execute(
+                text("""
                 SELECT id, changeset_id, content_revision FROM collaboration.change_reviews
                 WHERE organization_id = :org AND project_id = :proj AND id = :rid
             """),
-            {"org": context.organization_id, "proj": context.project_id, "rid": review_id},
-        ).mappings().first()
+                {"org": context.organization_id, "proj": context.project_id, "rid": review_id},
+            )
+            .mappings()
+            .first()
+        )
         if rev is None:
             raise PlatformNotFoundError("change review not found")
         now = datetime.now(UTC)
-        row = self._session.execute(
-            text("""
+        row = (
+            self._session.execute(
+                text("""
                 INSERT INTO collaboration.review_comments (
                     id, organization_id, project_id, review_id, changeset_id,
                     content_revision, feature_id, body, author_actor_id,
@@ -285,20 +360,23 @@ class SqlCollaborationRepository:
                 )
                 RETURNING *
             """),
-            {
-                "id": uuid4(),
-                "org": context.organization_id,
-                "proj": context.project_id,
-                "rid": review_id,
-                "cid": rev["changeset_id"],
-                "crev": str(rev["content_revision"]),
-                "fid": feature_id,
-                "body": clean_body,
-                "actor": context.actor.actor_id,
-                "adisp": (context.actor.display_name or str(context.actor.actor_id))[:200],
-                "now": now,
-            },
-        ).mappings().one()
+                {
+                    "id": uuid4(),
+                    "org": context.organization_id,
+                    "proj": context.project_id,
+                    "rid": review_id,
+                    "cid": rev["changeset_id"],
+                    "crev": str(rev["content_revision"]),
+                    "fid": feature_id,
+                    "body": clean_body,
+                    "actor": context.actor.actor_id,
+                    "adisp": (context.actor.display_name or str(context.actor.actor_id))[:200],
+                    "now": now,
+                },
+            )
+            .mappings()
+            .one()
+        )
         self._record_activity(
             context=context,
             event_kind="review.commented",
@@ -314,14 +392,18 @@ class SqlCollaborationRepository:
     def list_reviews(self, *, context: AuthorizationContext) -> list[ChangeReviewRecord]:
         prepare_project_scope(self._session, context, permission=Permission.PROJECT_READ)
         assert context.organization_id is not None and context.project_id is not None
-        rows = self._session.execute(
-            text("""
+        rows = (
+            self._session.execute(
+                text("""
                 SELECT * FROM collaboration.change_reviews
                 WHERE organization_id = :org AND project_id = :proj
                 ORDER BY created_at DESC LIMIT 100
             """),
-            {"org": context.organization_id, "proj": context.project_id},
-        ).mappings().all()
+                {"org": context.organization_id, "proj": context.project_id},
+            )
+            .mappings()
+            .all()
+        )
         return [_review_from_row(r) for r in rows]
 
     def list_comments(
@@ -329,14 +411,18 @@ class SqlCollaborationRepository:
     ) -> list[ReviewCommentRecord]:
         prepare_project_scope(self._session, context, permission=Permission.PROJECT_READ)
         assert context.organization_id is not None and context.project_id is not None
-        rows = self._session.execute(
-            text("""
+        rows = (
+            self._session.execute(
+                text("""
                 SELECT * FROM collaboration.review_comments
                 WHERE organization_id = :org AND project_id = :proj AND review_id = :rid
                 ORDER BY created_at ASC
             """),
-            {"org": context.organization_id, "proj": context.project_id, "rid": review_id},
-        ).mappings().all()
+                {"org": context.organization_id, "proj": context.project_id, "rid": review_id},
+            )
+            .mappings()
+            .all()
+        )
         return [_comment_from_row(r) for r in rows]
 
     def list_activities(
@@ -344,18 +430,22 @@ class SqlCollaborationRepository:
     ) -> list[ActivityRecord]:
         prepare_project_scope(self._session, context, permission=Permission.PROJECT_READ)
         assert context.organization_id is not None and context.project_id is not None
-        rows = self._session.execute(
-            text("""
+        rows = (
+            self._session.execute(
+                text("""
                 SELECT * FROM collaboration.activities
                 WHERE organization_id = :org AND project_id = :proj
                 ORDER BY created_at DESC LIMIT :lim
             """),
-            {
-                "org": context.organization_id,
-                "proj": context.project_id,
-                "lim": max(1, min(200, limit)),
-            },
-        ).mappings().all()
+                {
+                    "org": context.organization_id,
+                    "proj": context.project_id,
+                    "lim": max(1, min(200, limit)),
+                },
+            )
+            .mappings()
+            .all()
+        )
         return [_act_from_row(r) for r in rows]
 
     def inspect_conflict_rebase(
@@ -368,19 +458,24 @@ class SqlCollaborationRepository:
     ) -> dict[str, Any]:
         prepare_project_scope(self._session, context, permission=Permission.PROJECT_READ)
         assert context.organization_id is not None and context.project_id is not None
-        src = self._session.execute(
-            text("""
+        src = (
+            self._session.execute(
+                text("""
                 SELECT content_revision FROM spatial.data_sources
                 WHERE organization_id = :org AND project_id = :proj AND id = :src
             """),
-            {"org": context.organization_id, "proj": context.project_id, "src": source_id},
-        ).mappings().first()
+                {"org": context.organization_id, "proj": context.project_id, "src": source_id},
+            )
+            .mappings()
+            .first()
+        )
         if src is None:
             raise PlatformNotFoundError("data source not found")
 
         # Collect feature_ids changed in changesets since base_content_revision
-        intervening = self._session.execute(
-            text("""
+        intervening = (
+            self._session.execute(
+                text("""
                 SELECT DISTINCT op.feature_id
                 FROM editing.changesets cs
                 JOIN editing.changeset_operations op
@@ -391,13 +486,16 @@ class SqlCollaborationRepository:
                   AND cs.source_id = :src
                   AND cs.resulting_content_revision != :base_rev
             """),
-            {
-                "org": context.organization_id,
-                "proj": context.project_id,
-                "src": source_id,
-                "base_rev": base_content_revision,
-            },
-        ).scalars().all()
+                {
+                    "org": context.organization_id,
+                    "proj": context.project_id,
+                    "src": source_id,
+                    "base_rev": base_content_revision,
+                },
+            )
+            .scalars()
+            .all()
+        )
         return analyze_draft_conflicts(
             draft_operations=draft_operations,
             intervening_changed_feature_ids={str(x) for x in intervening},
