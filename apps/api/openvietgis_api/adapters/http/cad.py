@@ -18,7 +18,9 @@ from openvietgis_api.adapters.http.security import (
     require_csrf,
 )
 from openvietgis_api.adapters.persistence.cad_repository import SqlCadRepository
+from openvietgis_api.adapters.persistence.scope_helper import prepare_project_scope
 from openvietgis_api.config import get_settings
+from openvietgis_api.domains.authorization.permissions import Permission
 from openvietgis_api.domains.cad.domain import (
     CadConversionRecord,
     CadUnit,
@@ -27,6 +29,7 @@ from openvietgis_api.domains.cad.domain import (
     compute_precision_snap,
     compute_traverse_point,
 )
+from openvietgis_api.domains.platform_errors import PlatformValidationError
 
 router = APIRouter(tags=["cad"])
 _BASE = "/organizations/{organization_id}/projects/{project_id}"
@@ -60,6 +63,7 @@ class ExportDxfRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     layer_id: UUID
     units: CadUnit = CadUnit.METER
+    expected_content_revision: str | None = None
 
 
 class CogoTraverseRequest(BaseModel):
@@ -100,7 +104,10 @@ def import_cad_file(
     session: Annotated[Session, Depends(get_db_session, scope="function")] = ...,  # type: ignore[assignment]
 ) -> dict[str, Any]:
     ctx = context_for(auth, organization_id=organization_id, project_id=project_id)
-    payload = file.file.read(25 * 1024 * 1024)
+    cap = 25 * 1024 * 1024
+    payload = file.file.read(cap + 1)
+    if len(payload) > cap:
+        raise PlatformValidationError("CAD upload exceeds 25 MiB limit", code="CAD_FILE_LIMIT")
     rec = _repo(session).import_cad(
         context=ctx,
         filename=file.filename or "drawing.dxf",
@@ -122,7 +129,10 @@ def export_cad_dxf(
 ) -> Response:
     ctx = context_for(auth, organization_id=organization_id, project_id=project_id)
     rec, data = _repo(session).export_dxf(
-        context=ctx, layer_id=body.layer_id, units=body.units
+        context=ctx,
+        layer_id=body.layer_id,
+        units=body.units,
+        expected_content_revision=body.expected_content_revision,
     )
     return Response(
         content=data,
@@ -146,16 +156,31 @@ def list_cad_conversions(
     return {"items": [_conv_wire(c) for c in _repo(session).list_conversions(context=ctx)]}
 
 
+def _planar_preview(result: dict[str, Any]) -> dict[str, Any]:
+    # These operations receive caller-supplied coordinates only, not a verified
+    # GIS source/revision. They must not imply a survey-grade CRS or edit.
+    return result | {
+        "coordinate_reference": "unreferenced_planar_input",
+        "units": "input_coordinate_units",
+        "survey_grade": False,
+        "published": False,
+    }
+
+
 @router.post(f"{_BASE}/cad/precision/traverse")
 def cogo_traverse(
     organization_id: UUID,
     project_id: UUID,
     body: CogoTraverseRequest,
     auth: Annotated[AuthenticatedRequest, Depends(require_csrf)],
+    session: Annotated[Session, Depends(get_db_session, scope="function")],
 ) -> dict[str, Any]:
-    _ = context_for(auth, organization_id=organization_id, project_id=project_id)
-    return compute_traverse_point(
-        origin=body.origin, distance=body.distance, azimuth_degrees=body.azimuth_degrees
+    context = context_for(auth, organization_id=organization_id, project_id=project_id)
+    prepare_project_scope(session, context, permission=Permission.PROJECT_READ)
+    return _planar_preview(
+        compute_traverse_point(
+            origin=body.origin, distance=body.distance, azimuth_degrees=body.azimuth_degrees
+        )
     )
 
 
@@ -165,9 +190,11 @@ def cogo_intersection(
     project_id: UUID,
     body: CogoIntersectionRequest,
     auth: Annotated[AuthenticatedRequest, Depends(require_csrf)],
+    session: Annotated[Session, Depends(get_db_session, scope="function")],
 ) -> dict[str, Any]:
-    _ = context_for(auth, organization_id=organization_id, project_id=project_id)
-    return compute_line_intersection(seg_a=body.seg_a, seg_b=body.seg_b)
+    context = context_for(auth, organization_id=organization_id, project_id=project_id)
+    prepare_project_scope(session, context, permission=Permission.PROJECT_READ)
+    return _planar_preview(compute_line_intersection(seg_a=body.seg_a, seg_b=body.seg_b))
 
 
 @router.post(f"{_BASE}/cad/precision/offset")
@@ -176,9 +203,13 @@ def cogo_offset(
     project_id: UUID,
     body: CogoOffsetRequest,
     auth: Annotated[AuthenticatedRequest, Depends(require_csrf)],
+    session: Annotated[Session, Depends(get_db_session, scope="function")],
 ) -> dict[str, Any]:
-    _ = context_for(auth, organization_id=organization_id, project_id=project_id)
-    return compute_parallel_offset(segment=body.segment, offset_distance=body.offset_distance)
+    context = context_for(auth, organization_id=organization_id, project_id=project_id)
+    prepare_project_scope(session, context, permission=Permission.PROJECT_READ)
+    return _planar_preview(
+        compute_parallel_offset(segment=body.segment, offset_distance=body.offset_distance)
+    )
 
 
 @router.post(f"{_BASE}/cad/precision/snap")
@@ -187,8 +218,10 @@ def cogo_snap(
     project_id: UUID,
     body: CogoSnapRequest,
     auth: Annotated[AuthenticatedRequest, Depends(require_csrf)],
+    session: Annotated[Session, Depends(get_db_session, scope="function")],
 ) -> dict[str, Any]:
-    _ = context_for(auth, organization_id=organization_id, project_id=project_id)
-    return compute_precision_snap(
-        target=body.target, segments=body.segments, tolerance=body.tolerance
+    context = context_for(auth, organization_id=organization_id, project_id=project_id)
+    prepare_project_scope(session, context, permission=Permission.PROJECT_READ)
+    return _planar_preview(
+        compute_precision_snap(target=body.target, segments=body.segments, tolerance=body.tolerance)
     )
