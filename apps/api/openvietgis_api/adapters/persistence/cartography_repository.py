@@ -257,7 +257,7 @@ class SqlCartographyRepository:
                 "layout requires 1..20 unique layers", code="LAYOUT_LAYER_LIMIT"
             )
         for layer_id in layer_ids:
-            row = self._session.execute(
+            layer_row = self._session.execute(
                 text("""
                     SELECT l.id FROM spatial.layers l JOIN spatial.data_sources s
                     ON l.source_id = s.id AND l.project_id = s.project_id
@@ -268,7 +268,7 @@ class SqlCartographyRepository:
                 """),
                 {"org": context.organization_id, "proj": context.project_id, "lid": layer_id},
             ).first()
-            if row is None:
+            if layer_row is None:
                 raise PlatformNotFoundError("layout layer unavailable")
         if extent is not None:
             _validate_print_extent(extent, crs_code)
