@@ -132,7 +132,7 @@ description: "Dependency-ordered implementation tasks for OpenVietGIS GIS Worksp
 
 ## Phase 9: Polish & Cross-Cutting Validation
 
-- [ ] T053 [P] Compare final bundle/UI interaction metrics and parent R004 map-open/select-inspector benchmarks with T005 baseline; record results in `specs/017-gis-workspace-ux/quickstart.md`
+- [x] T053 [P] Compare final bundle/UI interaction metrics and parent R004 map-open/select-inspector benchmarks with T005 baseline; record results in `specs/017-gis-workspace-ux/quickstart.md`
 - [ ] T054 Run every quickstart scenario, including Add Data fallback, layout stability, technical drawer, responsive widths and accessibility, and record exact browser/runtime/commit evidence in `specs/017-gis-workspace-ux/quickstart.md`
 - [ ] T055 Run all existing parent R004 unit/browser/performance tests before new UX suites; record any regression resolution in `specs/017-gis-workspace-ux/quickstart.md`
 - [ ] T056 Run web test/lint/typecheck/build, all new Playwright suites and full repository validation; record final evidence in `specs/017-gis-workspace-ux/quickstart.md`

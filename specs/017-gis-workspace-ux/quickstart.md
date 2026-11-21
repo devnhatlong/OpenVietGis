@@ -214,3 +214,10 @@ R004 SC009 (five first-time GIS-capable users) remains an external human accepta
   - Technical Details close returns focus to the invoking control;
   - visible focus remains present;
   - reduced-motion media preference resolves workspace transition/animation duration to effectively zero.
+
+## T053 final benchmark comparison — 2026-11-21
+
+- Code SHA `8a3204c991cd04979af96d14d26ff062a844bf07`; Node 26.13.1, Chromium 159.0.8154.6, 10,000 real reference features; 100 measured trials per workflow after 5 warmups.
+- `dist/map-evidence/sc007.json` measured at `2026-11-21T15:02:59.761Z`: open p50 1,967.20 ms, p95 2,299.48 ms (budget 3,000 ms); select-to-inspector p50 236.39 ms, p95 306.60 ms (budget 1,000 ms); external network requests 0. Both workflows pass their budget and improve relative to the pre-017 p95 of approximately 2,700 ms and 346 ms respectively.
+- Final Vite build: JS 1,639.08 kB raw / 454.27 kB gzip versus pre-017 1,610.22 / 447.17 kB (+1.79% raw, +1.59% gzip); CSS 141.05 / 25.11 kB versus 126.88 / 22.64 kB (+11.17% raw, +10.91% gzip); MapLibre worker 519.54 kB unchanged. Build passed; existing large-chunk warning remains a follow-up.
+- T053 comparison PASS. This evidence is not a substitute for the complete final regression/convergence gates T054–T057 or external human usability acceptance.
