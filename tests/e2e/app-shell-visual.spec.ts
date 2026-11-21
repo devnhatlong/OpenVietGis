@@ -26,7 +26,56 @@ test("authenticated dashboard and account menu visual baselines", async ({
   page
 }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
+
+  const organizationId = "11111111-1111-4111-8111-111111111111";
+  const projectId = "22222222-2222-4222-8222-222222222222";
+
+  // Keep the visual baseline independent from records created by earlier E2E
+  // cases while still exercising the real authenticated shell/session.
+  await page.route("**/api/v1/me/organizations", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.continue();
+      return;
+    }
+    await route.fulfill({
+      json: [
+        {
+          id: organizationId,
+          name: "Trung tâm GIS Việt Nam",
+          slug: "trung-tam-gis-viet-nam",
+          role: "owner",
+          status: "active"
+        }
+      ]
+    });
+  });
+
+  await page.route(
+    "**/api/v1/organizations/" + organizationId + "/projects",
+    async (route) => {
+      if (route.request().method() !== "GET") {
+        await route.continue();
+        return;
+      }
+      await route.fulfill({
+        json: [
+          {
+            id: projectId,
+            organization_id: organizationId,
+            workspace_id: null,
+            name: "Dự án Bản đồ Hà Nội",
+            slug: "du-an-ban-do-ha-noi",
+            status: "active"
+          }
+        ]
+      });
+    }
+  );
+
   await signInOwner(page);
+  await expect(
+    page.getByText("Dự án Bản đồ Hà Nội", { exact: true })
+  ).toBeVisible();
 
   await expect(page).toHaveScreenshot("dashboard.png", {
     fullPage: true,

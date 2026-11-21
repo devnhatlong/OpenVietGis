@@ -14,12 +14,22 @@ export const referenceFamilies = [
 ] as const;
 
 export async function mapSignIn(page: Page, member = false): Promise<void> {
-  await page.goto("/");
-  await page.getByRole("link", { name: /Continue with OpenVietGIS Development/ }).click();
+  await page.goto("/login");
+  await page
+    .getByRole("link", {
+      name: "Đăng nhập với OpenVietGIS Development",
+      exact: true
+    })
+    .click();
   await page.locator("#username").fill(member ? "member-a" : "owner-a");
   await page.locator("#password").fill(member ? "openvietgis-test-member-a" : "openvietgis-test-owner-a");
   await page.locator("#kc-login").click();
-  await expect(page.getByText(member ? "Member Alpha" : "Owner Alpha", { exact: true })).toBeVisible();
+  await expect(page.locator(".ovg-app-shell")).toBeVisible();
+  await expect(
+    page.locator(".ovg-account-name").filter({
+      hasText: member ? "Member Alpha" : "Owner Alpha"
+    })
+  ).toBeVisible();
 }
 
 /** The CSRF token remains inside the browser and is never attached to test evidence. */
@@ -64,8 +74,9 @@ export async function createMapProject(page: Page, suffix: string): Promise<MapF
   );
   expect(project.status).toBe(201);
   const projectId = project.body!.id;
-  const root = "/organizations/" + organizationId + "/projects/" + projectId;
-  return { organizationId, projectId, root, api: "/api/v1" + root, sources: [], layers: [] };
+  const apiRoot = "/organizations/" + organizationId + "/projects/" + projectId;
+  const root = "/app" + apiRoot;
+  return { organizationId, projectId, root, api: "/api/v1" + apiRoot, sources: [], layers: [] };
 }
 
 export async function registerMapReferences(page: Page, fixture: MapFixture, allFamilies = true): Promise<void> {

@@ -89,7 +89,7 @@ function Workspace({organizationId,projectId,accountId,project,initial,canEdit}:
  const page=!activeBlocked&&activeScope&&rawPage&&pinnedMatches(activeScope,rawPage.context)&&!rawPage.context.geometry_included?rawPage:undefined;
  const detail=!activeBlocked&&activeScope&&rawDetail&&pinnedMatches(activeScope,rawDetail.context)&&rawDetail.feature.feature_id===focus?rawDetail:undefined;
 
- useEffect(()=>{setCursor(null);setPages([]);setSelection(null);fitGeneration.current++;},[activeKey]);
+ useLayoutEffect(()=>{setCursor(null);setPages([]);setSelection(null);fitGeneration.current++;},[activeKey]);
  useEffect(()=>{if(directBlocked&&activeKey)setBlocked(activeKey);},[directBlocked,activeKey]);
  useEffect(()=>{alive.current=true;return()=>{alive.current=false;};},[]);
  function choose(id:string):void {setActive(id);setSelection(null);setCursor(null);setPages([]);setContextMenu(false);}
@@ -212,14 +212,16 @@ function Workspace({organizationId,projectId,accountId,project,initial,canEdit}:
  function execute(id:MapCommandId):void {
   setContextMenu(false);
   if(id==="map.fit-layer"&&active)void fitLayers([active]);
-  if(id==="map.fit-all")void fitLayers(configuration.layers.filter((r,i)=>r.visible&&capability(metadata[i],"render")).map(r=>r.layer_id));
+  if(id==="map.fit-all")void fitLayers(visibleRenderableIds);
   if(id==="map.fit-selection")void fitSelection();
   if(id==="map.clear-selection")setSelection(null);
   if(id==="map.save")void submitSave();
   if(id==="map.set-default-viewpoint"){const current=engine.current?.getCamera()??camera;setViewpointIntent({mode:"set",value:current});setNotice("Đã đánh dấu góc nhìn hiện tại. Bấm Lưu bản đồ để ghi nhận.");}
   if(id==="map.zoom-in")engine.current?.zoom(1);if(id==="map.zoom-out")engine.current?.zoom(-1);
  }
- const commands=createCommands({hasActive:capability(activeLayer,"render"),hasVisible:configuration.layers.some((r,i)=>r.visible&&capability(metadata[i],"render")),hasSelection:selected.length>0&&capability(activeLayer,"render"),canSave:writable,busy:locked},execute);
+ const visibleMetadataPending=configuration.layers.some((ref,index)=>ref.visible&&!metadata[index]&&!metadataQueries[index]?.error);
+ const visibleRenderableIds=configuration.layers.filter((ref,index)=>ref.visible&&capability(metadata[index],"render")).map(ref=>ref.layer_id);
+ const commands=createCommands({hasActive:capability(activeLayer,"render"),hasVisible:!visibleMetadataPending&&visibleRenderableIds.length>0,hasSelection:selected.length>0&&capability(activeLayer,"render"),canSave:writable,busy:locked},execute);
  const commandRef=useRef(commands);commandRef.current=commands;
  useEffect(()=>{
   const key=(event:KeyboardEvent)=>{if(event.target instanceof HTMLElement&&(event.target.closest("input,textarea,select,[contenteditable=true]")))return;
@@ -262,7 +264,7 @@ function Workspace({organizationId,projectId,accountId,project,initial,canEdit}:
   <AttributeTable layer={capability(activeLayer,"feature_read")?activeLayer:undefined} page={page} selected={selected} focus={focus} select={select} pageNumber={pages.length+1} error={readError}
    previous={pages.length?()=>{setCursor(pages[pages.length-1]??null);setPages(pages.slice(0,-1));}:null}
    next={page?.next_after_feature_id?()=>{setPages([...pages,cursor]);setCursor(page.next_after_feature_id);}:null}/>
-  <section className="map-save-panel" aria-label="Shared map configuration"><div><h2>Cấu hình bản đồ dùng chung</h2><p data-testid="map-save-status">{pending?.status??(dirty?"chưa lưu":"đã lưu")} · phiên bản {saved.configuration_revision} · góc nhìn mặc định: {viewpointIntent.mode==="preserve"?(saved.configuration.default_viewpoint?"giữ nguyên":"chưa đặt"):viewpointIntent.mode==="clear"?"xóa khi lưu":"cập nhật khi lưu"}</p></div>
+  <section className="map-save-panel" aria-label="Cấu hình bản đồ dùng chung"><div><h2>Cấu hình bản đồ dùng chung</h2><p data-testid="map-save-status">{pending?.status??(dirty?"chưa lưu":"đã lưu")} · phiên bản {saved.configuration_revision} · góc nhìn mặc định: {viewpointIntent.mode==="preserve"?(saved.configuration.default_viewpoint?"giữ nguyên":"chưa đặt"):viewpointIntent.mode==="clear"?"xóa khi lưu":"cập nhật khi lưu"}</p></div>
    <button disabled={!writable||locked} onClick={()=>invokeCommand(commands,"map.set-default-viewpoint","toolbar")}>Đặt góc nhìn mặc định</button>
    <button disabled={!writable||locked} onClick={()=>{setViewpointIntent({mode:"clear"});setPending(null);}}>Xóa góc nhìn mặc định</button>
    <button disabled={!writable||locked} onClick={()=>void submitSave()}>Lưu bản đồ</button>

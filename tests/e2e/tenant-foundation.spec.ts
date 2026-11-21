@@ -5,31 +5,58 @@ test("checks readiness and reloads a persisted real tenant project", async ({ pa
   expect(readiness.status()).toBe(200);
   expect(await readiness.json()).toEqual({ status: "ready", database: "ready" });
 
-  await page.goto("/");
-  await expect(page.getByRole("heading", { name: "Sign in to OpenVietGIS" })).toBeVisible();
-  await page.getByRole("link", { name: /Continue with OpenVietGIS Development/ }).click();
+  await page.goto("/login");
+  await expect(
+    page.getByRole("heading", { name: "Đăng nhập OpenVietGIS" })
+  ).toBeVisible();
+  await page
+    .getByRole("link", {
+      name: "Đăng nhập với OpenVietGIS Development",
+      exact: true
+    })
+    .click();
   await page.locator("#username").fill("owner-a");
   await page.locator("#password").fill("openvietgis-test-owner-a");
   await page.locator("#kc-login").click();
-  await expect(page.getByText(/Signed in as/)).toBeVisible();
+  await expect(page.locator(".ovg-app-shell")).toBeVisible();
 
   const suffix = Date.now();
   const orgName = "Foundation tenant " + suffix;
-  await page.getByLabel("Organization name").fill(orgName);
-  await page.getByLabel("Organization slug").fill("foundation-" + suffix);
-  await page.getByRole("button", { name: "Create organization" }).click();
-  await page.getByRole("link", { name: orgName, exact: true }).click();
-  await page.getByRole("link", { name: "Projects", exact: true }).click();
+
+  await page.goto("/app/organizations");
+  await page.getByLabel("Tên tổ chức").fill(orgName);
+  await page.getByLabel("Mã định danh tổ chức").fill("foundation-" + suffix);
+  await page
+    .getByRole("button", { name: "Tạo tổ chức", exact: true })
+    .click();
+
+  const orgLink = page.getByRole("link", { name: orgName, exact: true });
+  await expect(orgLink).toBeVisible();
+  await orgLink.click();
+
+  const organizationId = new URL(page.url()).pathname.split("/").at(-1) ?? "";
+  expect(organizationId).toMatch(/^[0-9a-f-]{36}$/);
+
+  await page.goto("/app/organizations/" + organizationId + "/projects");
 
   const projectName = "Foundation project " + suffix;
-  await page.getByLabel("Project name").fill(projectName);
-  await page.getByLabel("Project slug").fill("foundation-project-" + suffix);
-  await page.getByRole("button", { name: "Create project" }).click();
-  const record = page.locator('li[data-testid^="project-"]').filter({ hasText: projectName });
+  await page.getByLabel("Tên dự án").fill(projectName);
+  await page
+    .getByLabel("Mã định danh dự án")
+    .fill("foundation-project-" + suffix);
+  await page
+    .getByRole("button", { name: "Tạo dự án", exact: true })
+    .click();
+
+  const record = page
+    .locator('li[data-testid^="project-"]')
+    .filter({ hasText: projectName });
   await expect(record).toBeVisible();
+
   const id = await record.getAttribute("data-testid");
   expect(id).toMatch(/^project-[0-9a-f-]{36}$/);
   if (!id) throw new Error("Missing persisted project ID");
+
   await page.reload();
   await expect(page.getByTestId(id)).toContainText(projectName);
 });

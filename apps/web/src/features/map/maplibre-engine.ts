@@ -373,13 +373,24 @@ export function createMapLibreEngine(container: HTMLElement, events: MapEngineEv
     getCamera: camera,
     fitBounds(value: Bounds) {
       const [w, s, e, n] = value;
-      map.fitBounds(
+      const target = map.cameraForBounds(
         [
           [w, s],
           [e, n]
         ],
-        { padding: 48, maxZoom: 18, duration: 0 }
+        { padding: 48, maxZoom: 18 }
       );
+      if (!target) return;
+      map.jumpTo({
+        ...(target.center ? { center: target.center } : {}),
+        ...(typeof target.zoom === "number" ? { zoom: target.zoom } : {}),
+        ...(typeof target.bearing === "number" ? { bearing: target.bearing } : {}),
+        ...(typeof target.pitch === "number" ? { pitch: target.pitch } : {})
+      });
+      // Publish the exact resulting viewport synchronously. Relying only on
+      // MapLibre's moveend after fitBounds can lag behind repeated renderer
+      // lifecycles and leave protected viewport queries pinned to stale bounds.
+      settle();
     },
     zoom(delta) {
       map.zoomTo(Math.max(0, Math.min(22, map.getZoom() + delta)), { duration: 0 });

@@ -51,16 +51,18 @@ describe("AppDashboard", () => {
   });
 
   it("renders human-readable organization and project cards without primary UUID labels", () => {
-    useQueryMock.mockReturnValue(
-      success([
-        {
-          id: "dccf019f-d2dc-4b8e-83f7-e3603080aa4c",
-          name: "Tổ chức GIS",
-          slug: "to-chuc-gis",
-          role: "owner",
-          status: "active"
-        }
-      ])
+    useQueryMock.mockImplementation((options: { queryKey: unknown[] }) =>
+      options.queryKey[0] === "bootstrap-status"
+        ? success({ initialized: true })
+        : success([
+            {
+              id: "dccf019f-d2dc-4b8e-83f7-e3603080aa4c",
+              name: "Tổ chức GIS",
+              slug: "to-chuc-gis",
+              role: "owner",
+              status: "active"
+            }
+          ])
     );
     useQueriesMock.mockReturnValue([
       success([
@@ -84,16 +86,31 @@ describe("AppDashboard", () => {
     expect(html).toContain(">Dự án Bản đồ Hà Nội<");
   });
 
+  it("renders bootstrap gate for an uninitialized installation", () => {
+    useQueryMock.mockImplementation((options: { queryKey: unknown[] }) =>
+      options.queryKey[0] === "bootstrap-status"
+        ? success({ initialized: false })
+        : success([])
+    );
+    useQueriesMock.mockReturnValue([]);
+
+    const html = renderToStaticMarkup(<AppDashboard />);
+    expect(html).toContain("Khởi tạo hệ thống OpenVietGIS");
+    expect(html).not.toContain("Chào Owner Alpha");
+  });
+
   it("renders a useful no-project empty state", () => {
-    useQueryMock.mockReturnValue(
-      success([
-        {
-          id: "org-1",
-          name: "Tổ chức GIS",
-          slug: "to-chuc-gis",
-          role: "member"
-        }
-      ])
+    useQueryMock.mockImplementation((options: { queryKey: unknown[] }) =>
+      options.queryKey[0] === "bootstrap-status"
+        ? success({ initialized: true })
+        : success([
+            {
+              id: "org-1",
+              name: "Tổ chức GIS",
+              slug: "to-chuc-gis",
+              role: "member"
+            }
+          ])
     );
     useQueriesMock.mockReturnValue([success([])]);
 

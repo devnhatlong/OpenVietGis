@@ -137,12 +137,12 @@ function CurrentFeatureInspector({
       {page.context.transformation ? <p role="status">
         Phép chuyển đổi: {page.context.transformation.operation_id}. Bằng chứng: {page.context.transformation.evidence_id}.
         {" "}Dung sai: {page.context.transformation.tolerance} {page.context.transformation.tolerance_unit}.
-        {" "}{page.context.transformation.validated_area} Gốc storage is unchanged.
+        {" "}{page.context.transformation.validated_area}. Dữ liệu gốc không bị thay đổi.
       </p> : null}
       <p>Giá trị hiển thị theo JSON chính xác: chuỗi có dấu ngoặc kép, null khác với chuỗi rỗng.</p>
       {page.items.length ? (
         <div style={{ overflowX: "auto" }}>
-          <table aria-label="Pinned feature page">
+          <table aria-label="Trang đối tượng theo phiên bản">
             <thead><tr>
               <th>Mã đối tượng</th>
               {fields.map(field => (

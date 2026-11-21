@@ -30,20 +30,21 @@ test("M2+M3 end-to-end: R006 Editing, R007 Query, R008 Processing, R009 Cartogra
     mimeType: "application/geo+json",
     buffer: Buffer.from(geojson, "utf-8")
   });
-  await expect(page.getByRole("button", { name: /confirm import/i })).toBeEnabled({
+  await expect(page.getByTestId("confirm-import-btn")).toBeEnabled({
     timeout: 15000
   });
-  await page.getByRole("button", { name: /confirm import/i }).click();
-  await expect(page.getByText(/import succeeded|succeeded/i).first()).toBeVisible({
-    timeout: 15000
-  });
+  await page.getByTestId("confirm-import-btn").click();
+  await expect(page.getByTestId("import-notice")).toContainText(
+    "Nhập dữ liệu thành công",
+    { timeout: 15000 }
+  );
 
   // 1. R006 Editing Workbench
   await page.goto(`${base}/editing`);
   await expect(page.getByTestId("editing-workbench")).toBeVisible();
   await page.getByLabel("Thuộc tính JSON có kiểu").fill('{"name":"Point Two"}');
   await page.getByRole("button", { name: "Đưa vào bản nháp" }).click();
-  await page.getByRole("button", { name: "Lưu thay đổi (Commit)" }).click();
+  await page.getByRole("button", { name: "Lưu thay đổi", exact: true }).click();
   await expect(page.getByText(/Đã lưu đợt thay đổi/i)).toBeVisible({ timeout: 10000 });
 
   // 2. R007 Query Workbench
@@ -56,7 +57,7 @@ test("M2+M3 end-to-end: R006 Editing, R007 Query, R008 Processing, R009 Cartogra
   await page.goto(`${base}/processing`);
   await expect(page.getByTestId("processing-workbench")).toBeVisible();
   await page.getByRole("button", { name: "Chạy tác vụ" }).click();
-  await expect(page.getByText(/hoàn tất \(succeeded, 2 features\)/i)).toBeVisible({
+  await expect(page.getByText(/hoàn tất \(Thành công, 2 đối tượng\)/i)).toBeVisible({
     timeout: 15000
   });
 
@@ -66,7 +67,7 @@ test("M2+M3 end-to-end: R006 Editing, R007 Query, R008 Processing, R009 Cartogra
   await page.getByRole("button", { name: "Lưu ký hiệu" }).click();
   await expect(page.getByText(/Đã lưu ký hiệu trung lập/i)).toBeVisible({ timeout: 10000 });
   await page.getByRole("button", { name: "Tạo bố cục in" }).click();
-  await expect(page.getByText(/Đã tạo bố cục in A4 landscape/i)).toBeVisible({
+  await expect(page.getByText(/Đã tạo bố cục in A4 ngang/i)).toBeVisible({
     timeout: 10000
   });
   await page.getByRole("button", { name: "PNG 150 DPI" }).first().click();
@@ -75,10 +76,17 @@ test("M2+M3 end-to-end: R006 Editing, R007 Query, R008 Processing, R009 Cartogra
   // 5. R010–R015 Platform Hub (Ops Readiness + COGO)
   await page.goto(`${base}/platform-hub`);
   await expect(page.getByTestId("ops-readiness-panel")).toBeVisible();
-  await expect(page.getByRole("cell", { name: "R015", exact: true })).toBeVisible({ timeout: 10000 });
-  await expect(page.getByText(/Trạng thái sẵn sàng: ready/i)).toBeVisible({ timeout: 10000 });
+  await expect(
+    page.getByRole("cell", {
+      name: "Vận hành sản xuất & tự triển khai",
+      exact: true
+    })
+  ).toBeVisible({ timeout: 10000 });
+  await expect(page.getByText(/Trạng thái sẵn sàng:\s*Sẵn sàng/i)).toBeVisible({
+    timeout: 10000
+  });
 
-  await page.getByRole("tab", { name: /R012 CAD 2D & COGO/i }).click();
+  await page.getByRole("tab", { name: "CAD 2D & COGO", exact: true }).click();
   await page.getByRole("button", { name: "Tính tọa độ điểm cuối" }).click();
   await expect(
     page.getByText(/Tọa độ điểm tính được: \(500100\.0000, 2300000\.0000\)/i)

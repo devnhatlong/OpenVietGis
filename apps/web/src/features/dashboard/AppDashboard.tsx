@@ -1,4 +1,5 @@
 import {
+  getBootstrapStatus,
   listMyOrganizations,
   listProjects,
   type MyOrganization,
@@ -13,6 +14,7 @@ import {
   protectedQueryOptions
 } from "../../app/protected-query";
 import { useSession } from "../../app/session/SessionBoundary";
+import { BootstrapPage } from "../organizations/BootstrapPage";
 import "./dashboard.css";
 
 function roleLabel(role: MyOrganization["role"]): string {
@@ -35,12 +37,19 @@ function projectStatusLabel(status: Project["status"]): string {
 export function AppDashboard() {
   const { account } = useSession();
 
+  const bootstrapQuery = useQuery({
+    queryKey: ["bootstrap-status"],
+    queryFn: () => getBootstrapStatus(apiClient),
+    ...protectedQueryOptions
+  });
+
   const organizationsQuery = useQuery({
     queryKey: ["my-organizations", account.id],
     queryFn: () => listMyOrganizations(apiClient),
     ...protectedQueryOptions
   });
 
+  const bootstrap = currentProtectedData(bootstrapQuery);
   const organizations = currentProtectedData(organizationsQuery);
 
   const projectQueries = useQueries({
@@ -50,6 +59,34 @@ export function AppDashboard() {
       ...protectedQueryOptions
     }))
   });
+
+  if (!bootstrap) {
+    const checking =
+      !bootstrapQuery.error &&
+      (bootstrapQuery.isPending || bootstrapQuery.fetchStatus !== "idle");
+    return (
+      <section className="dashboard-page">
+        <div className="dashboard-state" role={checking ? "status" : "alert"}>
+          {checking
+            ? "Đang kiểm tra trạng thái hệ thống…"
+            : "Không thể kiểm tra trạng thái hệ thống."}
+        </div>
+      </section>
+    );
+  }
+
+  if (!bootstrap.initialized) {
+    return (
+      <BootstrapPage
+        onInitialized={async () => {
+          await Promise.all([
+            bootstrapQuery.refetch(),
+            organizationsQuery.refetch()
+          ]);
+        }}
+      />
+    );
+  }
 
   if (!organizations) {
     const checking =

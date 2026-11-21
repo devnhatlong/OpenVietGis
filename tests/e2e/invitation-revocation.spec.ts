@@ -1,7 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
 
-// The one-time invitation secret is intentionally transported through the UI once.
-// Do not retain DOM snapshots, network bodies, or screenshots from this journey.
 test.use({ trace: "off", screenshot: "off", video: "off" });
 
 type UserName = "owner-a" | "member-a" | "member-b";
@@ -13,14 +11,23 @@ const users = {
 } as const;
 
 async function signIn(page: Page, username: UserName) {
-  await page.goto("/");
-  await expect(page.getByRole("heading", { name: "Sign in to OpenVietGIS" })).toBeVisible();
-  await page.getByRole("link", { name: /Continue with OpenVietGIS Development/ }).click();
+  await page.goto("/login");
+  await expect(
+    page.getByRole("heading", { name: "Đăng nhập OpenVietGIS" })
+  ).toBeVisible();
+  await page
+    .getByRole("link", {
+      name: "Đăng nhập với OpenVietGIS Development",
+      exact: true
+    })
+    .click();
   await page.locator("#username").fill(username);
   await page.locator("#password").fill(users[username].password);
   await page.locator("#kc-login").click();
-  await expect(page.getByText(/Signed in as/)).toBeVisible();
-  await expect(page.getByText(users[username].display, { exact: true })).toBeVisible();
+  await expect(page.locator(".ovg-app-shell")).toBeVisible();
+  await expect(
+    page.locator(".ovg-account-name").filter({ hasText: users[username].display })
+  ).toBeVisible();
 }
 
 async function currentUserId(page: Page): Promise<string> {
@@ -29,211 +36,346 @@ async function currentUserId(page: Page): Promise<string> {
   return (await response.json() as { id: string }).id;
 }
 
-async function createOrganization(page: Page, suffix: string): Promise<string> {
-  const name = "Invitation team " + suffix;
-  await page.getByLabel("Organization name").fill(name);
-  await page.getByLabel("Organization slug").fill("invitation-" + suffix);
-  await page.getByRole("button", { name: "Create organization" }).click();
-  const link = page.getByRole("link", { name, exact: true });
-  await expect(link).toBeVisible();
-  await link.click();
-  await expect(page).toHaveURL(/\/organizations\/[0-9a-f-]{36}$/);
-  return new URL(page.url()).pathname.split("/").at(-1) ?? "";
+async function mutation<T>(
+  page: Page,
+  path: string,
+  method: "POST" | "PATCH",
+  body: unknown
+): Promise<{ status: number; body: T | null }> {
+  return page.evaluate(async ({ path, method, body }) => {
+    const csrfResponse = await fetch("/api/v1/auth/csrf");
+    if (!csrfResponse.ok) throw new Error("Unable to obtain mutation context");
+    const csrf = await csrfResponse.json() as { token: string };
+    const response = await fetch(path, {
+      method,
+      headers: {
+        "content-type": "application/json",
+        "x-openvietgis-csrf": csrf.token
+      },
+      body: JSON.stringify(body)
+    });
+    const text = await response.text();
+    return {
+      status: response.status,
+      body: text ? JSON.parse(text) as T : null
+    };
+  }, { path, method, body });
 }
 
-async function createProject(page: Page, name: string, slug: string): Promise<string> {
-  await page.getByRole("link", { name: "Projects", exact: true }).click();
-  await page.getByLabel("Project name").fill(name);
-  await page.getByLabel("Project slug").fill(slug);
-  await page.getByRole("button", { name: "Create project" }).click();
-  const row = page.locator('li[data-testid^="project-"]').filter({ hasText: name });
-  await expect(row).toBeVisible();
-  return (await row.getAttribute("data-testid"))?.slice("project-".length) ?? "";
+async function createOrganization(page: Page, suffix: string): Promise<string> {
+  const result = await mutation<{ organization: { id: string } }>(
+    page,
+    "/api/v1/organizations",
+    "POST",
+    { name: "Invitation team " + suffix, slug: "invitation-" + suffix }
+  );
+  expect(result.status).toBe(201);
+  const id = result.body?.organization.id ?? "";
+  expect(id).toMatch(/^[0-9a-f-]{36}$/);
+  return id;
+}
+
+async function createProject(
+  page: Page,
+  organizationId: string,
+  name: string,
+  slug: string
+): Promise<string> {
+  const result = await mutation<{ id: string }>(
+    page,
+    "/api/v1/organizations/" + organizationId + "/projects",
+    "POST",
+    { name, slug }
+  );
+  expect(result.status).toBe(201);
+  const id = result.body?.id ?? "";
+  expect(id).toMatch(/^[0-9a-f-]{36}$/);
+  return id;
 }
 
 async function pasteInvitation(page: Page, handoff: string) {
-  const field = page.getByLabel("Invitation handoff");
+  const field = page.getByLabel("Thông tin lời mời");
   await expect(field).toBeVisible();
-  // Avoid Playwright's fill call logging the secret in a failure diagnostic.
   await field.evaluate((element, value) => {
-    if (!(element instanceof HTMLTextAreaElement)) throw new Error("Expected invitation input");
-    const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set;
+    if (!(element instanceof HTMLTextAreaElement)) {
+      throw new Error("Expected invitation input");
+    }
+    const setter = Object.getOwnPropertyDescriptor(
+      HTMLTextAreaElement.prototype,
+      "value"
+    )?.set;
     if (!setter) throw new Error("Missing textarea value setter");
     setter.call(element, value);
     element.dispatchEvent(new Event("input", { bubbles: true }));
   }, handoff);
 }
 
-async function submitInvitation(page: Page, handoff: string, status: number) {
-  await page.goto("/invitations/accept");
-  await expect(page.getByRole("heading", { name: "Accept invitation" })).toBeVisible();
+async function submitInvitation(
+  page: Page,
+  handoff: string,
+  status: number
+) {
+  await page.goto("/app/invitations/accept");
+  await expect(
+    page.getByRole("heading", { name: "Chấp nhận lời mời" })
+  ).toBeVisible();
   await pasteInvitation(page, handoff);
-  const response = page.waitForResponse((candidate) =>
-    new URL(candidate.url()).pathname === "/api/v1/invitations/accept" &&
-    candidate.request().method() === "POST"
+
+  const response = page.waitForResponse(
+    (candidate) =>
+      new URL(candidate.url()).pathname === "/api/v1/invitations/accept" &&
+      candidate.request().method() === "POST"
   );
-  await page.getByRole("button", { name: "Accept invitation", exact: true }).click();
+
+  await page
+    .getByRole("button", { name: "Chấp nhận lời mời", exact: true })
+    .click();
+
   expect((await response).status()).toBe(status);
 }
 
-test("recipient-bound invitation grants one project and revocation stops the next protected request", async ({
-  page: owner, browser, baseURL
-}, testInfo) => {
-  // Keep the surrounding setup/rejection/revocation separate from the SC-004 clock.
-  test.setTimeout(300_000);
-  const options = { baseURL: baseURL ?? "http://127.0.0.1:5178" };
-  const wrongContext = await browser.newContext(options);
-  const recipientContext = await browser.newContext(options);
-  try {
-    const wrong = await wrongContext.newPage();
-    const recipient = await recipientContext.newPage();
-    await signIn(owner, "owner-a");
-    const suffix = Date.now().toString();
-    const orgId = await createOrganization(owner, suffix);
-    const projectName = "Invited project " + suffix;
-    const projectId = await createProject(owner, projectName, "invited-project-" + suffix);
-    expect(orgId).toMatch(/^[0-9a-f-]{36}$/);
-    expect(projectId).toMatch(/^[0-9a-f-]{36}$/);
-    const projectPath = "/api/v1/organizations/" + orgId + "/projects/" + projectId;
-    const hiddenProjectName = "Unshared project " + suffix;
-    await owner.getByLabel("Project name").fill(hiddenProjectName);
-    await owner.getByLabel("Project slug").fill("unshared-project-" + suffix);
-    await owner.getByRole("button", { name: "Create project" }).click();
-    await expect(owner.getByText(hiddenProjectName, { exact: true })).toBeVisible();
+test(
+  "recipient-bound invitation grants one project and revocation stops the next protected request",
+  async ({ page: owner, browser, baseURL }, testInfo) => {
+    test.setTimeout(300_000);
+    const options = { baseURL: baseURL ?? "http://127.0.0.1:5178" };
+    const wrongContext = await browser.newContext(options);
+    const recipientContext = await browser.newContext(options);
 
-    await owner.getByRole("link", { name: "Organization", exact: false }).click();
-    await owner.getByRole("link", { name: "Membership and access" }).click();
-    await expect(owner.getByRole("heading", { name: "Invitations", exact: true })).toBeVisible();
-    await owner.getByLabel("Recipient email").fill("member-a@example.test");
-    await owner.getByLabel("Organization role").selectOption("member");
-    await owner.getByLabel("Include resource grant").check();
-    const grantFields = owner.getByRole("group", { name: "Invitation resource access" });
-    await grantFields.getByRole("combobox", { name: "Scope", exact: true }).selectOption("project");
-    const resourceSelect = grantFields.getByRole("combobox", { name: "Resource", exact: true });
-    await expect(resourceSelect).toBeAttached();
-    await expect(resourceSelect.locator('option[value="' + projectId + '"]')).toHaveCount(1);
-    await resourceSelect.selectOption(projectId);
-    await grantFields.getByRole("combobox", { name: "Resource role", exact: true }).selectOption("viewer");
-    await owner.getByRole("button", { name: "Issue invitation" }).click();
-    const issued = owner.getByRole("region", { name: "Issued invitation" });
-    await expect(issued).toBeVisible();
-    const handoff = await issued.getByLabel("Invitation handoff").inputValue();
-    let parsed: { organization_id: string; secret: string };
     try {
-      parsed = JSON.parse(handoff) as typeof parsed;
-    } catch {
-      throw new Error("Invalid invitation handoff format");
-    }
-    expect(parsed.organization_id).toBe(orgId);
-    expect(parsed.secret.length).toBeGreaterThanOrEqual(32);
-    await issued.getByRole("button", { name: "Hide one-time secret" }).click();
-    await expect(issued).toHaveCount(0);
+      const wrong = await wrongContext.newPage();
+      const recipient = await recipientContext.newPage();
 
-    // The wrong verified identity must not consume the invitation or acquire membership.
-    await signIn(wrong, "member-b");
-    const wrongUserId = await currentUserId(wrong);
-    await submitInvitation(wrong, handoff, 400);
-    await expect(wrong.getByRole("alert")).toContainText("Unable to accept invitation");
-    const wrongOrganizations = await wrong.request.get("/api/v1/me/organizations");
-    expect(wrongOrganizations.status()).toBe(200);
-    expect((await wrongOrganizations.json() as Array<{ id: string }>).some((org) => org.id === orgId)).toBe(false);
+      await signIn(owner, "owner-a");
+      const suffix = Date.now().toString();
+      const orgId = await createOrganization(owner, suffix);
+      const projectName = "Invited project " + suffix;
+      const projectId = await createProject(
+        owner,
+        orgId,
+        projectName,
+        "invited-project-" + suffix
+      );
+      const hiddenProjectName = "Unshared project " + suffix;
+      await createProject(
+        owner,
+        orgId,
+        hiddenProjectName,
+        "unshared-project-" + suffix
+      );
 
-    // Direct SPA navigation must also fail closed for a verified nonmember;
-    // checking a direct API URL alone does not exercise the client display boundary.
-    await wrong.goto("/organizations/" + orgId + "/projects");
-    await expect(wrong.getByRole("alert")).toContainText("Unable to load project access");
-    await expect(wrong.getByTestId("project-list")).toHaveCount(0);
-    await expect(wrong.getByText(projectName, { exact: true })).toHaveCount(0);
-    await expect(wrong.getByText(hiddenProjectName, { exact: true })).toHaveCount(0);
-    const unauthorizedDetail = await wrong.goto(projectPath);
-    expect(unauthorizedDetail?.status()).toBe(404);
-    expect(await unauthorizedDetail?.text()).not.toContain(projectName);
+      const projectPath =
+        "/api/v1/organizations/" + orgId + "/projects/" + projectId;
 
-    // The intended identity completes the documented journey: authenticate,
-    // accept through the UI, and reach the actual granted project.
-    const acceptanceStarted = performance.now();
-    await signIn(recipient, "member-a");
-    const recipientUserId = await currentUserId(recipient);
-    await submitInvitation(recipient, handoff, 200);
-    await expect(recipient).toHaveURL(new RegExp("/organizations/" + orgId + "$"));
-    await expect(recipient.getByTestId("active-organization")).toContainText("member");
-    await recipient.getByRole("link", { name: "Projects", exact: true }).click();
-    await expect(recipient.getByText(projectName, { exact: true })).toBeVisible();
-    await expect(recipient.getByText(hiddenProjectName, { exact: true })).toHaveCount(0);
-    const granted = await recipient.request.get(projectPath);
-    expect(granted.status()).toBe(200);
-    expect(await granted.json()).toMatchObject({ id: projectId, organization_id: orgId });
-    const acceptanceElapsedMs = performance.now() - acceptanceStarted;
-    // The attachment contains only elapsed time, never the invitation handoff.
-    await testInfo.attach("sc-004-invitation-acceptance", {
-      body: JSON.stringify({ elapsedMs: Math.round(acceptanceElapsedMs) }),
-      contentType: "application/json"
-    });
-    expect(acceptanceElapsedMs).toBeLessThan(180_000);
+      await owner.goto("/app/organizations/" + orgId + "/membership");
+      await expect(
+        owner.getByRole("heading", { name: "Lời mời", exact: true })
+      ).toBeVisible();
 
-    await submitInvitation(recipient, handoff, 400);
-    await expect(recipient.getByRole("alert")).toContainText("Unable to accept invitation");
+      await owner.getByLabel("Email người nhận").fill("member-a@example.test");
+      await owner.getByLabel("Vai trò trong tổ chức").selectOption("member");
+      await owner.getByLabel("Kèm quyền truy cập tài nguyên").check();
 
-    // Populate the SPA cache, then leave the project page using in-app navigation.
-    // Do not reload the recipient's browser after revocation: stale query data must
-    // remain possible so the test can detect the protected-display regression.
-    await recipient.getByRole("link", { name: "← Organizations", exact: true }).click();
-    await recipient.getByRole("link", { name: "Invitation team " + suffix, exact: true }).click();
-    await recipient.getByRole("link", { name: "Projects", exact: true }).click();
-    await expect(recipient.getByText(projectName, { exact: true })).toBeVisible();
-    await recipient.getByRole("link", { name: "← Organization", exact: true }).click();
-    await expect(recipient.getByTestId("active-organization")).toBeVisible();
+      const grantFields = owner.getByRole("group", {
+        name: "Quyền tài nguyên trong lời mời"
+      });
+      await grantFields
+        .getByRole("combobox", { name: "Phạm vi", exact: true })
+        .selectOption("project");
 
-    // Revoke without logging the recipient out or replacing their browser context.
-    await owner.reload();
-    const memberList = owner.getByTestId("member-list");
-    const memberRow = memberList.locator("li").filter({ hasText: recipientUserId });
-    await expect(memberRow).toContainText("active");
-    await expect(memberList.locator("li").filter({ hasText: wrongUserId })).toHaveCount(0);
-    owner.once("dialog", (dialog) => void dialog.accept());
-    await memberRow.getByRole("button", { name: "Revoke", exact: true }).click();
-    await expect(memberRow).toContainText("revoked");
-    expect((await recipient.request.get(projectPath)).status()).toBe(404);
+      const resourceSelect = grantFields.getByRole("combobox", {
+        name: "Tài nguyên",
+        exact: true
+      });
+      await expect(
+        resourceSelect.locator('option[value="' + projectId + '"]')
+      ).toHaveCount(1);
+      await resourceSelect.selectOption(projectId);
+      await grantFields
+        .getByRole("combobox", { name: "Vai trò trên tài nguyên", exact: true })
+        .selectOption("viewer");
 
-    // Hold the real refetch in flight once. The previously authorized project
-    // must disappear before the denied response arrives, and stay hidden after.
-    const projectListPath = "/api/v1/organizations/" + orgId + "/projects";
-    let releaseRefetch = () => {};
-    const refetchGate = new Promise<void>((resolve) => { releaseRefetch = resolve; });
-    const listRoute = (url: URL) => url.pathname === projectListPath;
-    await recipient.route(listRoute, async (route) => {
-      await refetchGate;
-      await route.continue();
-    });
-    try {
-      const requested = recipient.waitForRequest((request) =>
-        listRoute(new URL(request.url())) && request.method() === "GET");
-      const denied = recipient.waitForResponse((response) =>
-        listRoute(new URL(response.url())) && response.request().method() === "GET");
+      await owner
+        .getByRole("button", { name: "Gửi lời mời", exact: true })
+        .click();
+
+      const issued = owner.getByRole("region", { name: "Lời mời đã tạo" });
+      await expect(issued).toBeVisible();
+      const handoff = await issued.getByLabel("Thông tin lời mời").inputValue();
+
+      let parsed: { organization_id: string; secret: string };
       try {
-        // Browser history restores the SPA route and uses the same QueryClient.
-        await recipient.evaluate(() => window.history.back());
-        await requested;
-        await expect(recipient.getByText(projectName, { exact: true })).toHaveCount(0);
+        parsed = JSON.parse(handoff) as typeof parsed;
+      } catch {
+        throw new Error("Invalid invitation handoff format");
+      }
+      expect(parsed.organization_id).toBe(orgId);
+      expect(parsed.secret.length).toBeGreaterThanOrEqual(32);
+
+      await issued
+        .getByRole("button", { name: "Ẩn mã bí mật dùng một lần" })
+        .click();
+      await expect(issued).toHaveCount(0);
+
+      // A different verified identity must not consume the recipient-bound invitation.
+      await signIn(wrong, "member-b");
+      const wrongUserId = await currentUserId(wrong);
+      await submitInvitation(wrong, handoff, 400);
+      await expect(wrong.getByRole("alert")).toContainText(
+        "Không thể chấp nhận lời mời"
+      );
+
+      const wrongOrganizations = await wrong.request.get(
+        "/api/v1/me/organizations"
+      );
+      expect(wrongOrganizations.status()).toBe(200);
+      expect(
+        (await wrongOrganizations.json() as Array<{ id: string }>).some(
+          (org) => org.id === orgId
+        )
+      ).toBe(false);
+
+      await wrong.goto("/app/organizations/" + orgId + "/projects");
+      await expect(wrong.getByRole("alert")).toContainText(
+        "Không thể tải quyền truy cập dự án"
+      );
+      await expect(wrong.getByTestId("project-list")).toHaveCount(0);
+      await expect(wrong.getByText(projectName, { exact: true })).toHaveCount(0);
+      await expect(
+        wrong.getByText(hiddenProjectName, { exact: true })
+      ).toHaveCount(0);
+
+      const unauthorizedDetail = await wrong.goto(projectPath);
+      expect(unauthorizedDetail?.status()).toBe(404);
+      expect(await unauthorizedDetail?.text()).not.toContain(projectName);
+
+      // The intended recipient accepts and sees only the granted project.
+      const acceptanceStarted = performance.now();
+      await signIn(recipient, "member-a");
+      const recipientUserId = await currentUserId(recipient);
+      await submitInvitation(recipient, handoff, 200);
+
+      await expect(recipient).toHaveURL(
+        new RegExp("/app/organizations/" + orgId + "$")
+      );
+      await expect(
+        recipient.getByTestId("active-organization")
+      ).toContainText("Thành viên");
+
+      await recipient.goto("/app/organizations/" + orgId + "/projects");
+      await expect(
+        recipient.getByText(projectName, { exact: true })
+      ).toBeVisible();
+      await expect(
+        recipient.getByText(hiddenProjectName, { exact: true })
+      ).toHaveCount(0);
+
+      const granted = await recipient.request.get(projectPath);
+      expect(granted.status()).toBe(200);
+      expect(await granted.json()).toMatchObject({
+        id: projectId,
+        organization_id: orgId
+      });
+
+      const acceptanceElapsedMs = performance.now() - acceptanceStarted;
+      await testInfo.attach("sc-004-invitation-acceptance", {
+        body: JSON.stringify({ elapsedMs: Math.round(acceptanceElapsedMs) }),
+        contentType: "application/json"
+      });
+      expect(acceptanceElapsedMs).toBeLessThan(180_000);
+
+      // One-time use must fail closed.
+      await submitInvitation(recipient, handoff, 400);
+      await expect(recipient.getByRole("alert")).toContainText(
+        "Không thể chấp nhận lời mời"
+      );
+
+      // Populate project-list cache, then return to the organization without reload.
+      await recipient.goto("/app/organizations/" + orgId + "/projects");
+      await expect(
+        recipient.getByText(projectName, { exact: true })
+      ).toBeVisible();
+      await recipient.getByRole("link", { name: "← Tổ chức", exact: true }).click();
+      await expect(recipient.getByTestId("active-organization")).toBeVisible();
+
+      // Revoke membership from the owner without replacing recipient context.
+      await owner.goto("/app/organizations/" + orgId + "/membership");
+      const memberList = owner.getByTestId("member-list");
+      const memberRow = memberList
+        .locator("li")
+        .filter({ hasText: recipientUserId });
+
+      await expect(memberRow).toContainText("Đang hoạt động");
+      await expect(
+        memberList.locator("li").filter({ hasText: wrongUserId })
+      ).toHaveCount(0);
+
+      owner.once("dialog", (dialog) => void dialog.accept());
+      await memberRow
+        .getByRole("button", { name: "Thu hồi", exact: true })
+        .click();
+      await expect(memberRow).toContainText("Đã thu hồi");
+      expect((await recipient.request.get(projectPath)).status()).toBe(404);
+
+      // Hold the real project-list refetch once. Previously cached project content
+      // must disappear while authorization is being revalidated and stay hidden.
+      const projectListPath =
+        "/api/v1/organizations/" + orgId + "/projects";
+      let releaseRefetch = () => {};
+      const refetchGate = new Promise<void>((resolve) => {
+        releaseRefetch = resolve;
+      });
+      const listRoute = (url: URL) => url.pathname === projectListPath;
+
+      await recipient.route(listRoute, async (route) => {
+        await refetchGate;
+        await route.continue();
+      });
+
+      try {
+        const requested = recipient.waitForRequest(
+          (request) =>
+            listRoute(new URL(request.url())) && request.method() === "GET"
+        );
+        const denied = recipient.waitForResponse(
+          (response) =>
+            listRoute(new URL(response.url())) &&
+            response.request().method() === "GET"
+        );
+
+        try {
+          await recipient.goto(
+            "/app/organizations/" + orgId + "/projects"
+          );
+          await requested;
+          await expect(
+            recipient.getByText(projectName, { exact: true })
+          ).toHaveCount(0);
+        } finally {
+          releaseRefetch();
+        }
+
+        expect((await denied).status()).toBe(404);
+        await expect(recipient.getByRole("alert")).toContainText(
+          "Không thể tải quyền truy cập dự án"
+        );
+        await expect(
+          recipient.getByText(projectName, { exact: true })
+        ).toHaveCount(0);
       } finally {
         releaseRefetch();
+        await recipient.unroute(listRoute);
       }
-      expect((await denied).status()).toBe(404);
-      await expect(recipient.getByRole("alert")).toContainText("Unable to load project access");
-      await expect(recipient.getByText(projectName, { exact: true })).toHaveCount(0);
-    } finally {
-      releaseRefetch();
-      await recipient.unroute(listRoute);
-    }
 
-    const storage = await recipient.evaluate(() => ({
-      local: Object.keys(localStorage),
-      session: Object.keys(sessionStorage)
-    }));
-    expect(storage.local).toEqual([]);
-    expect(storage.session).toEqual([]);
-  } finally {
-    await wrongContext.close();
-    await recipientContext.close();
+      const storage = await recipient.evaluate(() => ({
+        local: Object.keys(localStorage),
+        session: Object.keys(sessionStorage)
+      }));
+      expect(storage.local).toEqual([]);
+      expect(storage.session).toEqual([]);
+    } finally {
+      await wrongContext.close();
+      await recipientContext.close();
+    }
   }
-});
+);

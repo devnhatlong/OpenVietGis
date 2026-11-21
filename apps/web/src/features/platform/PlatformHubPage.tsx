@@ -44,6 +44,27 @@ function platformStatusLabel(status: string): string {
   return labels[status] ?? status;
 }
 
+function releaseCapabilityLabel(id: string, fallback: string): string {
+  const labels: Record<string, string> = {
+    R001: "Nền tảng hệ thống",
+    R002: "Danh tính, tổ chức & phân vùng dữ liệu",
+    R003: "Danh mục dữ liệu không gian & hệ tọa độ",
+    R004: "Không gian bản đồ",
+    R005: "Nhập / Xuất & tác vụ bền vững",
+    R006: "Biên tập & lịch sử thay đổi",
+    R007: "Truy vấn thuộc tính & không gian",
+    R008: "Xử lý không gian & tác vụ",
+    R009: "Bản đồ trình bày & xuất bản in",
+    R010: "Nguồn dữ liệu ngoài an toàn",
+    R011: "Cộng tác nhóm & duyệt thay đổi",
+    R012: "CAD 2D & COGO chính xác",
+    R013: "Hiện trường, ngoại tuyến & đồng bộ",
+    R014: "Nền tảng mô-đun mở rộng",
+    R015: "Vận hành sản xuất & tự triển khai"
+  };
+  return labels[id] ?? fallback;
+}
+
 function eventKindLabel(kind: string): string {
   const labels: Record<string, string> = {
     changeset_created: "Tạo bộ thay đổi",
@@ -187,19 +208,15 @@ export function PlatformHubPage() {
             <table className="ovg-table">
               <thead>
                 <tr>
-                  <th>Phiên bản</th>
                   <th>Năng lực</th>
-                  <th>Cột mốc</th>
+                  <th>Giai đoạn</th>
                   <th>Trạng thái</th>
                 </tr>
               </thead>
               <tbody>
                 {(capsQ.data?.items ?? []).map((c) => (
                   <tr key={c.id}>
-                    <td>
-                      <strong>{c.id}</strong>
-                    </td>
-                    <td>{c.name}</td>
+                    <td>{releaseCapabilityLabel(c.id, c.name)}</td>
                     <td>{c.milestone}</td>
                     <td>
                       <span className="ovg-badge">{c.enabled ? "Đang bật" : "Đã tắt"}</span>

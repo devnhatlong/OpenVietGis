@@ -40,7 +40,7 @@ test("M1 end-to-end: import GeoJSON, view/select/save in Map Workspace, export f
   await expect(page.getByTestId("import-inspection")).toBeVisible();
   await expect(page.getByTestId("confirm-import-btn")).toBeEnabled();
   await page.getByTestId("confirm-import-btn").click();
-  await expect(page.getByTestId("import-notice")).toContainText("Import succeeded");
+  await expect(page.getByTestId("import-notice")).toContainText("Nhập dữ liệu thành công");
 
   // 3. Open Map Workspace, add imported Layer, select feature, inspect, save and reload
   await page.goto(`${fixture.root}/map`);
@@ -53,20 +53,20 @@ test("M1 end-to-end: import GeoJSON, view/select/save in Map Workspace, export f
     .getAttribute("value");
   expect(optionValue).toBeTruthy();
   await addSelect.selectOption(optionValue!);
-  await page.getByRole("button", { name: "Add Layer", exact: true }).click();
-  await page.getByRole("button", { name: "Fit visible Layers", exact: true }).click();
+  await page.getByRole("button", { name: "+ Thêm lớp có sẵn", exact: true }).click();
+  await page.getByRole("button", { name: "Thu phóng toàn bộ lớp hiển thị", exact: true }).click();
   await expect(page.getByTestId("map-engine-ready")).toHaveAttribute("data-ready", "true");
   await expect(page.getByTestId("map-status")).toHaveText("usable");
 
-  await page.getByRole("button", { name: "Make m1_stations active", exact: true }).click();
-  const table = page.getByRole("table", { name: "Pinned map attributes" });
+  await page.getByRole("button", { name: "Chọn m1_stations làm lớp hiện hành", exact: true }).click();
+  const table = page.getByRole("table", { name: "Bảng thuộc tính theo phiên bản" });
   await expect(table.getByRole("button", { name: "m1-pt-01", exact: true })).toBeVisible();
   await table.getByRole("button", { name: "m1-pt-01", exact: true }).click();
   await expect(page.getByTestId("map-inspector")).toHaveAttribute("data-feature-id", "m1-pt-01");
 
-  const shared = page.getByRole("region", { name: "Shared map configuration" });
-  await shared.getByRole("button", { name: "Save map", exact: true }).click();
-  await expect(page.getByTestId("map-save-status")).toContainText("revision 1");
+  const shared = page.getByRole("region", { name: "Cấu hình bản đồ dùng chung" });
+  await shared.getByRole("button", { name: "Lưu bản đồ", exact: true }).click();
+  await expect(page.getByTestId("map-save-status")).toContainText("phiên bản 1");
 
   // 4. Return to Import & Export, preview and confirm lossless GeoPackage export of the fixed revision
   await page.goto(`${fixture.root}/transfers`);
@@ -76,7 +76,7 @@ test("M1 end-to-end: import GeoJSON, view/select/save in Map Workspace, export f
   await page.getByTestId("preview-export-btn").click();
   await expect(page.getByTestId("export-preview")).toBeVisible();
   await page.getByTestId("confirm-export-btn").click();
-  await expect(page.getByTestId("export-notice")).toContainText("Export succeeded");
+  await expect(page.getByTestId("export-notice")).toContainText("Xuất dữ liệu thành công");
 
   // 5. Verify protected artifact download returns real SQLite GeoPackage bytes with SHA-256 header
   const downloadHref = await page

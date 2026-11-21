@@ -61,7 +61,7 @@ export function CartographyWorkbenchPage() {
         },
         csrf
       );
-      setNotice(`Đã lưu ký hiệu trung lập rev ${st.revision} with auto legend.`);
+      setNotice(`Đã lưu ký hiệu trung lập phiên bản ${st.revision} kèm chú giải tự động.`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Không thể lưu kiểu hiển thị.");
     }
@@ -87,7 +87,7 @@ export function CartographyWorkbenchPage() {
         },
         csrf
       );
-      setNotice(`Đã tạo bố cục in ${lo.paper_size} ${lo.orientation}.`);
+      setNotice(`Đã tạo bố cục in ${lo.paper_size} ${lo.orientation === "landscape" ? "ngang" : "dọc"}.`);
       await qc.invalidateQueries({ queryKey: ["r009", organizationId, projectId, "layouts"] });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Không thể tạo bố cục in.");

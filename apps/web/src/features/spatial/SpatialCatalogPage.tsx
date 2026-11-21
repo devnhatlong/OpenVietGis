@@ -287,7 +287,7 @@ function LayerPanel({ organizationId, projectId, accountId, source, writable }: 
                 event.preventDefault();
                 if (editable && rename.trim()) command.mutate({ kind: "rename", layer: detail, name: rename.trim() });
               }}>
-                <label>New Tên lớp{" "}
+                <label>Tên lớp mới{" "}
                   <input value={rename} onChange={event => setRename(event.target.value)} required maxLength={200} />
                 </label>{" "}
                 <button type="submit" disabled={!rename.trim()}>Đổi tên lớp</button>
