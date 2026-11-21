@@ -60,7 +60,9 @@ def _conn_from_row(row: RowMapping) -> ExternalConnectionRecord:
         attribution=str(row["attribution"]),
         license_text=str(row["license_text"]),
         crs_codes=tuple(int(c) for c in row["crs_codes"]),
-        capabilities={str(k): bool(v) for k, v in dict(row["capabilities"]).items()},
+        # Old records may contain optimistic capability flags. Enforce the
+        # current metadata-only policy on every read, not only at creation.
+        capabilities=default_external_capabilities(ExternalProtocol(str(row["protocol"]))),
         read_only=bool(row["read_only"]),
         cache_generation=int(row["cache_generation"]),
         lifecycle=str(row["lifecycle"]),

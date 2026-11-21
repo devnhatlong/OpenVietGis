@@ -47,6 +47,7 @@ def _conn_wire(c: ExternalConnectionRecord) -> dict[str, Any]:
         "read_only": c.read_only,
         "cache_generation": c.cache_generation,
         "lifecycle": c.lifecycle,
+        "availability": "revoked" if c.lifecycle == "revoked" else "unverified",
         "created_at": c.created_at.isoformat(),
     }
 

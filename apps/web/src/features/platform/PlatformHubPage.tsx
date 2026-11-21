@@ -223,7 +223,8 @@ export function PlatformHubPage() {
             <ul>
               {(extConnsQ.data?.items ?? []).map((c) => (
                 <li key={c.id}>
-                  <strong>{c.name}</strong> ({c.protocol}, read-only) — {c.endpoint_url}
+                  <strong>{c.name}</strong> ({c.protocol}) — {c.endpoint_url}
+                  {" — "}{c.lifecycle === "revoked" ? "Đã thu hồi" : "Chưa xác minh · chỉ cấu hình"}
                 </li>
               ))}
             </ul>

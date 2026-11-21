@@ -143,13 +143,13 @@ def validate_endpoint_against_allowlist(
 
 
 def default_external_capabilities(protocol: ExternalProtocol) -> dict[str, bool]:
-    """External sources are strictly read-only by default (no edit or offline)."""
+    """Registration exposes local metadata only; protocol is not proof of operability."""
     return {
         "metadata_read": True,
-        "render": True,
-        "feature_read": protocol == ExternalProtocol.WFS_OGC_FEATURES,
-        "query": protocol == ExternalProtocol.WFS_OGC_FEATURES,
-        "style": protocol == ExternalProtocol.WFS_OGC_FEATURES,
+        "render": False,
+        "feature_read": False,
+        "query": False,
+        "style": False,
         "edit": False,
         "export": False,
         "analysis": False,

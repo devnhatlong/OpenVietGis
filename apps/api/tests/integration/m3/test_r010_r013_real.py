@@ -99,6 +99,10 @@ def test_r010_external_sources_ssrf_and_allowlist(migrated_database: None) -> No
         assert conn.status_code == 201, conn.text
         cdata = conn.json()
         assert cdata["read_only"] is True
+        assert cdata["availability"] == "unverified"
+        assert {key for key, enabled in cdata["capabilities"].items() if enabled} == {
+            "metadata_read"
+        }
         assert cdata["capabilities"]["edit"] is False
         assert cdata["capabilities"]["offline"] is False
         assert cdata["cache_generation"] == 1
@@ -108,6 +112,7 @@ def test_r010_external_sources_ssrf_and_allowlist(migrated_database: None) -> No
 
         rev = client.post(f"{proj_base}/external-sources/{cdata['id']}/revoke")
         assert rev.status_code == 200 and rev.json()["lifecycle"] == "revoked"
+        assert rev.json()["availability"] == "revoked"
 
 
 def test_r011_r012_r013_collaboration_cad_and_field_offline(migrated_database: None) -> None:

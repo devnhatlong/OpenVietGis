@@ -141,6 +141,7 @@ export interface ExternalConnection {
   read_only: boolean;
   cache_generation: number;
   lifecycle: string;
+  availability?: "unverified" | "revoked";
 }
 
 export interface ProjectActivity {
