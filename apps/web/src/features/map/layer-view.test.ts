@@ -78,6 +78,13 @@ describe("layer panel view", () => {
     ).toBe("stale");
   });
 
+  it("distinguishes viewport loading and empty from a usable layer", () => {
+    expect(buildLayerPanelItemView(ref, layerWith(), "loading", null, 0, 1))
+      .toMatchObject({ availability: "loading", availabilityLabel: "Đang tải dữ liệu", canZoom: true });
+    expect(buildLayerPanelItemView(ref, layerWith(), "empty", null, 0, 1))
+      .toMatchObject({ availability: "empty", availabilityLabel: "Không có đối tượng trong khung nhìn", canZoom: true });
+  });
+
   it("exposes stable order and non-drag command availability", () => {
     const item = buildLayerPanelItemView(ref, layerWith(), "usable", "layer-1", 1, 3);
     expect(item.name).toBe("Điểm thử nghiệm");

@@ -77,6 +77,13 @@ export function AddDataDialog({
           </div>
         </div>
 
+        {candidates.length > 0 && candidates.every((candidate) => candidate.alreadyOnMap) ? (
+          <p role="status" className="map-dialog-empty">
+            {nextCatalog || previousCatalog
+              ? "Tất cả lớp trong trang này đã có trên bản đồ."
+              : "Tất cả lớp dữ liệu hiện có đã được thêm vào bản đồ."}
+          </p>
+        ) : null}
         {candidates.length ? (
           <ul className="map-add-data-list">
             {candidates.map((candidate) => (

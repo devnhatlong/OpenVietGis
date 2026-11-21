@@ -23,6 +23,7 @@ import { TechnicalDetailsDrawer } from "./TechnicalDetailsDrawer";
 import { LayerTree } from "./LayerTree";
 import { WorkspaceLayout } from "./WorkspaceLayout";
 import { buildAddDataCandidates } from "./add-data";
+import { buildLayerPanelItemView } from "./layer-view";
 import { createCommands,invokeCommand,type MapCommandId } from "./commands";
 import { BASEMAP_OPTIONS,type BasemapId,type MapEngine,type RenderLayer } from "./engine";
 import { createMapLibreEngine } from "./maplibre-engine";
@@ -259,7 +260,9 @@ function Workspace({organizationId,projectId,accountId,project,initial,canEdit}:
  }
  const visibleMetadataPending=configuration.layers.some((ref,index)=>ref.visible&&!metadata[index]&&!metadataQueries[index]?.error);
  const visibleRenderableIds=configuration.layers.filter((ref,index)=>ref.visible&&capability(metadata[index],"render")).map(ref=>ref.layer_id);
- const commands=createCommands({hasActive:capability(activeLayer,"render"),hasVisible:!visibleMetadataPending&&visibleRenderableIds.length>0,hasSelection:selected.length>0&&capability(activeLayer,"render"),canSave:writable,canAddData:configuration.layers.length<32,busy:locked},execute);
+ const activeLayerView=activeIndex>=0?buildLayerPanelItemView(configuration.layers[activeIndex]!,activeLayer,states[activeIndex]??"loading",active,activeIndex,configuration.layers.length):undefined;
+ const commands=createCommands({hasActive:activeLayerView?.canZoom??false,hasVisible:!visibleMetadataPending&&visibleRenderableIds.length>0,hasSelection:selected.length>0&&capability(activeLayer,"render")&&!activeBlocked,canSave:writable,canAddData:configuration.layers.length<32,busy:locked},execute);
+ const addDataCommand=commands.find(command=>command.id==="map.add-data");
  const commandRef=useRef(commands);commandRef.current=commands;
  useEffect(()=>{
   const key=(event:KeyboardEvent)=>{if(event.target instanceof HTMLElement&&(event.target.closest("input,textarea,select,[contenteditable=true]")))return;
@@ -309,6 +312,7 @@ function Workspace({organizationId,projectId,accountId,project,initial,canEdit}:
    onPreferenceChange={updateLayoutPreference}
    left={<LayerTree layers={configuration.layers} metadata={metadata} active={active} locked={locked} states={states} choose={choose} change={change}
     zoom={id=>void fitLayers([id])}
+    addDataEnabled={addDataCommand?.enabled??false} addDataReason={addDataCommand?.reason??null}
     openAddData={()=>invokeCommand(commands,"map.add-data","toolbar")}/>}
    map={<section className="map-stage" aria-label="Khung bản đồ" aria-describedby="map-accessible-summary" onContextMenu={e=>{e.preventDefault();setContextMenu(!contextMenu);}}>
     <p id="map-accessible-summary" className="sr-only" data-testid="accessible-map-summary" aria-live="polite">{accessibleSummary.text}</p>

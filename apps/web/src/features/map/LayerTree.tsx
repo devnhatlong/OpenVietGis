@@ -28,6 +28,8 @@ export function LayerTree({
   change,
   choose,
   zoom,
+  addDataEnabled,
+  addDataReason,
   openAddData
 }: {
   layers: MapLayerReference[];
@@ -38,6 +40,8 @@ export function LayerTree({
   change: (layers: MapLayerReference[]) => void;
   choose: (id: string) => void;
   zoom: (id: string) => void;
+  addDataEnabled: boolean;
+  addDataReason: string | null;
   openAddData: () => void;
 }) {
   return (
@@ -52,7 +56,8 @@ export function LayerTree({
         <button
           type="button"
           className="map-add-data-trigger"
-          disabled={locked}
+          disabled={!addDataEnabled}
+          title={addDataReason ?? undefined}
           onClick={openAddData}
         >
           + Thêm dữ liệu
@@ -65,7 +70,7 @@ export function LayerTree({
           <span>
             Thêm một lớp đã có trong danh mục hoặc nhập dữ liệu mới để bắt đầu.
           </span>
-          <button type="button" disabled={locked} onClick={openAddData}>
+          <button type="button" disabled={!addDataEnabled} title={addDataReason ?? undefined} onClick={openAddData}>
             Thêm dữ liệu
           </button>
         </div>

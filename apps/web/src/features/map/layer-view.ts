@@ -6,6 +6,7 @@ import type {
 export type LayerAvailability =
   | "loading"
   | "usable"
+  | "empty"
   | "partial"
   | "stale"
   | "permission"
@@ -91,6 +92,22 @@ function availabilityFrom(
       availabilityLabel: "Không khả dụng",
       canZoom: false,
       disabledReason: "Nguồn hoặc lớp hiện không ở trạng thái sẵn sàng."
+    };
+  }
+  if (state === "loading") {
+    return {
+      availability: "loading",
+      availabilityLabel: "Đang tải dữ liệu",
+      canZoom: true,
+      disabledReason: null
+    };
+  }
+  if (state === "empty") {
+    return {
+      availability: "empty",
+      availabilityLabel: "Không có đối tượng trong khung nhìn",
+      canZoom: true,
+      disabledReason: null
     };
   }
   if (state.startsWith("partial")) {

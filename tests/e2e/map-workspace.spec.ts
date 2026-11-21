@@ -51,6 +51,7 @@ test("opens a real empty grid and arranges, renders, selects and saves catalog L
     .locator("li")
     .filter({ hasText: fixture.layers[0]!.name });
   await expect(duplicateCandidate).toContainText("Đã có trên bản đồ");
+  await expect(duplicateDialog.getByRole("status")).toContainText("Tất cả lớp dữ liệu hiện có đã được thêm vào bản đồ.");
   await expect(
     duplicateCandidate.getByRole("button", { name: "Đã thêm", exact: true })
   ).toBeDisabled();
