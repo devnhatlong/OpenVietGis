@@ -134,6 +134,7 @@ test("M2+M3 end-to-end: R006 Editing, R007 Query, R008 Processing, R009 Cartogra
   await expect(opsPanel.getByRole("cell", { name: "Chưa nghiệm thu", exact: true })).toHaveCount(15);
 
   await page.getByRole("tab", { name: "CAD 2D & COGO", exact: true }).click();
+  await expect(page.getByText(/chưa gắn CRS, không phải tọa độ khảo sát/i)).toBeVisible();
   await page.getByRole("button", { name: "Tính tọa độ điểm cuối" }).click();
   await expect(
     page.getByText(/Tọa độ điểm tính được: \(500100\.0000, 2300000\.0000\)/i)

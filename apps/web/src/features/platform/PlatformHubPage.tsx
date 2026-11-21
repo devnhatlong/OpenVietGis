@@ -372,7 +372,8 @@ export function PlatformHubPage() {
 
         {tab === "cad" && (
           <section className="ovg-card">
-            <h2>Trao đổi CAD 2D DXF & Tính toán COGO chính xác</h2>
+            <h2>Trao đổi CAD 2D DXF & Tính thử COGO mặt phẳng</h2>
+            <p>Kết quả tính thử theo đơn vị tọa độ đã nhập, chưa gắn CRS, không phải tọa độ khảo sát và không xuất bản bản đồ.</p>
             <div className="ovg-form-row">
               <label>
                 Tọa độ gốc X
@@ -383,7 +384,7 @@ export function PlatformHubPage() {
                 <input value={originY} onChange={(e) => setOriginY(e.target.value)} />
               </label>
               <label>
-                Khoảng cách (m)
+                Khoảng cách (đơn vị tọa độ nhập)
                 <input value={dist} onChange={(e) => setDist(e.target.value)} />
               </label>
               <label>
@@ -395,6 +396,7 @@ export function PlatformHubPage() {
                 className="ovg-btn"
                 onClick={async () => {
                   setError(null);
+                  setCogoOut(null);
                   try {
                     const csrf = await loadCsrfToken(apiClient);
                     const res = await cogoTraverse(
@@ -408,8 +410,15 @@ export function PlatformHubPage() {
                       },
                       csrf
                     );
+                    if (
+                      res.coordinate_reference !== "unreferenced_planar_input" ||
+                      res.units !== "input_coordinate_units" ||
+                      res.survey_grade !== false || res.published !== false
+                    ) {
+                      throw new Error("Máy chủ chưa xác nhận đây là kết quả tính thử mặt phẳng.");
+                    }
                     setCogoOut(
-                      `Tọa độ điểm tính được: (${res.endpoint[0].toFixed(4)}, ${res.endpoint[1].toFixed(4)})`
+                      `Tọa độ điểm tính được: (${res.endpoint[0].toFixed(4)}, ${res.endpoint[1].toFixed(4)}) · tính thử, chưa gắn CRS`
                     );
                   } catch (err) {
                     setError(err instanceof Error ? err.message : "Tính toán COGO không thành công.");

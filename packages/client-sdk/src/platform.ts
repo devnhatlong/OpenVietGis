@@ -608,14 +608,23 @@ export function listCadConversions(
   );
 }
 
+export interface PlanarTraversePreview {
+  endpoint: [number, number];
+  delta: [number, number];
+  coordinate_reference: "unreferenced_planar_input";
+  units: "input_coordinate_units";
+  survey_grade: false;
+  published: false;
+}
+
 export function cogoTraverse(
   client: ApiClient,
   orgId: string,
   projectId: string,
   body: { origin: [number, number]; distance: number; azimuth_degrees: number },
   csrf: string
-): Promise<{ endpoint: [number, number]; delta: [number, number] }> {
-  return client.request<{ endpoint: [number, number]; delta: [number, number] }>(
+): Promise<PlanarTraversePreview> {
+  return client.request<PlanarTraversePreview>(
     `${projBase(orgId, projectId)}/cad/precision/traverse`,
     { method: "POST", body: JSON.stringify(body), headers: csrfHeaders(csrf) }
   );
