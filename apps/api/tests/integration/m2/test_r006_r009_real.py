@@ -391,6 +391,30 @@ def test_r007_r008_r009_query_processing_and_cartography(migrated_database: None
         assert buf_data["feature_count"] == 3
         buf_layer = buf_data["output_layer_id"]
 
+        # A succeeded job must publish readable canonical decimal values.
+        def assert_buffer_readable(layer_id, expected_distance):
+            source = client.get(f"{base}/layers/{layer_id}").json()["source"]
+            pins = {key: source[key] for key in ("content_revision", "schema_revision")}
+            response = client.get(f"{base}/layers/{layer_id}/features", params=pins)
+            assert response.status_code == 200, response.text
+            rows = response.json()["items"]
+            assert len(rows) == 3
+            assert all(row["attributes"]["buffer_meters"] == expected_distance for row in rows)
+
+        assert_buffer_readable(buf_layer, "1000")
+        fractional = client.post(
+            f"{base}/processing/jobs",
+            json={
+                "algorithm_id": "buffer",
+                "input_layer_id": pts_layer,
+                "parameters": {"distance_meters": 12.5},
+                "output_name": "Fractional Buffer",
+                "operation_id": "proc-buf-fraction",
+            },
+        )
+        assert fractional.status_code == 201, fractional.text
+        assert_buffer_readable(fractional.json()["output_layer_id"], "12.5")
+
         clip = client.post(
             f"{base}/processing/jobs",
             json={
@@ -439,6 +463,7 @@ def test_r007_r008_r009_query_processing_and_cartography(migrated_database: None
         retried = client.post(f"{base}/processing/jobs/{queued.json()['id']}/retry")
         assert retried.status_code == 200 and retried.json()["status"] == "succeeded"
         assert retried.json()["attempt_count"] == 2
+        assert_buffer_readable(retried.json()["output_layer_id"], "250")
 
         # --- R009: Cartography Styles, Layouts, 150 DPI PNG & 300 DPI PDF ---
         st = client.put(

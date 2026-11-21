@@ -40,7 +40,9 @@ from openvietgis_api.domains.spatial.domain import (
     GeometryFamily,
     Lifecycle,
     SourceField,
+    SpatialValidationError,
     ValidationState,
+    canonical_attribute_value,
     schema_revision_digest,
 )
 
@@ -463,6 +465,29 @@ class SqlProcessingRepository:
             )
             for ordinal, (fid, fname, ftype, nullable) in enumerate(output_fields)
         ]
+        # Enforce the same logical attribute contract as the pinned Core reader
+        # before any derived source, layer, or feature is published.
+        expected_fields = {field.field_id for field in schema_fields}
+        canonical_rows = []
+        try:
+            for feat_id, attrs, wkb in derived_rows:
+                if attrs.keys() != expected_fields:
+                    raise SpatialValidationError("derived attributes do not match output schema")
+                canonical_rows.append(
+                    (
+                        feat_id,
+                        {
+                            field.field_id: canonical_attribute_value(field, attrs[field.field_id])
+                            for field in schema_fields
+                        },
+                        wkb,
+                    )
+                )
+        except SpatialValidationError as exc:
+            raise PlatformValidationError(
+                "invalid derived output attributes", code="INVALID_DERIVED_OUTPUT"
+            ) from exc
+        derived_rows = canonical_rows
         schema_rev = schema_revision_digest(
             schema_fields, GeometryFamily(output_family), GeometryDimensions.XY
         )
