@@ -9,12 +9,19 @@ import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
+from decimal import Decimal, InvalidOperation
 from enum import StrEnum
 from typing import Any
 from uuid import UUID
 
 from openvietgis_api.domains.platform_errors import PlatformValidationError
-from openvietgis_api.domains.spatial.domain import FieldType, GeometryFamily, SourceField
+from openvietgis_api.domains.spatial.domain import (
+    FieldType,
+    GeometryFamily,
+    SourceField,
+    SpatialValidationError,
+    canonical_attribute_value,
+)
 
 _FEATURE_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
 _OP_ID_RE = re.compile(r"^[A-Za-z0-9_.:-]{1,128}$")
@@ -184,62 +191,18 @@ def validate_typed_attributes(
     out: dict[str, Any] = {}
     for field in fields:
         val = raw.get(field.field_id)
-        if val is None:
-            if not field.nullable:
-                raise PlatformValidationError(
-                    f"field {field.field_id!r} is not nullable",
-                    code="SCHEMA_MISMATCH",
-                    details={"field": field.field_id},
-                )
-            out[field.field_id] = None
-            continue
-        if field.type == FieldType.TEXT:
-            if not isinstance(val, str) or len(val) > 4096:
-                raise PlatformValidationError(
-                    f"field {field.field_id!r} expects text",
-                    code="SCHEMA_MISMATCH",
-                )
-            out[field.field_id] = val
-        elif field.type == FieldType.INTEGER:
-            if isinstance(val, bool) or not isinstance(val, int):
-                raise PlatformValidationError(
-                    f"field {field.field_id!r} expects integer",
-                    code="SCHEMA_MISMATCH",
-                )
-            out[field.field_id] = val
-        elif field.type == FieldType.DECIMAL:
-            if isinstance(val, bool) or not isinstance(val, (int, float, str)):
-                raise PlatformValidationError(
-                    f"field {field.field_id!r} expects decimal",
-                    code="SCHEMA_MISMATCH",
-                )
-            try:
-                num = float(val)
-            except ValueError as exc:
-                raise PlatformValidationError(
-                    f"field {field.field_id!r} expects decimal",
-                    code="SCHEMA_MISMATCH",
-                ) from exc
-            if not math.isfinite(num):
-                raise PlatformValidationError(
-                    f"field {field.field_id!r} expects finite decimal",
-                    code="SCHEMA_MISMATCH",
-                )
-            out[field.field_id] = str(val)
-        elif field.type == FieldType.BOOLEAN:
-            if not isinstance(val, bool):
-                raise PlatformValidationError(
-                    f"field {field.field_id!r} expects boolean",
-                    code="SCHEMA_MISMATCH",
-                )
-            out[field.field_id] = val
-        elif field.type == FieldType.TIMESTAMP:
-            if not isinstance(val, str) or not val.strip():
-                raise PlatformValidationError(
-                    f"field {field.field_id!r} expects ISO-8601 timestamp string",
-                    code="SCHEMA_MISMATCH",
-                )
-            out[field.field_id] = val
+        try:
+            # Retain numeric JSON compatibility, but use the Core canonical
+            # representation before publishing: e.g. 1000.0 -> "1000".
+            if field.type == FieldType.DECIMAL and type(val) in (int, float):
+                val = Decimal(str(val))
+            out[field.field_id] = canonical_attribute_value(field, val)
+        except (SpatialValidationError, InvalidOperation) as exc:
+            raise PlatformValidationError(
+                f"field {field.field_id!r} does not match {field.type.value}: {exc}",
+                code="SCHEMA_MISMATCH",
+                details={"field": field.field_id},
+            ) from exc
     return out
 
 

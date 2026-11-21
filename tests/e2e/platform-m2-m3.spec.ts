@@ -42,6 +42,7 @@ test("M2+M3 end-to-end: R006 Editing, R007 Query, R008 Processing, R009 Cartogra
   // 1. R006 Editing Workbench
   await page.goto(`${base}/editing`);
   await expect(page.getByTestId("editing-workbench")).toBeVisible();
+  await page.getByLabel("Hình học 2D GeoJSON").fill('{"type":"Point","coordinates":[105.85,21.02]}');
   await page.getByLabel("Thuộc tính JSON có kiểu").fill('{"name":"Point Two"}');
   await page.getByRole("button", { name: "Đưa vào bản nháp" }).click();
   await page.getByRole("button", { name: "Lưu thay đổi", exact: true }).click();

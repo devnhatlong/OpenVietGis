@@ -161,6 +161,27 @@
   border-color: #0f172a;
 }
 
+.ovg-sketch {
+  margin-top: 1rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 0.8rem;
+}
+.ovg-sketch h3 { margin: 0; }
+.ovg-sketch > p { margin: 0.5rem 0; font-size: 0.85rem; }
+.ovg-edit-canvas {
+  display: block;
+  width: 100%;
+  height: clamp(240px, 45vw, 420px);
+  border: 1px solid #cbd5e1;
+  margin-top: 0.75rem;
+  touch-action: manipulation;
+}
+.ovg-edit-canvas.drawing { cursor: crosshair; }
+.ovg-sketch .ovg-inline-check { flex-direction: row; align-items: center; }
+.ovg-sketch .ovg-inline-check input { min-width: 0; }
+.ovg-sketch-coordinates { font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+
 .ovg-badge {
   display: inline-block;
   padding: 0.15rem 0.5rem;
