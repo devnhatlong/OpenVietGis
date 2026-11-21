@@ -45,7 +45,7 @@ description: "Dependency-ordered implementation tasks for OpenVietGIS GIS Worksp
 **Independent Test**: Open prepared and empty Projects at desktop width; identify each workspace region and inspect a feature without seeing primary UUID/roadmap clutter.
 
 - [x] T015 [P] [US1] Add failing desktop workspace/empty-state Playwright assertions in `tests/e2e/map-workspace.spec.ts`
-- [ ] T016 [P] [US1] Add deterministic chrome screenshot cases for empty and populated workspace using local/grid or masked map pixels in `tests/e2e/map-workspace-visual.spec.ts`
+- [x] T016 [P] [US1] Add deterministic chrome screenshot cases for empty and populated workspace using local/grid or masked map pixels in `tests/e2e/map-workspace-visual.spec.ts`
 - [x] T017 [US1] Refactor `apps/web/src/features/map/MapWorkspace.tsx` to render through `WorkspaceLayout.tsx` while keeping the existing Map engine instance stable
 - [x] T018 [US1] Replace raw organization/project/revision context in primary chrome with human-readable project/mode/save labels in `apps/web/src/features/map/MapWorkspace.tsx`
 - [x] T019 [US1] Implement explicit empty/loading/unsupported/unavailable/stale/partial workspace states in `apps/web/src/features/map/MapWorkspace.tsx` and `apps/web/src/features/map/layer-view.ts`
