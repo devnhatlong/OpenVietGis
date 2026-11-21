@@ -61,6 +61,8 @@ def release_inventory() -> dict[str, Any]:
     return {
         "profile": "self_host_team",
         "profile_status": "unverified",
+        "verified_candidate": None,
+        "verification_record": None,
         "production_ready": False,
         "enabled_semantics": "release_certification",
         "total_releases": len(items),
