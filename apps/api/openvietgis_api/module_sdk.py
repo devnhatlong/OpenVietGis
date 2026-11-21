@@ -102,7 +102,7 @@ def put_module_artifact(
         raise ValueError("artifact namespace required")
     artifact_id = uuid4()
     storage_key = (
-        f"modules/{context.organization_id}/{context.project_id}/"
+        f"extensions/{context.organization_id}/{context.project_id}/"
         f"{safe_namespace}/{artifact_id}/{safe_filename}"
     )
     root = Path(get_settings().artifact_store_dir).resolve()
@@ -142,7 +142,7 @@ def read_module_artifact(
     root = Path(get_settings().artifact_store_dir).resolve()
     parent = (
         root
-        / "modules"
+        / "extensions"
         / str(context.organization_id)
         / str(context.project_id)
         / safe_namespace

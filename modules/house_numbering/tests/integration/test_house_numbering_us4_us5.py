@@ -7,14 +7,16 @@ import json
 import zipfile
 from uuid import uuid4
 
-from modules.house_numbering.migrate import upgrade as migrate_house_numbering
 from PIL import Image
 from sqlalchemy import text
-
 from tests.fixtures.db_admin import get_admin_engine
 from tests.fixtures.identity_tenancy import seed_access_world
-from tests.integration.m3.test_house_numbering_runtime import _seed_source
 from tests.integration.spatial.test_sources import _client
+
+from modules.house_numbering.migrate import upgrade as migrate_house_numbering
+from modules.house_numbering.tests.integration.test_house_numbering_runtime import (
+    _seed_source,
+)
 
 
 def _activate_and_seed(world):
@@ -31,7 +33,9 @@ def _activate_and_seed(world):
     proj_base = f"{org_base}/projects/{world.project_id}"
     module_base = f"{proj_base}/modules/house-numbering"
     with _client(world.owner_user_id) as client:
-        registered = client.post(f"{org_base}/extensions/official/house_numbering/register")
+        registered = client.post(
+            f"{org_base}/extensions/official/house_numbering/register"
+        )
         assert registered.status_code == 201, registered.text
         active = client.post(
             f"{proj_base}/extensions/activations",
@@ -161,7 +165,9 @@ def test_house_numbering_us4_import_reconcile_and_us5_offline_progress(
                 "default_source_reference": "certificate.csv",
                 "default_confidence": "observed",
             },
-            files={"file": ("certificate.csv", original_text.encode("utf-8"), "text/csv")},
+            files={
+                "file": ("certificate.csv", original_text.encode("utf-8"), "text/csv")
+            },
         )
         assert replay.status_code == 201, replay.text
         assert replay.json()["replayed"] is True
@@ -257,12 +263,16 @@ def test_house_numbering_us4_import_reconcile_and_us5_offline_progress(
                 "condition": "vacant",
             },
         ]
-        synced = client.post(f"{module_base}/survey/sync", json={"operations": operations})
+        synced = client.post(
+            f"{module_base}/survey/sync", json={"operations": operations}
+        )
         assert synced.status_code == 200, synced.text
         assert len(synced.json()["applied"]) == 2
         assert synced.json()["conflicts"] == []
 
-        replayed = client.post(f"{module_base}/survey/sync", json={"operations": operations})
+        replayed = client.post(
+            f"{module_base}/survey/sync", json={"operations": operations}
+        )
         assert replayed.status_code == 200, replayed.text
         assert len(replayed.json()["replayed"]) == 2
 

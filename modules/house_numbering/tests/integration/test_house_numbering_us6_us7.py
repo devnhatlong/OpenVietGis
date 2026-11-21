@@ -8,13 +8,15 @@ import zipfile
 from uuid import uuid4
 
 import ezdxf
-from modules.house_numbering.migrate import upgrade as migrate_house_numbering
 from sqlalchemy import text
-
 from tests.fixtures.db_admin import get_admin_engine
 from tests.fixtures.identity_tenancy import seed_access_world
-from tests.integration.m3.test_house_numbering_runtime import _seed_source
 from tests.integration.spatial.test_sources import _client
+
+from modules.house_numbering.migrate import upgrade as migrate_house_numbering
+from modules.house_numbering.tests.integration.test_house_numbering_runtime import (
+    _seed_source,
+)
 
 
 def _seed_world(world):
@@ -31,7 +33,9 @@ def _seed_world(world):
     proj_base = f"{org_base}/projects/{world.project_id}"
     module_base = f"{proj_base}/modules/house-numbering"
     with _client(world.owner_user_id) as client:
-        manifest = client.post(f"{org_base}/extensions/official/house_numbering/register")
+        manifest = client.post(
+            f"{org_base}/extensions/official/house_numbering/register"
+        )
         assert manifest.status_code == 201, manifest.text
         activated = client.post(
             f"{proj_base}/extensions/activations",
@@ -169,7 +173,9 @@ def test_house_numbering_us6_documents_and_us7_search_exports_privacy(
             },
         )
         assert pdf.status_code == 201, pdf.text
-        downloaded_pdf = client.get(f"{module_base}/documents/{pdf.json()['id']}/download")
+        downloaded_pdf = client.get(
+            f"{module_base}/documents/{pdf.json()['id']}/download"
+        )
         assert downloaded_pdf.status_code == 200, downloaded_pdf.text
         assert downloaded_pdf.content.startswith(b"%PDF")
 
@@ -192,7 +198,9 @@ def test_house_numbering_us6_documents_and_us7_search_exports_privacy(
 
         search = client.get(f"{module_base}/search", params={"query": "100"})
         assert search.status_code == 200, search.text
-        assert any(item["building_id"] == buildings["a"] for item in search.json()["items"])
+        assert any(
+            item["building_id"] == buildings["a"] for item in search.json()["items"]
+        )
         coordinate = client.get(
             f"{module_base}/search",
             params={
@@ -225,7 +233,10 @@ def test_house_numbering_us6_documents_and_us7_search_exports_privacy(
             params={"purpose": "Synthetic authorized lookup"},
         )
         assert private_read.status_code == 200, private_read.text
-        assert private_read.json()["items"][0]["protected_data"]["record_ref"] == "SYNTH-001"
+        assert (
+            private_read.json()["items"][0]["protected_data"]["record_ref"]
+            == "SYNTH-001"
+        )
 
         public_export = client.post(
             f"{module_base}/exports",
@@ -270,7 +281,9 @@ def test_house_numbering_us6_documents_and_us7_search_exports_privacy(
         )
         assert private_export.status_code == 201, private_export.text
         private_artifact_id = private_export.json()["artifact_id"]
-        private_download = client.get(f"{module_base}/exports/{private_artifact_id}/download")
+        private_download = client.get(
+            f"{module_base}/exports/{private_artifact_id}/download"
+        )
         assert private_download.status_code == 200, private_download.text
         assert b"SYNTH-001" in private_download.content
 
@@ -283,7 +296,9 @@ def test_house_numbering_us6_documents_and_us7_search_exports_privacy(
             },
         )
         assert dxf.status_code == 201, dxf.text
-        dxf_download = client.get(f"{module_base}/exports/{dxf.json()['artifact_id']}/download")
+        dxf_download = client.get(
+            f"{module_base}/exports/{dxf.json()['artifact_id']}/download"
+        )
         assert dxf_download.status_code == 200, dxf_download.text
         dxf_doc = ezdxf.read(io.StringIO(dxf_download.content.decode("utf-8")))
         assert len(list(dxf_doc.modelspace().query("POINT"))) >= 6
@@ -346,9 +361,13 @@ def test_house_numbering_us6_documents_and_us7_search_exports_privacy(
                 "purpose": "Synthetic denied export",
             },
         )
-        assert private_export_denied.status_code in {403, 404}, private_export_denied.text
+        assert private_export_denied.status_code in {403, 404}, (
+            private_export_denied.text
+        )
 
-        leaked_download = viewer.get(f"{module_base}/exports/{private_artifact_id}/download")
+        leaked_download = viewer.get(
+            f"{module_base}/exports/{private_artifact_id}/download"
+        )
         assert leaked_download.status_code in {403, 404}, leaked_download.text
 
     with get_admin_engine().connect() as connection:

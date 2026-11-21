@@ -5,12 +5,12 @@ from __future__ import annotations
 import json
 from uuid import uuid4
 
-from modules.house_numbering.migrate import upgrade as migrate_house_numbering
 from sqlalchemy import text
-
 from tests.fixtures.db_admin import get_admin_engine
 from tests.fixtures.identity_tenancy import seed_access_world
 from tests.integration.spatial.test_sources import _client
+
+from modules.house_numbering.migrate import upgrade as migrate_house_numbering
 
 
 def _seed_source(
@@ -109,7 +109,9 @@ def test_house_numbering_us1_us3_real_postgis(migrated_database: None) -> None:
     module_base = f"{proj_base}/modules/house-numbering"
 
     with _client(world.owner_user_id) as client:
-        registered = client.post(f"{org_base}/extensions/official/house_numbering/register")
+        registered = client.post(
+            f"{org_base}/extensions/official/house_numbering/register"
+        )
         assert registered.status_code == 201, registered.text
         manifest_id = registered.json()["id"]
         assert registered.json()["version"] == "2.0.0"
@@ -232,7 +234,11 @@ def test_house_numbering_us1_us3_real_postgis(migrated_database: None) -> None:
 
         approved = client.post(
             f"{module_base}/proposals/{proposal_id}/transition",
-            json={"expected_revision": 2, "action": "approve", "comment": "test approval"},
+            json={
+                "expected_revision": 2,
+                "action": "approve",
+                "comment": "test approval",
+            },
         )
         assert approved.status_code == 200, approved.text
         assert approved.json()["status"] == "approved"
@@ -253,7 +259,9 @@ def test_house_numbering_us1_us3_real_postgis(migrated_database: None) -> None:
         assert recheck.json()["suggestion"]["reason"] == "existing_number"
 
         # US4/US5: import certificate + survey evidence, replay safely, reconcile.
-        certificate_csv = f"building_id,route_id,raw_number\n{building_id},{route_id},2\n".encode()
+        certificate_csv = (
+            f"building_id,route_id,raw_number\n{building_id},{route_id},2\n".encode()
+        )
         import_form = {
             "source_format": "csv",
             "origin": "certificate",
@@ -295,7 +303,9 @@ def test_house_numbering_us1_us3_real_postgis(migrated_database: None) -> None:
             json={"removed_building_ids": [], "estimated_building_ids": []},
         )
         assert reconciled.status_code == 200, reconciled.text
-        assert any(item["case_class"] == "matched" for item in reconciled.json()["items"])
+        assert any(
+            item["case_class"] == "matched" for item in reconciled.json()["items"]
+        )
 
         # US6/US7: offline survey replay + review + real progress aggregation.
         assignment = client.post(
@@ -320,10 +330,14 @@ def test_house_numbering_us1_us3_real_postgis(migrated_database: None) -> None:
             "condition": "house",
             "photo_artifact_ids": [],
         }
-        synced = client.post(f"{module_base}/survey/sync", json={"operations": [survey_operation]})
+        synced = client.post(
+            f"{module_base}/survey/sync", json={"operations": [survey_operation]}
+        )
         assert synced.status_code == 200, synced.text
         survey_id = synced.json()["applied"][0]
-        replay = client.post(f"{module_base}/survey/sync", json={"operations": [survey_operation]})
+        replay = client.post(
+            f"{module_base}/survey/sync", json={"operations": [survey_operation]}
+        )
         assert replay.status_code == 200, replay.text
         assert replay.json()["replayed"] == [survey_id]
 
@@ -365,7 +379,9 @@ def test_house_numbering_us1_us3_real_postgis(migrated_database: None) -> None:
         # US10/US11: search + standard export remain public-field allowlisted.
         searched = client.get(f"{module_base}/search", params={"query": "2"})
         assert searched.status_code == 200, searched.text
-        assert any(item["building_id"] == building_id for item in searched.json()["items"])
+        assert any(
+            item["building_id"] == building_id for item in searched.json()["items"]
+        )
 
         private = client.post(
             f"{module_base}/private-households",
@@ -386,7 +402,10 @@ def test_house_numbering_us1_us3_real_postgis(migrated_database: None) -> None:
             params={"purpose": "integration privacy verification"},
         )
         assert private_read.status_code == 200, private_read.text
-        assert private_read.json()["items"][0]["protected_data"]["owner_name"] == "SENSITIVE OWNER"
+        assert (
+            private_read.json()["items"][0]["protected_data"]["owner_name"]
+            == "SENSITIVE OWNER"
+        )
 
         exported = client.post(
             f"{module_base}/exports",
