@@ -75,6 +75,49 @@ test("populated GIS workspace visual baseline", async ({ page }) => {
       ]
     }
   );
+
+});
+
+test("technical drawer closed and open visual baselines", async ({ page }) => {
+  await mapSignIn(page);
+  const fixture = await createMapProject(
+    page,
+    Date.now().toString() + "-visual-technical"
+  );
+  await registerMapReferences(page, fixture, false);
+  await saveFixtureMap(page, fixture);
+  await openFixtureMap(page, fixture);
+
+  const workspace = page.getByTestId("map-workspace");
+  const commonMask = [
+    page.getByTestId("map-canvas"),
+    page.locator(".gis-header h1")
+  ];
+
+  await expect(workspace).toHaveScreenshot(
+    "map-workspace-technical-closed.png",
+    {
+      animations: "disabled",
+      mask: commonMask
+    }
+  );
+
+  await page
+    .getByRole("button", { name: "Thông tin kỹ thuật", exact: true })
+    .click();
+  const drawer = page.getByRole("dialog", { name: "Thông tin kỹ thuật" });
+  await expect(drawer).toBeVisible();
+
+  await expect(workspace).toHaveScreenshot(
+    "map-workspace-technical-open.png",
+    {
+      animations: "disabled",
+      mask: [
+        ...commonMask,
+        ...await drawer.locator("code").all()
+      ]
+    }
+  );
 });
 
 test("dirty saved and conflict save-state visual baselines", async ({ page }) => {

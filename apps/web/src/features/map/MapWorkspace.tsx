@@ -19,6 +19,7 @@ import { AttributeTable } from "./AttributeTable";
 import { CommandBar } from "./CommandBar";
 import { FeatureInspector } from "./FeatureInspector";
 import { SaveStateIndicator } from "./SaveStateIndicator";
+import { TechnicalDetailsDrawer } from "./TechnicalDetailsDrawer";
 import { LayerTree } from "./LayerTree";
 import { WorkspaceLayout } from "./WorkspaceLayout";
 import { buildAddDataCandidates } from "./add-data";
@@ -27,6 +28,7 @@ import { BASEMAP_OPTIONS,type BasemapId,type MapEngine,type RenderLayer } from "
 import { createMapLibreEngine } from "./maplibre-engine";
 import { beginSave,markUnresolved,receiptMatches,saveErrorState,type PendingSave } from "./save";
 import { buildSaveIndicatorView } from "./save-indicator";
+import { buildTechnicalDetailsView } from "./technical-details";
 import { useUnsavedNavigationProtection } from "./unsaved-navigation";
 import { boundsOfGeometry,capability,combineBounds,defaultStyle,mapResponseMatches,positionCount,selectionKey,toggleSelection,viewportMatches,type Bounds,type SelectionScope } from "./workspace";
 import {
@@ -80,7 +82,7 @@ function Workspace({organizationId,projectId,accountId,project,initial,canEdit}:
  const [viewpointIntent,setViewpointIntent]=useState<SaveMapInput["default_viewpoint"]>({mode:"preserve"});
  const [pending,setPending]=useState<PendingSave|null>(null),[notice,setNotice]=useState(""),[working,setWorking]=useState(false);
  const [showHistory,setShowHistory]=useState(false),[historyCursor,setHistoryCursor]=useState<number|undefined>();
- const [contextMenu,setContextMenu]=useState(false),[addDataOpen,setAddDataOpen]=useState(false);
+ const [contextMenu,setContextMenu]=useState(false),[addDataOpen,setAddDataOpen]=useState(false),[technicalDetailsOpen,setTechnicalDetailsOpen]=useState(false);
  const [layoutPreference,setLayoutPreference]=useState<WorkspaceLayoutPreference>(()=>loadWorkspaceLayoutPreference());
  const [basemap,setBasemap]=useState<BasemapId>(()=>window.location.protocol==="https:"?"google-hybrid":"grid");
  useEffect(()=>{engine.current?.setBasemap(basemap);},[basemap]);
@@ -115,6 +117,7 @@ function Workspace({organizationId,projectId,accountId,project,initial,canEdit}:
  const detail=!activeBlocked&&activeScope&&rawDetail&&pinnedMatches(activeScope,rawDetail.context)&&rawDetail.feature.feature_id===focus?rawDetail:undefined;
 
  useLayoutEffect(()=>{setCursor(null);setPages([]);setSelection(null);fitGeneration.current++;},[activeKey]);
+ useLayoutEffect(()=>{setTechnicalDetailsOpen(false);},[organizationId,projectId,active]);
  useEffect(()=>{if(directBlocked&&activeKey)setBlocked(activeKey);},[directBlocked,activeKey]);
  useEffect(()=>{alive.current=true;return()=>{alive.current=false;};},[]);
  function choose(id:string):void {setActive(id);setSelection(null);setCursor(null);setPages([]);setContextMenu(false);}
@@ -279,6 +282,7 @@ function Workspace({organizationId,projectId,accountId,project,initial,canEdit}:
   saveWorkspaceLayoutPreference(normalized);
  }
  const addDataCandidates=buildAddDataCandidates(catalog?.items??[],configuration.layers);
+ const technicalDetailsView=buildTechnicalDetailsView({organizationId,projectId,map:saved,activeLayer});
  function addLayerToMap(layerId:string):void {
   const candidate=addDataCandidates.find(item=>item.layerId===layerId);
   if(locked||configuration.layers.length>=32||!candidate?.addable)return;
@@ -291,10 +295,12 @@ function Workspace({organizationId,projectId,accountId,project,initial,canEdit}:
   <div className="map-context">
     <span><strong>Phiên bản bản đồ:</strong> {saved.configuration_revision}</span>
     <span className={dirty?"map-context-unsaved":"map-context-saved"} data-save-state={saveIndicatorView.state}>{saveIndicatorView.label}</span>
-    <details>
-      <summary>Thông tin kỹ thuật</summary>
-      <div><span>Mã tổ chức: <code>{organizationId}</code></span><span>Mã dự án: <code>{projectId}</code></span></div>
-    </details>
+    <button
+     type="button"
+     className="map-technical-trigger"
+     aria-haspopup="dialog"
+     onClick={()=>setTechnicalDetailsOpen(true)}
+    >Thông tin kỹ thuật</button>
   </div>
   <CommandBar commands={commands}/>
   <div className="map-basemap-bar" style={{display:"flex",flexWrap:"wrap",alignItems:"center",gap:"0.4rem",padding:"0.4rem 0.9rem",background:"#f1f5f9",borderBottom:"1px solid #cbd5e1",fontSize:"0.84rem"}}><strong>Bản đồ nền:</strong>{BASEMAP_OPTIONS.map(opt=><button key={opt.id} type="button" data-testid={"basemap-"+opt.id} style={{padding:"0.25rem 0.65rem",borderRadius:6,border:"1px solid #94a3b8",cursor:"pointer",background:basemap===opt.id?"#0f172a":"#ffffff",color:basemap===opt.id?"#ffffff":"#0f172a",fontWeight:600}} onClick={()=>setBasemap(opt.id)}>{opt.label}</button>)}</div>
@@ -317,6 +323,11 @@ function Workspace({organizationId,projectId,accountId,project,initial,canEdit}:
    bottom={<AttributeTable layer={capability(activeLayer,"feature_read")?activeLayer:undefined} page={page} selected={selected} focus={focus} select={select} pageNumber={pages.length+1} error={readError}
     previous={pages.length?()=>{setCursor(pages[pages.length-1]??null);setPages(pages.slice(0,-1));}:null}
     next={page?.next_after_feature_id?()=>{setPages([...pages,cursor]);setCursor(page.next_after_feature_id);}:null}/>}
+  />
+  <TechnicalDetailsDrawer
+   open={technicalDetailsOpen}
+   view={technicalDetailsView}
+   onClose={()=>setTechnicalDetailsOpen(false)}
   />
   <AddDataDialog
    open={addDataOpen}

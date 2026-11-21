@@ -158,3 +158,47 @@
 
 .map-save-indicator{margin:.2rem 0;font-size:.78rem;font-weight:800}.map-save-indicator.is-clean,.map-save-indicator.is-saved{color:#166534}.map-save-indicator.is-dirty,.map-save-indicator.is-saving{color:#8a6214}.map-save-indicator.is-conflict,.map-save-indicator.is-failed,.map-save-indicator.is-unresolved{color:#b42318}
 .map-unsaved-blocker{position:fixed;inset:0;z-index:120;display:grid;place-items:center;padding:18px;background:#0f172a66}.map-unsaved-blocker>div{width:min(480px,calc(100vw - 36px));padding:20px;border:1px solid #d9e2e7;border-radius:12px;background:#fff;box-shadow:0 24px 70px #0f172a40}.map-unsaved-blocker h2,.map-unsaved-blocker p{margin:0}.map-unsaved-blocker h2{font-size:18px}.map-unsaved-blocker p{margin-top:8px;color:var(--muted);font-size:12px;line-height:1.55}.map-unsaved-blocker>div>div{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}.map-unsaved-blocker button{min-height:38px;padding:0 12px;border:1px solid #cbd7e2;border-radius:7px;background:#fff;font-weight:750;cursor:pointer}.map-unsaved-blocker button.is-danger{border-color:#b42318;background:#b42318;color:#fff}
+
+.map-technical-trigger{min-height:32px;padding:0 10px;border:1px solid #cbd7e2;border-radius:7px;background:#fff;color:#355164;font-size:10px;font-weight:800;cursor:pointer}.map-technical-trigger:hover{background:#f5f8fa}
+.map-technical-drawer{width:min(620px,calc(100vw - 28px));max-height:min(780px,88vh);padding:0;border:1px solid #cbd7e2;border-radius:14px;background:#fff;color:var(--ink);box-shadow:0 26px 70px #0f26364d}.map-technical-drawer::backdrop{background:#0f172a66}.map-technical-drawer>header{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;padding:20px 22px 16px;border-bottom:1px solid #e1e8ec}.map-technical-drawer h2,.map-technical-drawer h3,.map-technical-drawer p{margin:0}.map-technical-drawer h2{margin-top:4px;font-size:22px}.map-technical-drawer header p{margin-top:6px;color:var(--muted);font-size:11px;line-height:1.55}.map-technical-drawer header>button{width:36px;height:36px;border:1px solid #d3dfe5;border-radius:7px;background:#fff;font-size:20px;cursor:pointer}.map-technical-drawer>section{padding:16px 22px}.map-technical-drawer>section+section{border-top:1px solid #e4eaee}.map-technical-drawer h3{font-size:12px;margin-bottom:10px}.map-technical-drawer dl{display:grid;grid-template-columns:150px minmax(0,1fr);gap:7px 12px;margin:0;font-size:10px}.map-technical-drawer dt{color:#718590}.map-technical-drawer dd{min-width:0;margin:0;overflow-wrap:anywhere}.map-technical-drawer code{font-family:var(--ovg-font-mono);font-size:9px}.map-technical-capabilities{display:grid;gap:8px}.map-technical-capabilities article{display:grid;grid-template-columns:minmax(110px,1fr) repeat(4,minmax(90px,auto));gap:8px;align-items:center;padding:8px 10px;border:1px solid #e0e7eb;border-radius:8px;font-size:9px}.map-technical-capabilities article strong{font-size:10px}
+@media(max-width:680px){.map-technical-drawer dl{grid-template-columns:1fr}.map-technical-capabilities article{grid-template-columns:1fr 1fr}.map-technical-drawer>header,.map-technical-drawer>section{padding-left:16px;padding-right:16px}}
+
+/* Spec 017 technical metadata lives in one secondary right-side drawer. */
+.map-technical-drawer{
+  position:fixed;
+  inset:0 0 0 auto;
+  width:min(560px,calc(100vw - 24px));
+  height:100dvh;
+  max-height:none;
+  margin:0 0 0 auto;
+  border-radius:14px 0 0 14px;
+  overflow:auto;
+}
+.map-technical-capabilities{
+  list-style:none;
+  margin:0;
+  padding:0;
+  display:grid;
+  gap:7px;
+}
+.map-technical-capabilities li{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  padding:8px 10px;
+  border:1px solid #e0e7eb;
+  border-radius:8px;
+  background:#fbfdfe;
+  font-size:10px;
+}
+.map-technical-capabilities li span{
+  padding:2px 6px;
+  border-radius:999px;
+  font-size:9px;
+  font-weight:800;
+}
+.map-technical-capabilities li span.is-ready{background:#e9f7ef;color:#166534}
+.map-technical-capabilities li span.is-permission{background:#fff1f2;color:#b42318}
+.map-technical-capabilities li span.is-unsupported,
+.map-technical-capabilities li span.is-unavailable{background:#f1f5f9;color:#64748b}

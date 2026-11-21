@@ -281,17 +281,6 @@ export function LayerTree({
                 </fieldset>
               </details>
 
-              {layer ? (
-                <details className="map-layer-technical">
-                  <summary>Thông tin kỹ thuật</summary>
-                  <dl>
-                    <dt>Mã lớp</dt>
-                    <dd><code>{layer.id}</code></dd>
-                    <dt>Mã nguồn</dt>
-                    <dd><code>{layer.source_id}</code></dd>
-                  </dl>
-                </details>
-              ) : null}
             </li>
           );
         })}

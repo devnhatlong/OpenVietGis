@@ -184,3 +184,14 @@ R004 SC009 (five first-time GIS-capable users) remains an external human accepta
   - stale revision remains conflict until reload.
 - Deterministic visual suite PASS both when snapshots were generated and on a subsequent no-update run.
 - Save-state snapshots cover dirty, saved and conflict in addition to empty/populated workspace baselines.
+
+## US5 technical-details evidence — 2026-11-21
+
+- Technical metadata is removed from primary Map chrome, Layer rows and the normal Inspector surface.
+- Unit coverage verifies scoped Organization/Project/Map IDs, active Layer/Source IDs, content/schema revisions, CRS facts and capability availability mapping without inventing data when there is no active Layer.
+- Browser acceptance PASS:
+  - primary context does not display Organization, Project or Map UUIDs;
+  - Technical Details drawer shows only currently supplied authorized map/layer facts;
+  - closing the drawer returns focus to the invoking control;
+  - navigating to another Project while the drawer is open unmounts/closes the drawer and the old Project ID is absent from the new primary context.
+- Deterministic visual suite covers Technical Details closed/open states. After removing a colliding duplicate snapshot name, visual generation and a subsequent no-update run both passed 4/4.

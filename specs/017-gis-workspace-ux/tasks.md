@@ -106,11 +106,11 @@ description: "Dependency-ordered implementation tasks for OpenVietGIS GIS Worksp
 
 **Independent Test**: Ordinary chrome has no raw IDs; drawer shows permitted facts and clears on scope change.
 
-- [ ] T041 [P] [US5] Add failing component tests for `TechnicalDetailsView` organization/project/map IDs, Layer/source IDs, revisions, CRS and capability fields from `specs/017-gis-workspace-ux/data-model.md` in `apps/web/src/features/map/technical-details.test.ts`
-- [ ] T042 [US5] Implement authorized `TechnicalDetailsView` mapping in `apps/web/src/features/map/technical-details.ts`
-- [ ] T043 [US5] Implement `TechnicalDetailsDrawer.tsx` with accessible open/close/focus return in `apps/web/src/features/map/TechnicalDetailsDrawer.tsx`
-- [ ] T044 [US5] Clear drawer content before organization/project/active-Layer scope changes can expose stale technical metadata in `apps/web/src/features/map/MapWorkspace.tsx`
-- [ ] T045 [US5] Add closed/open deterministic drawer screenshot coverage in `tests/e2e/map-workspace-visual.spec.ts`
+- [x] T041 [P] [US5] Add failing component tests for `TechnicalDetailsView` organization/project/map IDs, Layer/source IDs, revisions, CRS and capability fields from `specs/017-gis-workspace-ux/data-model.md` in `apps/web/src/features/map/technical-details.test.ts`
+- [x] T042 [US5] Implement authorized `TechnicalDetailsView` mapping in `apps/web/src/features/map/technical-details.ts`
+- [x] T043 [US5] Implement `TechnicalDetailsDrawer.tsx` with accessible open/close/focus return in `apps/web/src/features/map/TechnicalDetailsDrawer.tsx`
+- [x] T044 [US5] Clear drawer content before organization/project/active-Layer scope changes can expose stale technical metadata in `apps/web/src/features/map/MapWorkspace.tsx`
+- [x] T045 [US5] Add closed/open deterministic drawer screenshot coverage in `tests/e2e/map-workspace-visual.spec.ts`
 
 **Checkpoint**: Technical support metadata is available without cluttering routine GIS work.
 

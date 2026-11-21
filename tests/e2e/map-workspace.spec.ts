@@ -172,6 +172,66 @@ test("opens a real empty grid and arranges, renders, selects and saves catalog L
   expect(externalRequests).toEqual([]);
 });
 
+test("technical details drawer returns focus and clears on active-layer scope change", async ({ page }) => {
+  test.setTimeout(180_000);
+  await mapSignIn(page);
+  const fixture = await createMapProject(
+    page,
+    Date.now().toString() + "-technical-drawer"
+  );
+  await registerMapReferences(page, fixture, false);
+  await saveFixtureMap(page, fixture);
+  await openFixtureMap(page, fixture);
+
+  const trigger = page.getByRole("button", {
+    name: "Thông tin kỹ thuật",
+    exact: true
+  });
+  await trigger.focus();
+  await trigger.click();
+
+  const drawer = page.getByRole("dialog", { name: "Thông tin kỹ thuật" });
+  await expect(drawer).toBeVisible();
+  await expect(
+    drawer.getByRole("button", { name: "Đóng thông tin kỹ thuật" })
+  ).toBeFocused();
+
+  const current = await currentMap(page, fixture);
+  await expect(drawer).toContainText(fixture.organizationId);
+  await expect(drawer).toContainText(fixture.projectId);
+  await expect(drawer).toContainText(current.map_id);
+  await expect(drawer).toContainText(fixture.layers[0]!.id);
+  await expect(drawer).toContainText(fixture.layers[0]!.source_id);
+
+  await drawer
+    .getByRole("button", { name: "Đóng thông tin kỹ thuật" })
+    .click();
+  await expect(drawer).not.toBeVisible();
+  await expect(trigger).toBeFocused();
+
+  const secondLayer = fixture.layers[1]!;
+  await trigger.click();
+  await expect(drawer).toBeVisible();
+
+  // A modal blocks pointer interaction with the workspace, so invoke the same
+  // accessible active-layer control programmatically to exercise the scope
+  // transition while the drawer is open.
+  await page
+    .getByRole("button", {
+      name: "Chọn " + secondLayer.name + " làm lớp hiện hành",
+      exact: true
+    })
+    .evaluate((element) => (element as HTMLButtonElement).click());
+
+  await expect(drawer).not.toBeVisible();
+
+  await trigger.click();
+  await expect(drawer).toBeVisible();
+  await expect(drawer).toContainText(secondLayer.id);
+  await expect(drawer).toContainText(secondLayer.source_id);
+  await expect(drawer).not.toContainText(fixture.layers[0]!.id);
+});
+
 test("preserves the designated camera and reconciles a genuinely committed lost acknowledgement after a later save", async ({ page }) => {
   test.setTimeout(240_000);
   await mapSignIn(page);
@@ -495,4 +555,63 @@ test("warns only for unsaved shared configuration changes", async ({ page }) => 
   await expect(
     page.getByRole("dialog", { name: "Có thay đổi bản đồ chưa lưu" })
   ).toHaveCount(0);
+});
+
+test("keeps technical identifiers secondary and returns focus after closing the drawer", async ({ page }) => {
+  test.setTimeout(180_000);
+  await mapSignIn(page);
+  const fixture = await createMapProject(
+    page,
+    Date.now().toString() + "-technical-drawer"
+  );
+  await registerMapReferences(page, fixture, false);
+  await saveFixtureMap(page, fixture);
+  const persisted = await currentMap(page, fixture);
+  await openFixtureMap(page, fixture);
+
+  const primaryContext = page.locator(".map-context");
+  await expect(primaryContext).not.toContainText(fixture.organizationId);
+  await expect(primaryContext).not.toContainText(fixture.projectId);
+  await expect(primaryContext).not.toContainText(persisted.map_id);
+
+  const trigger = page.getByRole("button", {
+    name: "Thông tin kỹ thuật",
+    exact: true
+  });
+  await trigger.click();
+
+  const drawer = page.getByRole("dialog", {
+    name: "Thông tin kỹ thuật"
+  });
+  await expect(drawer).toBeVisible();
+  await expect(drawer).toContainText(fixture.organizationId);
+  await expect(drawer).toContainText(fixture.projectId);
+  await expect(drawer).toContainText(persisted.map_id);
+  await expect(drawer).toContainText(fixture.layers[0]!.id);
+  await expect(drawer).toContainText(fixture.layers[0]!.source_id);
+  await expect(drawer).toContainText(
+    fixture.layers[0]!.source.content_revision
+  );
+  await expect(drawer).toContainText(
+    fixture.layers[0]!.source.schema_revision
+  );
+
+  await drawer
+    .getByRole("button", { name: "Đóng thông tin kỹ thuật" })
+    .click();
+  await expect(drawer).not.toBeVisible();
+  await expect(trigger).toBeFocused();
+
+  await trigger.click();
+  await expect(drawer).toBeVisible();
+  const otherFixture = await createMapProject(
+    page,
+    Date.now().toString() + "-technical-scope-change"
+  );
+  await page.goto(otherFixture.root + "/map");
+  await expect(page.getByTestId("map-workspace")).toBeVisible();
+  await expect(
+    page.getByRole("dialog", { name: "Thông tin kỹ thuật" })
+  ).toHaveCount(0);
+  await expect(page.locator(".map-context")).not.toContainText(fixture.projectId);
 });

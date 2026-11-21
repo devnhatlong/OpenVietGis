@@ -116,19 +116,6 @@ export function FeatureInspector({
             </p>
           ) : null}
 
-          <details className="map-inspector-technical">
-            <summary>Thông tin kỹ thuật</summary>
-            <dl>
-              <dt>Phiên bản nội dung</dt>
-              <dd>
-                <code>{activeDetail.context.content_revision}</code>
-              </dd>
-              <dt>Phiên bản lược đồ</dt>
-              <dd>
-                <code>{activeDetail.context.schema_revision}</code>
-              </dd>
-            </dl>
-          </details>
         </div>
       )}
     </aside>
