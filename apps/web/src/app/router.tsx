@@ -8,6 +8,7 @@ import {
 import { SessionBoundary } from "./session/SessionBoundary";
 import { AppShell } from "./shell/AppShell";
 import { LandingPage } from "../features/landing/LandingPage";
+import { FrontendPreviewPage } from "../features/preview/FrontendPreviewPage";
 import { LoginPage } from "../features/auth/LoginPage";
 import { IdentityPage } from "../features/auth/IdentityPage";
 import { OrganizationHome } from "../features/organizations/OrganizationHome";
@@ -66,9 +67,12 @@ function LegacyProjectRedirect({ suffix }: { suffix: string }) {
   );
 }
 
+const uxPreviewMode = import.meta.env.VITE_UX_PREVIEW === "true";
+
 export const router = createBrowserRouter(
   [
-    { path: "/", element: <LandingPage /> },
+    { path: "/", element: uxPreviewMode ? <FrontendPreviewPage /> : <LandingPage /> },
+    { path: "/landing", element: <LandingPage /> },
     { path: "/login", element: <LoginPage /> },
 
     { path: "/app", element: protectedElement(<OrganizationHome />) },
