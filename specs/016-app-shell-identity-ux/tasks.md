@@ -14,7 +14,7 @@ description: "Dependency-ordered implementation tasks for OpenVietGIS App Shell 
 
 **Purpose**: Establish the shared frontend visual layer and reproducible baseline.
 
-- [ ] T001 Record exact implementation baseline, supported Node/pnpm versions, current web bundle metrics and existing auth/browser test status in `specs/016-app-shell-identity-ux/quickstart.md`
+- [x] T001 Record exact implementation baseline, supported Node/pnpm versions, current web bundle metrics and existing auth/browser test status in `specs/016-app-shell-identity-ux/quickstart.md`
 - [x] T002 [P] Create semantic light-theme design tokens and spacing/typography/focus variables in `apps/web/src/ui/tokens.css`
 - [x] T003 [P] Create global reset, skip-link, reduced-motion and responsive shell foundations in `apps/web/src/ui/global.css`
 - [x] T004 Wire `apps/web/src/ui/tokens.css` and `apps/web/src/ui/global.css` exactly once from `apps/web/src/main.tsx`
@@ -30,7 +30,7 @@ description: "Dependency-ordered implementation tasks for OpenVietGIS App Shell 
 - [x] T007 Implement the tested `SessionShellState` state machine and transition helpers in `apps/web/src/app/session/session-state.ts` using the canonical fields from `specs/016-app-shell-identity-ux/data-model.md`
 - [x] T008 [P] Add failing tests for safe `ReturnDestination.pathname`, `ReturnDestination.search`, and `ReturnDestination.hash` validation from `specs/016-app-shell-identity-ux/data-model.md` in `apps/web/src/app/session/return-destination.test.ts`
 - [x] T009 Implement same-origin relative return-destination parsing/serialization in `apps/web/src/app/session/return-destination.ts` using `ReturnDestination.pathname`, `ReturnDestination.search`, and `ReturnDestination.hash` from `specs/016-app-shell-identity-ux/data-model.md`
-- [ ] T010 Add failing component tests proving background `/me` checks do not unmount a previously authenticated shell and confirmed 401 does clear it in `apps/web/src/app/session/SessionBoundary.test.tsx`
+- [x] T010 Add failing component tests proving background `/me` checks do not unmount a previously authenticated shell and confirmed 401 does clear it in `apps/web/src/app/session/SessionBoundary.test.tsx`
 - [x] T011 Implement `SessionBoundary` and session context in `apps/web/src/app/session/SessionBoundary.tsx` while leaving strict tenant/resource reads on existing `protectedQueryOptions`
 - [x] T012 Implement authorization-loss cache/session coordination for confirmed protected-request auth loss in `apps/web/src/app/session/session-auth-loss.ts` and integrate only the necessary hook points in `apps/web/src/app/protected-query.ts`
 - [x] T013 [P] Implement `ShellPreference.navigationCollapsed` from `specs/016-app-shell-identity-ux/data-model.md` with non-sensitive local persistence in `apps/web/src/app/shell/shell-preference.ts`
@@ -46,8 +46,8 @@ description: "Dependency-ordered implementation tasks for OpenVietGIS App Shell 
 
 **Independent Test**: Signed-out public landing → login → provider sign-in → intended protected destination, then focus/reconnect/background revalidation with no public/loading flash.
 
-- [ ] T017 [P] [US1] Add failing Playwright coverage for public `/`, dedicated `/login`, protected deep-link return and invalid external return fallback in `tests/e2e/auth-navigation.spec.ts`
-- [ ] T018 [P] [US1] Add failing Playwright DOM/screenshot sequence asserting no Landing/full-page-loading flash during authenticated focus/revalidation in `tests/e2e/app-shell.spec.ts`
+- [x] T017 [P] [US1] Add failing Playwright coverage for public `/`, dedicated `/login`, protected deep-link return and invalid external return fallback in `tests/e2e/auth-navigation.spec.ts`
+- [x] T018 [P] [US1] Add failing Playwright DOM/screenshot sequence asserting no Landing/full-page-loading flash during authenticated focus/revalidation in `tests/e2e/app-shell.spec.ts`
 - [x] T019 [P] [US1] Implement the public product landing content and accessible CTA structure in `apps/web/src/features/landing/LandingPage.tsx` and `apps/web/src/features/landing/landing.css`
 - [x] T020 [US1] Replace the embedded login panel with a dedicated provider-neutral Login page using validated `return_to` in `apps/web/src/features/auth/LoginPage.tsx`
 - [x] T021 [US1] Rebuild route guards/canonical public-authenticated route separation for `/`, `/login`, and `/app` in `apps/web/src/app/router.tsx`
@@ -62,11 +62,11 @@ description: "Dependency-ordered implementation tasks for OpenVietGIS App Shell 
 
 **Independent Test**: User with organizations/projects can identify and open a project without UUIDs; user with no projects gets a useful empty state.
 
-- [ ] T024 [P] [US2] Add failing dashboard tests for organization/project cards, no-project empty state and absence of primary UUID labels in `apps/web/src/features/dashboard/AppDashboard.test.tsx`
-- [ ] T025 [P] [US2] Add failing browser flow for `/app` organization/project navigation in `tests/e2e/app-shell.spec.ts`
-- [ ] T026 [US2] Implement `AppDashboard` using existing organization/project SDK reads in `apps/web/src/features/dashboard/AppDashboard.tsx` and `apps/web/src/features/dashboard/dashboard.css`
-- [ ] T027 [US2] Migrate organization switch/list presentation into the authenticated shell in `apps/web/src/features/organizations/OrganizationHome.tsx`
-- [ ] T028 [US2] Migrate project list/create presentation into the authenticated shell with readable workspace/status labels in `apps/web/src/features/projects/ProjectPage.tsx`
+- [x] T024 [P] [US2] Add failing dashboard tests for organization/project cards, no-project empty state and absence of primary UUID labels in `apps/web/src/features/dashboard/AppDashboard.test.tsx`
+- [x] T025 [P] [US2] Add failing browser flow for `/app` organization/project navigation in `tests/e2e/app-shell.spec.ts`
+- [x] T026 [US2] Implement `AppDashboard` using existing organization/project SDK reads in `apps/web/src/features/dashboard/AppDashboard.tsx` and `apps/web/src/features/dashboard/dashboard.css`
+- [x] T027 [US2] Migrate organization switch/list presentation into the authenticated shell in `apps/web/src/features/organizations/OrganizationHome.tsx`
+- [x] T028 [US2] Migrate project list/create presentation into the authenticated shell with readable workspace/status labels in `apps/web/src/features/projects/ProjectPage.tsx`
 
 **Checkpoint**: Dashboard orientation is independently usable without the GIS workspace redesign.
 
@@ -76,11 +76,11 @@ description: "Dependency-ordered implementation tasks for OpenVietGIS App Shell 
 
 **Independent Test**: Open account menu from multiple authenticated routes, sign out, then confirm protected access is gone.
 
-- [ ] T029 [P] [US3] Add failing logout/account-menu tests covering confirmed logout and ambiguous failure revalidation in `apps/web/src/features/auth/AccountMenu.test.tsx`
-- [ ] T030 [P] [US3] Add Playwright logout-from-deep-route coverage in `tests/e2e/auth-navigation.spec.ts`
-- [ ] T031 [US3] Implement `AccountMenuState` safe display/account/session/sign-out behavior from `specs/016-app-shell-identity-ux/data-model.md` in `apps/web/src/features/auth/AccountMenu.tsx`
-- [ ] T032 [US3] Restyle and route the identity/session surface under the canonical app shell in `apps/web/src/features/auth/IdentityPage.tsx`
-- [ ] T033 [US3] Move invitation acceptance/entry links into canonical app navigation without changing invitation contracts in `apps/web/src/features/invitations/InvitationAcceptPage.tsx` and `apps/web/src/features/invitations/InvitationIssuePanel.tsx`
+- [x] T029 [P] [US3] Add failing logout/account-menu tests covering confirmed logout and ambiguous failure revalidation in `apps/web/src/features/auth/AccountMenu.test.tsx`
+- [x] T030 [P] [US3] Add Playwright logout-from-deep-route coverage in `tests/e2e/auth-navigation.spec.ts`
+- [x] T031 [US3] Implement `AccountMenuState` safe display/account/session/sign-out behavior from `specs/016-app-shell-identity-ux/data-model.md` in `apps/web/src/features/auth/AccountMenu.tsx`
+- [x] T032 [US3] Restyle and route the identity/session surface under the canonical app shell in `apps/web/src/features/auth/IdentityPage.tsx`
+- [x] T033 [US3] Move invitation acceptance/entry links into canonical app navigation without changing invitation contracts in `apps/web/src/features/invitations/InvitationAcceptPage.tsx` and `apps/web/src/features/invitations/InvitationIssuePanel.tsx`
 
 **Checkpoint**: Session control is consistently reachable and security behavior is preserved.
 
@@ -90,11 +90,11 @@ description: "Dependency-ordered implementation tasks for OpenVietGIS App Shell 
 
 **Independent Test**: Visit Overview, Projects, Workspaces, Membership and Account; active location remains clear and legacy bookmarks redirect safely.
 
-- [ ] T034 [P] [US4] Add route-contract tests for every legacy-to-canonical mapping in `apps/web/src/app/router.test.tsx`
-- [ ] T035 [P] [US4] Add Playwright coverage for persistent shell navigation/breadcrumb active state in `tests/e2e/app-shell.spec.ts`
-- [ ] T036 [US4] Implement legacy redirects from `contracts/routes-and-redirects.md` in `apps/web/src/app/router.tsx`
-- [ ] T037 [US4] Finish scope-aware primary navigation and breadcrumb mapping in `apps/web/src/app/shell/AppNavigation.tsx` and `apps/web/src/app/shell/Breadcrumbs.tsx`
-- [ ] T038 [US4] Register initial shell commands for Dashboard, Projects, Workspaces, Members/Access and Account in `apps/web/src/app/shell/command-registry.ts`
+- [x] T034 [P] [US4] Add route-contract tests for every legacy-to-canonical mapping in `apps/web/src/app/router.test.tsx`
+- [x] T035 [P] [US4] Add Playwright coverage for persistent shell navigation/breadcrumb active state in `tests/e2e/app-shell.spec.ts`
+- [x] T036 [US4] Implement legacy redirects from `contracts/routes-and-redirects.md` in `apps/web/src/app/router.tsx`
+- [x] T037 [US4] Finish scope-aware primary navigation and breadcrumb mapping in `apps/web/src/app/shell/AppNavigation.tsx` and `apps/web/src/app/shell/Breadcrumbs.tsx`
+- [x] T038 [US4] Register initial shell commands for Dashboard, Projects, Workspaces, Members/Access and Account in `apps/web/src/app/shell/command-registry.ts`
 
 **Checkpoint**: US4 works independently as an information-architecture migration layer.
 
@@ -104,21 +104,21 @@ description: "Dependency-ordered implementation tasks for OpenVietGIS App Shell 
 
 **Independent Test**: Keyboard + screenshot + width checks on Landing, Login, Dashboard and Account Menu.
 
-- [ ] T039 [P] [US5] Add deterministic screenshot baselines for Landing, Login, Dashboard and Account Menu in `tests/e2e/app-shell-visual.spec.ts`
-- [ ] T040 [P] [US5] Add keyboard/focus/skip-link and 768/1024/1440 width acceptance checks in `tests/e2e/app-shell-accessibility.spec.ts`
-- [ ] T041 [US5] Replace remaining raw English/internal enum/roadmap labels in affected shell/auth/organization/project/workspace/membership components under `apps/web/src/features/`
-- [ ] T042 [US5] Complete sidebar collapse/tablet responsive behavior and 44 px touch-target rules in `apps/web/src/app/shell/AppShell.tsx`, `apps/web/src/app/shell/AppNavigation.tsx`, and `apps/web/src/ui/global.css`
-- [ ] T043 [US5] Add reduced-motion and focus-visible handling required by the approved design system in `apps/web/src/ui/global.css`
+- [x] T039 [P] [US5] Add deterministic screenshot baselines for Landing, Login, Dashboard and Account Menu in `tests/e2e/app-shell-visual.spec.ts`
+- [x] T040 [P] [US5] Add keyboard/focus/skip-link and 768/1024/1440 width acceptance checks in `tests/e2e/app-shell-accessibility.spec.ts`
+- [x] T041 [US5] Replace remaining raw English/internal enum/roadmap labels in affected shell/auth/organization/project/workspace/membership components under `apps/web/src/features/`
+- [x] T042 [US5] Complete sidebar collapse/tablet responsive behavior and 44 px touch-target rules in `apps/web/src/app/shell/AppShell.tsx`, `apps/web/src/app/shell/AppNavigation.tsx`, and `apps/web/src/ui/global.css`
+- [x] T043 [US5] Add reduced-motion and focus-visible handling required by the approved design system in `apps/web/src/ui/global.css`
 
 **Checkpoint**: All five user stories are independently demonstrable.
 
 ## Phase 8: Polish & Cross-Cutting Validation
 
-- [ ] T044 [P] Compare final web bundle/startup metrics with T001 baseline and record justified deltas in `specs/016-app-shell-identity-ux/quickstart.md`
-- [ ] T045 Run all feature quickstart scenarios and record exact browser/runtime/commit evidence in `specs/016-app-shell-identity-ux/quickstart.md`
-- [ ] T046 Run `pnpm --filter @openvietgis/web test`, lint, typecheck, build, targeted Playwright and unchanged R002 security/tenant regressions; record results in `specs/016-app-shell-identity-ux/quickstart.md`
-- [ ] T047 Run full repository validation and resolve any cross-feature route/link regressions before marking tasks complete in `specs/016-app-shell-identity-ux/tasks.md`
-- [ ] T048 Perform independent code review and Spec Kit convergence against `specs/016-app-shell-identity-ux/spec.md`, then document any remaining human/external evidence honestly in `specs/016-app-shell-identity-ux/quickstart.md`
+- [x] T044 [P] Compare final web bundle/startup metrics with T001 baseline and record justified deltas in `specs/016-app-shell-identity-ux/quickstart.md`
+- [x] T045 Run all feature quickstart scenarios and record exact browser/runtime/commit evidence in `specs/016-app-shell-identity-ux/quickstart.md`
+- [x] T046 Run `pnpm --filter @openvietgis/web test`, lint, typecheck, build, targeted Playwright and unchanged R002 security/tenant regressions; record results in `specs/016-app-shell-identity-ux/quickstart.md`
+- [x] T047 Run full repository validation and resolve any cross-feature route/link regressions before marking tasks complete in `specs/016-app-shell-identity-ux/tasks.md`
+- [x] T048 Perform independent code review and Spec Kit convergence against `specs/016-app-shell-identity-ux/spec.md`, then document any remaining human/external evidence honestly in `specs/016-app-shell-identity-ux/quickstart.md`
 
 ## Dependencies & Execution Order
 
