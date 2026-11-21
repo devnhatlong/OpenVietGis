@@ -6,11 +6,11 @@ Audit tasks only; implementation fixes require separately scoped child specs. Al
 - [x] T001 Resolve Spec Kit templates and create artifacts under specs/018-full-product-audit/ (FR-001).
 - [x] T002 Pin candidate and prior main in specs/018-full-product-audit/research.md; record Candidate.commit and Candidate.branch per data-model.md (FR-001).
 - [x] T003 Record preliminary source-only status and eight hypotheses in specs/018-full-product-audit/status-matrix.md and gaps.md (FR-003, FR-012); do not treat as runtime acceptance.
-- [ ] T004 Verify isolated VPS worktree and actual owner/active frontend state; record Candidate.environment per data-model.md in specs/018-full-product-audit/evidence/baseline.md (FR-001, FR-015).
+- [x] T004 Verify isolated VPS worktree and actual owner/active frontend state; record Candidate.environment per data-model.md in specs/018-full-product-audit/evidence/baseline.md (FR-001, FR-015).
 
 ## Phase 2: Foundational
-- [ ] T005 Inspect original specs and approved draft decision register, recover canonical R006–R015 requirements into specs/018-full-product-audit/evidence/requirements.md; record requirement provenance and approval state (FR-002).
-- [ ] T006 Create requirement-level register per data-model.md RequirementEvidence.requirement_id, RequirementEvidence.status, RequirementEvidence.artifacts, RequirementEvidence.candidate in specs/018-full-product-audit/evidence/requirements.md; map 15/15 groups (FR-002, FR-003, SC-001).
+- [x] T005 Inspect original specs and approved draft decision register, recover canonical R006–R015 requirements into specs/018-full-product-audit/evidence/requirements.md; record requirement provenance and approval state (FR-002).
+- [x] T006 Create requirement-level register per data-model.md RequirementEvidence.requirement_id, RequirementEvidence.status, RequirementEvidence.artifacts, RequirementEvidence.candidate in specs/018-full-product-audit/evidence/requirements.md; map 15/15 groups (FR-002, FR-003, SC-001).
 - [ ] T007 Verify version pins, frozen dependency policy and disposable DB/test realm/artifact guard; record commands and environment in specs/018-full-product-audit/evidence/baseline.md (FR-011).
 - [ ] T008 Prepare synthetic GIS fixtures and independent oracle; record format/CRS control/checksum, expected results and source in specs/018-full-product-audit/evidence/fixtures.md (FR-004, FR-011).
 - [ ] T009 Check redaction and production isolation before any test, record gate in specs/018-full-product-audit/evidence/baseline.md (FR-011, SC-006).
