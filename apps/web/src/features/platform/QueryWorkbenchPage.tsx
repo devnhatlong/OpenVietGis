@@ -93,7 +93,7 @@ export function QueryWorkbenchPage() {
         organizationId={organizationId}
         projectId={projectId}
         active="queries"
-        title="R007 Truy vấn Thuộc tính & Không gian"
+        title="Truy vấn Thuộc tính & Không gian"
       />
       <main className="ovg-suite-body">
         {error && <div className="ovg-error">{error}</div>}

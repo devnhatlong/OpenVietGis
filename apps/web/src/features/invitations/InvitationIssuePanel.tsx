@@ -85,7 +85,7 @@ export function InvitationIssuePanel({ organizationId, workspaces, projects, onA
     <section>
       <h2>Lời mời</h2>
       <form onSubmit={(event) => void issue(event)}>
-        <label>Recipient type
+        <label>Loại người nhận
           <select value={kind} onChange={(event) => {
             setKind(event.target.value as InvitationCreate["target"]["kind"]);
             setTarget("");
@@ -103,7 +103,7 @@ export function InvitationIssuePanel({ organizationId, workspaces, projects, onA
         {kind === "external_identity" ? (
           <label>Định danh người dùng<input required value={subject} onChange={(event) => setSubject(event.target.value)} /></label>
         ) : null}
-        <label>Organization role
+        <label>Vai trò trong tổ chức
           <select value={role} onChange={(event) => setRole(event.target.value as InvitationCreate["organization_role"])}>
             <option value="guest">Khách</option>
             <option value="member">Thành viên</option>
@@ -116,9 +116,9 @@ export function InvitationIssuePanel({ organizationId, workspaces, projects, onA
         <button type="submit" disabled={pending || (withGrant && !resourceGrant)}>Gửi lời mời</button>
       </form>
       {issued ? (
-        <section aria-label="Issued invitation">
-          <p>Chia sẻ thông tin lời mời riêng cho đúng người nhận. Người nhận cần đăng nhập và mở trang chấp nhận lời mời.</p>
-          <label>Invitation handoff
+        <section aria-label="Lời mời đã tạo">
+          <p>Chia sẻ thông tin lời mời riêng cho đúng người nhận. Người nhận cần đăng nhập và mở trang Chấp nhận lời mời.</p>
+          <label>Thông tin lời mời
             <textarea readOnly rows={5} value={JSON.stringify({
               organization_id: issued.organization_id, invitation_id: issued.id, secret: issued.secret
             })} />

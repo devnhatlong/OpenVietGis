@@ -119,7 +119,7 @@ export function CartographyWorkbenchPage() {
         organizationId={organizationId}
         projectId={projectId}
         active="cartography"
-        title="R009 Bản đồ học & Xuất in ấn"
+        title="Bản đồ học & Xuất in ấn"
       />
       <main className="ovg-suite-body">
         {notice && <div className="ovg-notice">{notice}</div>}

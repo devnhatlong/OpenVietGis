@@ -146,18 +146,18 @@ export function PlatformHubPage() {
         organizationId={organizationId}
         projectId={projectId}
         active="hub"
-        title="R010–R015 Trung tâm Nền tảng GIS & Vận hành"
+        title="Trung tâm Nền tảng GIS & Vận hành"
       />
       <main className="ovg-suite-body">
         <div className="ovg-tabs" role="tablist">
           {(
             [
-              ["ops", "R015 Vận hành & Sẵn sàng"],
-              ["external", "R010 Nguồn dữ liệu ngoài"],
-              ["collab", "R011 Cộng tác nhóm"],
-              ["cad", "R012 CAD 2D & COGO"],
-              ["field", "R013 Hiện trường & Ngoại tuyến"],
-              ["extensions", "R014 Nền tảng Module"]
+              ["ops", "Vận hành & Sẵn sàng"],
+              ["external", "Nguồn dữ liệu ngoài"],
+              ["collab", "Cộng tác nhóm"],
+              ["cad", "CAD 2D & COGO"],
+              ["field", "Hiện trường & Ngoại tuyến"],
+              ["extensions", "Nền tảng Module"]
             ] as Array<[HubTab, string]>
           ).map(([k, label]) => (
             <button
@@ -178,11 +178,11 @@ export function PlatformHubPage() {
 
         {tab === "ops" && (
           <section className="ovg-card" data-testid="ops-readiness-panel">
-            <h2>R015 Vận hành sản xuất & Năng lực phát hành</h2>
+            <h2>Vận hành sản xuất & Năng lực phát hành</h2>
             <p>
               <strong>Trạng thái sẵn sàng:</strong> {readyQ.data?.status ? platformStatusLabel(readyQ.data.status) : "Đang tải"} ·{" "}
               <strong>PostGIS:</strong> {readyQ.data?.postgis_version ?? "—"} ·{" "}
-              <strong>Gói cấu hình:</strong> {entQ.data?.plan_tier ?? "self_host_community"} (tách biệt phân quyền R002)
+              <strong>Gói cấu hình:</strong> {entQ.data?.plan_tier ?? "self_host_community"} (tách biệt với phân quyền người dùng)
             </p>
             <table className="ovg-table">
               <thead>
@@ -213,7 +213,7 @@ export function PlatformHubPage() {
 
         {tab === "external" && (
           <section className="ovg-card">
-            <h2>R010 Nguồn dữ liệu ngoài (Danh sách cho phép chống SSRF)</h2>
+            <h2>Nguồn dữ liệu ngoài (Danh sách cho phép chống SSRF)</h2>
             <div className="ovg-form-row">
               <label>
                 Tên miền được phép
@@ -271,7 +271,7 @@ export function PlatformHubPage() {
 
         {tab === "collab" && (
           <section className="ovg-card">
-            <h2>R011 Cộng tác nhóm & Duyệt thay đổi sau ghi nhận</h2>
+            <h2>Cộng tác nhóm & Duyệt thay đổi sau ghi nhận</h2>
             <h3>Yêu cầu duyệt thay đổi ({reviewsQ.data?.items.length ?? 0})</h3>
             <ul>
               {(reviewsQ.data?.items ?? []).map((r) => (
@@ -313,7 +313,7 @@ export function PlatformHubPage() {
 
         {tab === "cad" && (
           <section className="ovg-card">
-            <h2>R012 Trao đổi CAD 2D DXF & Tính toán COGO chính xác</h2>
+            <h2>Trao đổi CAD 2D DXF & Tính toán COGO chính xác</h2>
             <div className="ovg-form-row">
               <label>
                 Tọa độ gốc X
@@ -375,7 +375,7 @@ export function PlatformHubPage() {
 
         {tab === "field" && (
           <section className="ovg-card">
-            <h2>R013 Gói dữ liệu Hiện trường & Ngoại tuyến (GeoPackage)</h2>
+            <h2>Gói dữ liệu Hiện trường & Ngoại tuyến (GeoPackage)</h2>
             <div className="ovg-form-row">
               <label>
                 Tên gói ngoại tuyến
@@ -432,7 +432,7 @@ export function PlatformHubPage() {
 
         {tab === "extensions" && (
           <section className="ovg-card">
-            <h2>R014 Nền tảng mô-đun mở rộng động (Manifest)</h2>
+            <h2>Nền tảng mô-đun mở rộng động (Manifest)</h2>
             <p>
               Số manifest mô-đun đã đăng ký trong tổ chức:{" "}
               <strong>{extManifestsQ.data?.items.length ?? 0}</strong>

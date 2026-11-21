@@ -79,7 +79,7 @@ export function previousHistoryPage(state: HistoryTraversal): HistoryTraversal {
 export function formatHistoryValue(value: unknown): string {
   if (value === null || typeof value === "string" || typeof value === "boolean" ||
       (typeof value === "number" && Number.isFinite(value))) return JSON.stringify(value);
-  return "Unavailable";
+  return "Không khả dụng";
 }
 
 function positiveRevision(value: unknown): value is number {

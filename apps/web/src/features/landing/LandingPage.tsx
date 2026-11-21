@@ -36,7 +36,7 @@ export function LandingPage() {
           </div>
           <div className="ovg-proof-row" aria-label="Năng lực nền tảng">
             <span><b>PostGIS</b><small>Dữ liệu không gian chuẩn</small></span>
-            <span><b>MapLibre</b><small>Không gian bản đồ web</small></span>
+            <span><b>Bản đồ web</b><small>Không gian làm việc GIS</small></span>
             <span><b>GeoPackage</b><small>Nhập / xuất dữ liệu</small></span>
           </div>
         </div>

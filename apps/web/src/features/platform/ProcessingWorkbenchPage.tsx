@@ -105,7 +105,7 @@ export function ProcessingWorkbenchPage() {
         organizationId={organizationId}
         projectId={projectId}
         active="processing"
-        title="R008 Xử lý Không gian & Tác vụ bền vững"
+        title="Xử lý Không gian & Tác vụ bền vững"
       />
       <main className="ovg-suite-body">
         {notice && <div className="ovg-notice">{notice}</div>}
@@ -203,7 +203,7 @@ export function ProcessingWorkbenchPage() {
                           await qc.invalidateQueries({ queryKey: ["r008", organizationId, projectId, "jobs"] });
                         }}
                       >
-                        Cancel
+                        Hủy
                       </button>
                     )}
                     {(j.status === "failed" || j.status === "cancelled") && (
@@ -216,7 +216,7 @@ export function ProcessingWorkbenchPage() {
                           await qc.invalidateQueries({ queryKey: ["r008", organizationId, projectId, "jobs"] });
                         }}
                       >
-                        Retry
+                        Thử lại
                       </button>
                     )}
                   </td>

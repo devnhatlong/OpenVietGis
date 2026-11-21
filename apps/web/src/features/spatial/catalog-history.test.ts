@@ -77,19 +77,19 @@ describe("current-authority spatial history", () => {
     expect(formatHistoryValue("1234567890.12345678901234567890")).toBe('"1234567890.12345678901234567890"');
     expect(formatHistoryValue("2025-01-01T00:00:00.012345Z")).toBe('"2025-01-01T00:00:00.012345Z"');
     for (const value of [undefined, NaN, Infinity, ["raw feature"], { secret: "do not expose" }]) {
-      expect(formatHistoryValue(value)).toBe("Unavailable");
+      expect(formatHistoryValue(value)).toBe("Không khả dụng");
     }
   });
 
   it("renders only explicit typed revision fields, never generic object contents", () => {
-    expect(revisionEntries("layer", { layer_revision: 2 })).toEqual([["Layer revision", 2]]);
+    expect(revisionEntries("layer", { layer_revision: 2 })).toEqual([["Phiên bản lớp", 2]]);
     expect(revisionEntries("data_source", {
       catalog_revision: 2, content_revision: "content-token", schema_revision: "schema-token"
     })).toEqual([
-      ["Catalog revision", 2], ["Content revision", "content-token"], ["Schema revision", "schema-token"]
+      ["Phiên bản danh mục", 2], ["Phiên bản nội dung", "content-token"], ["Phiên bản lược đồ", "schema-token"]
     ]);
     expect(revisionEntries("layer", null)).toEqual([]);
     expect(revisionEntries("data_source", { layer_revision: 1 })).toEqual([]);
-    expect(revisionEntries("layer", { layer_revision: 2, secret: "not-rendered" })).toEqual([["Layer revision", 2]]);
+    expect(revisionEntries("layer", { layer_revision: 2, secret: "not-rendered" })).toEqual([["Phiên bản lớp", 2]]);
   });
 });

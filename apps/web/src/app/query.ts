@@ -5,14 +5,12 @@ import {
   QueryClient
 } from "@tanstack/react-query";
 
-let queryClient: QueryClient;
-
 function revalidateSessionOnUnauthorized(error: unknown) {
-  if (!(error instanceof ApiError) || error.status !== 401 || !queryClient) return;
+  if (!(error instanceof ApiError) || error.status !== 401) return;
   void queryClient.invalidateQueries({ queryKey: ["me"] });
 }
 
-queryClient = new QueryClient({
+export const queryClient = new QueryClient({
   queryCache: new QueryCache({
     onError: (error, query) => {
       if (query.queryKey[0] === "me") return;
@@ -31,5 +29,3 @@ queryClient = new QueryClient({
     }
   }
 });
-
-export { queryClient };

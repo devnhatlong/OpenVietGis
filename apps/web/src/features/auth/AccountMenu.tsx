@@ -8,6 +8,7 @@ import { Link, useNavigate } from "react-router-dom";
 
 import { apiClient } from "../../app/api";
 import { useOptionalSession } from "../../app/session/SessionBoundary";
+import { buildAccountMenuState } from "./account-menu-state";
 import "./account-menu.css";
 
 export function AccountMenu() {
@@ -35,27 +36,25 @@ export function AccountMenu() {
 
   if (!session) return null;
   const { account } = session;
-
-  const initials = account.display_name
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(-2)
-    .map((part) => part[0]?.toUpperCase())
-    .join("");
+  const state = buildAccountMenuState(
+    account,
+    session.checking,
+    session.networkWarning
+  );
 
   return (
     <details className="ovg-account-menu">
-      <summary aria-label="Mở menu tài khoản">
-        <span className="ovg-account-avatar">{initials || "U"}</span>
-        <span className="ovg-account-name">{account.display_name}</span>
+      <summary role="button" aria-label="Mở menu tài khoản">
+        <span className="ovg-account-avatar">{state.initials}</span>
+        <span className="ovg-account-name">{state.displayName}</span>
         <span className="ovg-account-caret" aria-hidden="true">⌄</span>
       </summary>
       <div className="ovg-account-dropdown">
         <div className="ovg-account-profile">
-          <strong>{account.display_name}</strong>
-          {account.email_snapshot ? <small>{account.email_snapshot}</small> : null}
-          {session.checking ? <small>Đang xác nhận phiên…</small> : null}
-          {session.networkWarning ? <small>Phiên đang dùng; kiểm tra mạng chưa hoàn tất.</small> : null}
+          <strong>{state.displayName}</strong>
+          {state.email ? <small>{state.email}</small> : null}
+          {state.checking ? <small>Đang xác nhận phiên…</small> : null}
+          {state.networkWarning ? <small>Phiên đang dùng; kiểm tra mạng chưa hoàn tất.</small> : null}
         </div>
         <nav aria-label="Tài khoản">
           <Link to="/app">Trang làm việc</Link>

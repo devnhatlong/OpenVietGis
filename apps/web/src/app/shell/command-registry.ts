@@ -11,7 +11,7 @@ export function buildShellCommands(
   organizationId?: string,
   projectId?: string
 ): ShellCommand[] {
-  return buildNavigationItems(organizationId, projectId)
+  const navigationCommands = buildNavigationItems(organizationId, projectId)
     .filter((item) => item.availability === "visible")
     .map((item) => ({
       id: "navigate-" + item.id,
@@ -19,4 +19,14 @@ export function buildShellCommands(
       keywords: item.labelKey.toLocaleLowerCase("vi"),
       destination: item.destination
     }));
+
+  return [
+    ...navigationCommands,
+    {
+      id: "navigate-account",
+      label: "Mở Tài khoản & phiên đăng nhập",
+      keywords: "tài khoản phiên đăng nhập identity session",
+      destination: "/app/account"
+    }
+  ];
 }

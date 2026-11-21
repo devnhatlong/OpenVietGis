@@ -25,16 +25,16 @@ export function ProjectToolbar({
         <Link to={`${base}/spatial`}>Danh mục</Link>
         <Link to={`${base}/transfers`}>Nhập/Xuất</Link>
         <Link to={`${base}/editing`} className={active === "editing" ? "active" : ""}>
-          Biên tập (R006)
+          Biên tập
         </Link>
         <Link to={`${base}/queries`} className={active === "queries" ? "active" : ""}>
-          Truy vấn (R007)
+          Truy vấn
         </Link>
         <Link to={`${base}/processing`} className={active === "processing" ? "active" : ""}>
-          Xử lý (R008)
+          Xử lý
         </Link>
         <Link to={`${base}/cartography`} className={active === "cartography" ? "active" : ""}>
-          In ấn (R009)
+          In ấn
         </Link>
         <Link to={`${base}/platform-hub`} className={active === "hub" ? "active" : ""}>
           Công cụ nâng cao

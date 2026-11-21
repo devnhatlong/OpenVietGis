@@ -163,7 +163,7 @@ export function EditingWorkbenchPage() {
         organizationId={organizationId}
         projectId={projectId}
         active="editing"
-        title="R006 Biên tập & Lịch sử thay đổi"
+        title="Biên tập & Lịch sử thay đổi"
       />
       <main className="ovg-suite-body">
         {notice && <div className="ovg-notice">{notice}</div>}
