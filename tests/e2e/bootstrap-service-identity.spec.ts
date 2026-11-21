@@ -5,9 +5,8 @@ test(
   async ({ page }, testInfo) => {
     test.setTimeout(300_000);
 
-    const authority =
-      process.env.OPENVIETGIS_BOOTSTRAP_SECRET ??
-      "openvietgis-test-bootstrap-secret";
+    const authority = process.env.OPENVIETGIS_BOOTSTRAP_SECRET;
+    if (!authority) throw new Error("Dedicated test bootstrap authority missing");
     const started = performance.now();
 
     const status = await page.request.get("/api/v1/bootstrap/status");
