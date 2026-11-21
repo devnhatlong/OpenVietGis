@@ -20,8 +20,9 @@ from openvietgis_api.adapters.http.security import (
 from openvietgis_api.adapters.persistence.ops_repository import SqlOpsRepository
 from openvietgis_api.config import get_settings
 from openvietgis_api.domains.ops.domain import (
-    RELEASE_CAPABILITIES,
+    DEFAULT_REQUESTED_FEATURES,
     OrganizationEntitlementRecord,
+    release_inventory,
 )
 
 router = APIRouter(tags=["operations"])
@@ -38,6 +39,7 @@ def _ent_wire(e: OrganizationEntitlementRecord) -> dict[str, Any]:
         "updated_at": e.updated_at.isoformat(),
         "authorization_distinct": True,
         "data_deletion_on_plan_change": False,
+        "enforcement": "metadata_only",
     }
 
 
@@ -45,10 +47,11 @@ class UpsertEntitlementRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     deployment_profile: str = "self_host_team"
     plan_tier: str = "self_host_community"
-    max_projects: int = Field(default=100, ge=1)
-    max_storage_mb: int = Field(default=10240, ge=64)
+    max_projects: int = Field(default=100, ge=1, le=2_147_483_647)
+    max_storage_mb: int = Field(default=10240, ge=64, le=2_147_483_647)
     features_enabled: list[str] = Field(
-        default_factory=lambda: ["R001", "R002", "R003", "R004", "R005", "R006", "R007"]
+        default_factory=lambda: list(DEFAULT_REQUESTED_FEATURES),
+        max_length=15,
     )
 
 
@@ -59,10 +62,14 @@ def ops_health_live() -> dict[str, str]:
 
 @router.get("/ops/health/ready")
 def ops_health_ready(
+    response: Response,
     session: Annotated[Session, Depends(get_db_session, scope="function")],
 ) -> dict[str, Any]:
     storage = Path(get_settings().artifact_store_dir)
-    return SqlOpsRepository(session).check_readiness(storage)
+    result = SqlOpsRepository(session).check_readiness(storage)
+    if result["status"] != "ready":
+        response.status_code = 503
+    return result
 
 
 @router.get("/ops/metrics")
@@ -75,11 +82,7 @@ def ops_metrics(
 
 @router.get("/ops/release-capabilities")
 def ops_release_capabilities() -> dict[str, Any]:
-    return {
-        "profile": "self_host_team",
-        "total_releases": len(RELEASE_CAPABILITIES),
-        "items": RELEASE_CAPABILITIES,
-    }
+    return release_inventory()
 
 
 @router.get("/organizations/{organization_id}/ops/entitlement")
@@ -97,9 +100,10 @@ def get_org_entitlement(
             "plan_tier": "self_host_community",
             "max_projects": 100,
             "max_storage_mb": 10240,
-            "features_enabled": [c["id"] for c in RELEASE_CAPABILITIES],
+            "features_enabled": list(DEFAULT_REQUESTED_FEATURES),
             "authorization_distinct": True,
             "data_deletion_on_plan_change": False,
+            "enforcement": "metadata_only",
         }
     return _ent_wire(rec)
 

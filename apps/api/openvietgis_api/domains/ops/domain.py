@@ -1,4 +1,9 @@
-"""R015 Production Operations & Release Capabilities domain."""
+"""R015 release inventory and optional entitlement metadata.
+
+A registered roadmap group is not an accepted release. This candidate has no
+independently accepted deployment-profile record. The catalog is informative;
+it never grants authority or switches resource-level capabilities on or off.
+"""
 
 from __future__ import annotations
 
@@ -7,43 +12,61 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-RELEASE_CAPABILITIES: list[dict[str, Any]] = [
-    {"id": "R001", "name": "Platform Foundation", "enabled": True, "milestone": "M0"},
-    {"id": "R002", "name": "Identity, Organization & Tenancy", "enabled": True, "milestone": "M1"},
-    {"id": "R003", "name": "Spatial Catalog & CRS (VN-2000)", "enabled": True, "milestone": "M1"},
-    {"id": "R004", "name": "Map Workspace", "enabled": True, "milestone": "M1"},
-    {"id": "R005", "name": "Import & Export + Durable Jobs", "enabled": True, "milestone": "M1"},
-    {"id": "R006", "name": "Editing & Change History", "enabled": True, "milestone": "M2"},
-    {"id": "R007", "name": "Attribute & Spatial Query", "enabled": True, "milestone": "M2"},
-    {
-        "id": "R008",
-        "name": "Processing & Jobs (Buffer/Clip/Dissolve)",
-        "enabled": True,
-        "milestone": "M2",
-    },
-    {
-        "id": "R009",
-        "name": "Cartography & Print Output (PNG/PDF)",
-        "enabled": True,
-        "milestone": "M2",
-    },
-    {
-        "id": "R010",
-        "name": "External Sources (SSRF-safe Allowlist)",
-        "enabled": True,
-        "milestone": "M3",
-    },
-    {"id": "R011", "name": "Team Collaboration & Reviews", "enabled": True, "milestone": "M3"},
-    {"id": "R012", "name": "CAD 2D DXF & Precision COGO", "enabled": True, "milestone": "M3"},
-    {"id": "R013", "name": "Field & Offline GeoPackage + Sync", "enabled": True, "milestone": "M3"},
-    {"id": "R014", "name": "Internal Extension Platform", "enabled": True, "milestone": "M3"},
-    {
-        "id": "R015",
-        "name": "Production Operations & Self-Host Profile",
-        "enabled": True,
-        "milestone": "M3",
-    },
-]
+# Catalog of stable roadmap IDs, not an acceptance checklist. Keep optional
+# capabilities distinct from the mandatory team release profile.
+RELEASE_CAPABILITIES: tuple[tuple[str, str, str], ...] = (
+    ("R001", "Platform Foundation", "M0"),
+    ("R002", "Identity, Organization & Tenancy", "M1"),
+    ("R003", "Spatial Catalog & CRS (VN-2000)", "M1"),
+    ("R004", "Map Workspace", "M1"),
+    ("R005", "Import & Export + Durable Jobs", "M1"),
+    ("R006", "Editing & Change History", "M2"),
+    ("R007", "Attribute & Spatial Query", "M2"),
+    ("R008", "Processing & Jobs (Buffer/Clip/Dissolve)", "M2"),
+    ("R009", "Cartography & Print Output (PNG/PDF)", "M2"),
+    ("R010", "External Sources (SSRF-safe Allowlist)", "M3"),
+    ("R011", "Team Collaboration & Reviews", "M3"),
+    ("R012", "CAD 2D DXF & Precision COGO", "M3"),
+    ("R013", "Field & Offline GeoPackage + Sync", "M3"),
+    ("R014", "Internal Extension Platform", "M3"),
+    ("R015", "Production Operations & Self-Host Profile", "M3"),
+)
+RELEASE_IDS = frozenset(item[0] for item in RELEASE_CAPABILITIES)
+DEFAULT_REQUESTED_FEATURES = ("R001", "R002", "R003", "R004", "R005", "R006", "R007")
+MANDATORY_TEAM_RELEASE = frozenset((*DEFAULT_REQUESTED_FEATURES, "R011", "R015"))
+
+
+def release_inventory() -> dict[str, Any]:
+    """Report release certification separately from implemented/runtime capabilities.
+
+    No positive certification path is currently authorized: there is no approved
+    exact-candidate/profile acceptance record. Once a reviewed release gate and
+    profile-specific budgets are defined, they must supply evidence here rather
+    than infer acceptance from routes, flags, or a green liveness probe.
+    """
+    items = [
+        {
+            "id": release_id,
+            "name": name,
+            "milestone": milestone,
+            # Keep the wire key for existing consumers; it refers to certification,
+            # NOT application availability, entitlement, or authorization.
+            "enabled": False,
+            "status": "unverified",
+            "reason": "exact_candidate_profile_acceptance_missing",
+            "required_for_team": release_id in MANDATORY_TEAM_RELEASE,
+        }
+        for release_id, name, milestone in RELEASE_CAPABILITIES
+    ]
+    return {
+        "profile": "self_host_team",
+        "profile_status": "unverified",
+        "production_ready": False,
+        "enabled_semantics": "release_certification",
+        "total_releases": len(items),
+        "accepted_release_count": sum(item["enabled"] is True for item in items),
+        "items": items,
+    }
 
 
 @dataclass(frozen=True, slots=True)
