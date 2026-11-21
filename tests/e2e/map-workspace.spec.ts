@@ -294,3 +294,94 @@ test("a real viewer can preview locally while direct shared mutation stays denie
     await context.close();
   }
 });
+
+test("keeps camera and selection stable across panel collapse and keyboard resize", async ({ page }) => {
+  test.setTimeout(180_000);
+  await mapSignIn(page);
+  const fixture = await createMapProject(
+    page,
+    Date.now().toString() + "-layout-selection"
+  );
+  await registerMapReferences(page, fixture, false);
+  await saveFixtureMap(page, fixture);
+  await openFixtureMap(page, fixture);
+
+  const points = fixture.layers[0]!;
+  await page
+    .getByRole("button", {
+      name: "Chọn " + points.name + " làm lớp hiện hành",
+      exact: true
+    })
+    .click();
+
+  const table = page.getByRole("table", {
+    name: "Bảng thuộc tính theo phiên bản"
+  });
+  await expect(table.locator("tbody tr")).toHaveCount(100);
+  await table
+    .getByRole("button", { name: "point-000001", exact: true })
+    .click();
+
+  await expect(page.getByTestId("map-inspector")).toHaveAttribute(
+    "data-feature-id",
+    "point-000001"
+  );
+  await expect(page.getByTestId("feature-select-point-000001")).toBeChecked();
+  await expect(page.getByTestId("accessible-map-summary")).toContainText(
+    "1 đối tượng đang chọn"
+  );
+  await expect(page.getByTestId("accessible-map-summary")).toContainText(
+    "Đang xem đối tượng point-000001"
+  );
+
+  const cameraBefore = await page
+    .getByTestId("map-camera-summary")
+    .innerText();
+
+  const controls = page.getByLabel("Điều khiển bố cục");
+  for (const label of ["Lớp dữ liệu", "Chi tiết", "Bảng thuộc tính"]) {
+    const button = controls.getByRole("button", { name: label, exact: true });
+    await button.click();
+    await expect(button).toHaveAttribute("aria-pressed", "false");
+  }
+
+  await expect(page.getByTestId("map-camera-summary")).toHaveText(cameraBefore);
+  await expect(page.getByTestId("map-inspector")).toHaveAttribute(
+    "data-feature-id",
+    "point-000001"
+  );
+
+  const layerToggle = controls.getByRole("button", {
+    name: "Lớp dữ liệu",
+    exact: true
+  });
+  await layerToggle.click();
+  await expect(layerToggle).toHaveAttribute("aria-pressed", "true");
+
+  const separator = page.getByRole("separator", {
+    name: "Đổi độ rộng bảng lớp dữ liệu"
+  });
+  const widthBefore = Number(await separator.getAttribute("aria-valuenow"));
+  await separator.focus();
+  await page.keyboard.press("ArrowRight");
+  await expect(separator).not.toHaveAttribute(
+    "aria-valuenow",
+    String(widthBefore)
+  );
+
+  for (const label of ["Chi tiết", "Bảng thuộc tính"]) {
+    const button = controls.getByRole("button", { name: label, exact: true });
+    await button.click();
+    await expect(button).toHaveAttribute("aria-pressed", "true");
+  }
+
+  await expect(page.getByTestId("map-camera-summary")).toHaveText(cameraBefore);
+  await expect(page.getByTestId("map-inspector")).toHaveAttribute(
+    "data-feature-id",
+    "point-000001"
+  );
+  await expect(page.getByTestId("feature-select-point-000001")).toBeChecked();
+  await expect(page.getByTestId("accessible-map-summary")).toContainText(
+    points.name
+  );
+});

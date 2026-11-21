@@ -11,6 +11,10 @@ import { apiClient } from "../../app/api";
 import { currentProtectedData,protectedQueryOptions } from "../../app/protected-query";
 import { FreshAccount } from "../auth/FreshAccount";
 import { AddDataDialog } from "./AddDataDialog";
+import {
+ buildAccessibleMapSummary,
+ type AccessibleMapState
+} from "./accessibility-summary";
 import { AttributeTable } from "./AttributeTable";
 import { CommandBar } from "./CommandBar";
 import { FeatureInspector } from "./FeatureInspector";
@@ -152,7 +156,16 @@ function Workspace({organizationId,projectId,accountId,project,initial,canEdit}:
  useLayoutEffect(()=>{if(!busyData)engine.current?.setLayers(frames);},[frameKey]);
  useLayoutEffect(()=>{engine.current?.setActiveLayer(configuration.layers.some(ref=>ref.layer_id===active&&ref.visible)&&!activeBlocked?active:null);engine.current?.setSelection(activeBlocked?null:active,selected);},[active,activeBlocked,selected.join(","),configuration.layers.map(ref=>ref.layer_id+ref.visible).join(",")]);
  const hasGeometry=frames.some(frame=>frame.features.length>0);
- const state=engineError?"unavailable":busyData?"loading":states.some(s=>s.startsWith("stale"))?"stale":states.some(s=>s.startsWith("partial"))?"partial":hasGeometry?"usable":states.some(s=>s.startsWith("unsupported")||s.startsWith("unavailable"))?"unavailable":"empty";
+ const state:AccessibleMapState=engineError?"unavailable":busyData?"loading":states.some(s=>s.startsWith("stale"))?"stale":states.some(s=>s.startsWith("partial"))?"partial":hasGeometry?"usable":states.some(s=>s.startsWith("unsupported")||s.startsWith("unavailable"))?"unavailable":"empty";
+ const accessibleSummary=buildAccessibleMapSummary({
+  projectName:project.name,
+  references:configuration.layers,
+  metadata,
+  activeLayerId:active,
+  selectedFeatureIds:selected,
+  focusedFeatureId:focus,
+  state
+ });
  const ready=engineReady&&!busyData&&!engineError;
  async function revalidate():Promise<void> {setBlocked(null);setSelection(null);engine.current?.clear();setNotice("");await queryClient.invalidateQueries({queryKey:scopePrefix});}
  async function fitLayers(ids:string[]):Promise<void> {
@@ -282,7 +295,8 @@ function Workspace({organizationId,projectId,accountId,project,initial,canEdit}:
    left={<LayerTree layers={configuration.layers} metadata={metadata} active={active} locked={locked} states={states} choose={choose} change={change}
     zoom={id=>void fitLayers([id])}
     openAddData={()=>invokeCommand(commands,"map.add-data","toolbar")}/>}
-   map={<section className="map-stage" aria-label="Khung bản đồ" onContextMenu={e=>{e.preventDefault();setContextMenu(!contextMenu);}}>
+   map={<section className="map-stage" aria-label="Khung bản đồ" aria-describedby="map-accessible-summary" onContextMenu={e=>{e.preventDefault();setContextMenu(!contextMenu);}}>
+    <p id="map-accessible-summary" className="sr-only" data-testid="accessible-map-summary" aria-live="polite">{accessibleSummary.text}</p>
     <div ref={canvas} className="map-canvas" data-testid="map-canvas"/>
     <div className="map-engine-signal" data-testid="map-engine-ready" data-ready={ready?"true":"false"} aria-hidden="true"/>
     <div className="map-stage-status" role="status"><strong data-testid="map-status" data-state={state}>{mapStateLabel(state)}</strong><span>Lưới cục bộ · Hiển thị EPSG:3857 · Tọa độ địa lý đầu vào EPSG:4326 X/Y</span></div>
@@ -306,7 +320,7 @@ function Workspace({organizationId,projectId,accountId,project,initial,canEdit}:
    onAdd={addLayerToMap}
    onClose={()=>setAddDataOpen(false)}
   />
-  <div className="map-sessionbar"><span>Giữ Shift hoặc Ctrl khi bấm để chọn nhiều · {selected.length}/100 đang chọn</span><span>Tọa độ tâm {camera.longitude.toFixed(5)}, {camera.latitude.toFixed(5)} · mức thu phóng {camera.zoom.toFixed(2)}</span><button onClick={()=>void revalidate()}>Kiểm tra lại quyền truy cập</button></div>
+  <div className="map-sessionbar"><span>Giữ Shift hoặc Ctrl khi bấm để chọn nhiều · {selected.length}/100 đang chọn</span><span data-testid="map-camera-summary">Tọa độ tâm {camera.longitude.toFixed(5)}, {camera.latitude.toFixed(5)} · mức thu phóng {camera.zoom.toFixed(2)}</span><button onClick={()=>void revalidate()}>Kiểm tra lại quyền truy cập</button></div>
   <section className="map-save-panel" aria-label="Cấu hình bản đồ dùng chung"><div><h2>Cấu hình bản đồ dùng chung</h2><p data-testid="map-save-status">{pending?.status??(dirty?"chưa lưu":"đã lưu")} · phiên bản {saved.configuration_revision} · góc nhìn mặc định: {viewpointIntent.mode==="preserve"?(saved.configuration.default_viewpoint?"giữ nguyên":"chưa đặt"):viewpointIntent.mode==="clear"?"xóa khi lưu":"cập nhật khi lưu"}</p></div>
    <button disabled={!writable||locked} onClick={()=>invokeCommand(commands,"map.set-default-viewpoint","toolbar")}>Đặt góc nhìn mặc định</button>
    <button disabled={!writable||locked} onClick={()=>{setViewpointIntent({mode:"clear"});setPending(null);}}>Xóa góc nhìn mặc định</button>

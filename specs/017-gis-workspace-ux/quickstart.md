@@ -138,3 +138,14 @@ Current pre-017 regression baseline after Spec 016 convergence:
   - external requests 0.
 
 R004 SC009 (five first-time GIS-capable users) remains an external human acceptance obligation and is not claimed by this child implementation.
+
+## US3 synchronization evidence — 2026-11-21
+
+- Accessible Map summary is derived from the current authorized Project/Layer/selection state and is exposed as the textual companion to the named Map region.
+- Browser acceptance keeps camera and selection stable across panel collapse and keyboard resize: PASS.
+  - selected point-000001;
+  - collapsed Layer, Inspector and Attribute Table panels;
+  - reopened/resized the Layer panel with keyboard separator controls;
+  - camera summary remained unchanged;
+  - Inspector focus and selected checkbox remained synchronized after reopening.
+- The current bounded Attribute Table renders exactly 100 body rows at the accepted page limit. This stays at the UI UX Pro Max virtualization threshold and is bounded by the parent R004 read contract, so no windowing dependency is introduced in this slice.

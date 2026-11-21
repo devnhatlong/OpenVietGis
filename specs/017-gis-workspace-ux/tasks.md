@@ -75,13 +75,13 @@ description: "Dependency-ordered implementation tasks for OpenVietGIS GIS Worksp
 
 **Independent Test**: Select from map/table, page/collapse/resize, then confirm stable IDs/focus remain synchronized until authoritative context changes.
 
-- [ ] T028 [P] [US3] Add failing unit tests covering `AccessibleMapSummary.project/map name`, `active Layer name`, `visible Layer count`, `selected feature count`, focused summary and state fields from `specs/017-gis-workspace-ux/data-model.md` in `apps/web/src/features/map/accessibility-summary.test.ts`
-- [ ] T029 [P] [US3] Add browser coverage proving table collapse/resize does not reset camera or valid selection in `tests/e2e/map-workspace.spec.ts`
-- [ ] T030 [US3] Implement synchronized `AccessibleMapSummary` in `apps/web/src/features/map/accessibility-summary.ts` and surface it near the named map region in `MapWorkspace.tsx`
-- [ ] T031 [US3] Refactor `apps/web/src/features/map/AttributeTable.tsx` into the bottom panel contract while preserving parent bounded paging and stable selection IDs
-- [ ] T032 [US3] Refactor `apps/web/src/features/map/FeatureInspector.tsx` into the right contextual panel while preserving typed null/empty/zero semantics
-- [ ] T033 [US3] Ensure `apps/web/src/features/map/MapWorkspace.tsx` keeps active Layer/selection/focus across pure layout changes and invalidates only on parent R004 context/revision rules
-- [ ] T034 [US3] Profile current bounded Attribute Table DOM size; only if accepted simultaneous rows exceed 100, implement measured windowing in `apps/web/src/features/map/AttributeTable.tsx` and record evidence in `specs/017-gis-workspace-ux/quickstart.md`
+- [x] T028 [P] [US3] Add failing unit tests covering `AccessibleMapSummary.project/map name`, `active Layer name`, `visible Layer count`, `selected feature count`, focused summary and state fields from `specs/017-gis-workspace-ux/data-model.md` in `apps/web/src/features/map/accessibility-summary.test.ts`
+- [x] T029 [P] [US3] Add browser coverage proving table collapse/resize does not reset camera or valid selection in `tests/e2e/map-workspace.spec.ts`
+- [x] T030 [US3] Implement synchronized `AccessibleMapSummary` in `apps/web/src/features/map/accessibility-summary.ts` and surface it near the named map region in `MapWorkspace.tsx`
+- [x] T031 [US3] Refactor `apps/web/src/features/map/AttributeTable.tsx` into the bottom panel contract while preserving parent bounded paging and stable selection IDs
+- [x] T032 [US3] Refactor `apps/web/src/features/map/FeatureInspector.tsx` into the right contextual panel while preserving typed null/empty/zero semantics
+- [x] T033 [US3] Ensure `apps/web/src/features/map/MapWorkspace.tsx` keeps active Layer/selection/focus across pure layout changes and invalidates only on parent R004 context/revision rules
+- [x] T034 [US3] Profile current bounded Attribute Table DOM size; only if accepted simultaneous rows exceed 100, implement measured windowing in `apps/web/src/features/map/AttributeTable.tsx` and record evidence in `specs/017-gis-workspace-ux/quickstart.md`
 
 **Checkpoint**: Map/Table/Inspector remain one logical inspection workspace.
 
