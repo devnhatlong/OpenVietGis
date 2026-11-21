@@ -59,13 +59,57 @@ test("adapts GIS workspace across desktop tablet and mobile reference widths", a
   const controls = page.getByLabel("Điều khiển bố cục");
   await expect(controls).toBeVisible();
 
-  // Mobile is intentionally a basic viewer with optional sheets rather than
-  // forced desktop parity.
+  // A fresh mobile viewport must expose the map: desktop preferences must
+  // not open three overlapping sheets. Mobile switches one sheet at a time.
+  const layerToggle = controls.getByRole("button", {
+    name: "Lớp dữ liệu",
+    exact: true
+  });
+  const inspectorToggle = controls.getByRole("button", {
+    name: "Chi tiết",
+    exact: true
+  });
   const tableToggle = controls.getByRole("button", {
     name: "Bảng thuộc tính",
     exact: true
   });
+  const sheets = [
+    { toggle: layerToggle, selector: ".map-layout-left" },
+    { toggle: inspectorToggle, selector: ".map-layout-right" },
+    { toggle: tableToggle, selector: ".map-layout-table" }
+  ];
+  for (const sheet of sheets) {
+    await expect(sheet.toggle).toHaveAttribute("aria-pressed", "false");
+    await expect(page.locator(sheet.selector)).toBeHidden();
+  }
+
+  for (const opened of sheets) {
+    await opened.toggle.click();
+    for (const sheet of sheets) {
+      const selected = sheet === opened;
+      await expect(sheet.toggle).toHaveAttribute(
+        "aria-pressed",
+        selected ? "true" : "false"
+      );
+      if (selected) {
+        await expect(page.locator(sheet.selector)).toBeVisible();
+      } else {
+        await expect(page.locator(sheet.selector)).toBeHidden();
+      }
+    }
+  }
+
   await tableToggle.click();
-  await expect(tableToggle).toHaveAttribute("aria-pressed", "false");
+  for (const sheet of sheets) {
+    await expect(sheet.toggle).toHaveAttribute("aria-pressed", "false");
+    await expect(page.locator(sheet.selector)).toBeHidden();
+  }
   await expect(page.getByRole("region", { name: "Khung bản đồ" })).toBeVisible();
+
+  // Mobile actions do not overwrite persisted desktop layout preferences.
+  await page.setViewportSize({ width: 1440, height: 900 });
+  for (const sheet of sheets) {
+    await expect(sheet.toggle).toHaveAttribute("aria-pressed", "true");
+    await expect(page.locator(sheet.selector)).toBeVisible();
+  }
 });

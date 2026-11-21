@@ -16,6 +16,8 @@ import {
   type WorkspaceLayoutPreference
 } from "./workspace-layout";
 
+type MobileSheet = "left" | "right" | "table";
+
 function currentMode(): WorkspaceResponsiveMode {
   return getWorkspaceResponsiveMode(
     typeof window === "undefined" ? 1280 : window.innerWidth
@@ -38,9 +40,18 @@ export function WorkspaceLayout({
   bottom: ReactNode;
 }) {
   const [mode, setMode] = useState<WorkspaceResponsiveMode>(currentMode);
+  const [mobileSheet, setMobileSheet] = useState<MobileSheet | null>(null);
+  const mobile = mode === "mobile";
+  const leftCollapsed = mobile ? mobileSheet !== "left" : preference.leftPanelCollapsed;
+  const rightCollapsed = mobile ? mobileSheet !== "right" : preference.rightPanelCollapsed;
+  const tableCollapsed = mobile ? mobileSheet !== "table" : preference.attributeTableCollapsed;
 
   useEffect(() => {
-    const update = () => setMode(currentMode());
+    const update = () => {
+      const nextMode = currentMode();
+      setMode(nextMode);
+      if (nextMode !== "mobile") setMobileSheet(null);
+    };
     window.addEventListener("resize", update);
     return () => window.removeEventListener("resize", update);
   }, []);
@@ -68,6 +79,14 @@ export function WorkspaceLayout({
     onPreferenceChange({ ...preference, ...patch });
   }
 
+  function toggle(sheet: MobileSheet, patch: Partial<WorkspaceLayoutPreference>) {
+    if (mobile) {
+      setMobileSheet((previous) => previous === sheet ? null : sheet);
+    } else {
+      update(patch);
+    }
+  }
+
   return (
     <section
       className={"map-workspace-layout is-" + mode}
@@ -79,27 +98,27 @@ export function WorkspaceLayout({
       <div className="map-layout-controls" aria-label="Điều khiển bố cục">
         <button
           type="button"
-          aria-pressed={!preference.leftPanelCollapsed}
+          aria-pressed={!leftCollapsed}
           onClick={() =>
-            update({ leftPanelCollapsed: !preference.leftPanelCollapsed })
+            toggle("left", { leftPanelCollapsed: !preference.leftPanelCollapsed })
           }
         >
           Lớp dữ liệu
         </button>
         <button
           type="button"
-          aria-pressed={!preference.rightPanelCollapsed}
+          aria-pressed={!rightCollapsed}
           onClick={() =>
-            update({ rightPanelCollapsed: !preference.rightPanelCollapsed })
+            toggle("right", { rightPanelCollapsed: !preference.rightPanelCollapsed })
           }
         >
           Chi tiết
         </button>
         <button
           type="button"
-          aria-pressed={!preference.attributeTableCollapsed}
+          aria-pressed={!tableCollapsed}
           onClick={() =>
-            update({
+            toggle("table", {
               attributeTableCollapsed: !preference.attributeTableCollapsed
             })
           }
@@ -110,15 +129,15 @@ export function WorkspaceLayout({
 
       <div
         className={
-          preference.leftPanelCollapsed
+          leftCollapsed
             ? "map-layout-left is-collapsed"
             : "map-layout-left"
         }
-        aria-hidden={preference.leftPanelCollapsed || undefined}
+        aria-hidden={leftCollapsed || undefined}
       >
         {left}
       </div>
-      {preference.leftPanelCollapsed ? null : (
+      {leftCollapsed ? null : (
         <ResizablePanel
           className="map-layout-left-resizer"
           orientation="vertical"
@@ -132,7 +151,7 @@ export function WorkspaceLayout({
 
       <div className="map-layout-map">{map}</div>
 
-      {preference.rightPanelCollapsed ? null : (
+      {rightCollapsed ? null : (
         <ResizablePanel
           className="map-layout-right-resizer"
           orientation="vertical"
@@ -146,16 +165,16 @@ export function WorkspaceLayout({
       )}
       <div
         className={
-          preference.rightPanelCollapsed
+          rightCollapsed
             ? "map-layout-right is-collapsed"
             : "map-layout-right"
         }
-        aria-hidden={preference.rightPanelCollapsed || undefined}
+        aria-hidden={rightCollapsed || undefined}
       >
         {right}
       </div>
 
-      {preference.attributeTableCollapsed ? null : (
+      {tableCollapsed ? null : (
         <ResizablePanel
           className="map-layout-table-resizer"
           orientation="horizontal"
@@ -169,11 +188,11 @@ export function WorkspaceLayout({
       )}
       <div
         className={
-          preference.attributeTableCollapsed
+          tableCollapsed
             ? "map-layout-table is-collapsed"
             : "map-layout-table"
         }
-        aria-hidden={preference.attributeTableCollapsed || undefined}
+        aria-hidden={tableCollapsed || undefined}
       >
         {bottom}
       </div>
