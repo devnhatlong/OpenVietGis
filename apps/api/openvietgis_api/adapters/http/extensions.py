@@ -6,7 +6,7 @@ from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, PositiveInt
 from sqlalchemy.orm import Session
 
 from openvietgis_api.adapters.http.authorization import context_for
@@ -22,6 +22,8 @@ from openvietgis_api.domains.extensions.domain import (
     ExtensionManifestRecord,
     ProjectActivationRecord,
 )
+from openvietgis_api.domains.extensions.runtime import official_manifest
+from openvietgis_api.domains.platform_errors import PlatformNotFoundError
 
 router = APIRouter(tags=["extensions"])
 _ORG = "/organizations/{organization_id}"
@@ -41,6 +43,7 @@ def _manifest_wire(m: ExtensionManifestRecord) -> dict[str, Any]:
         "commands": m.commands,
         "capabilities": m.capabilities,
         "entity_schemas": m.entity_schemas,
+        "ui_contributions": m.ui_contributions,
         "enabled": m.enabled,
         "created_at": m.created_at.isoformat(),
     }
@@ -52,7 +55,10 @@ def _act_wire(a: ProjectActivationRecord) -> dict[str, Any]:
         "manifest_id": str(a.manifest_id),
         "extension_key": a.extension_key,
         "status": a.status,
+        "revision": a.revision,
         "activated_at": a.activated_at.isoformat(),
+        "disabled_at": a.disabled_at.isoformat() if a.disabled_at else None,
+        "updated_at": a.updated_at.isoformat(),
     }
 
 
@@ -64,7 +70,10 @@ def _rec_wire(r: ExtensionDataRecord) -> dict[str, Any]:
         "payload": r.payload,
         "linked_layer_id": str(r.linked_layer_id) if r.linked_layer_id else None,
         "linked_feature_id": r.linked_feature_id,
+        "revision": r.revision,
+        "operation_id": str(r.operation_id) if r.operation_id else None,
         "created_at": r.created_at.isoformat(),
+        "updated_at": r.updated_at.isoformat(),
     }
 
 
@@ -79,6 +88,7 @@ class RegisterManifestRequest(BaseModel):
     commands: list[dict[str, Any]] = Field(default_factory=list)
     capabilities: list[str] = Field(default_factory=list)
     entity_schemas: dict[str, dict[str, Any]]
+    ui_contributions: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class ActivateExtensionRequest(BaseModel):
@@ -92,6 +102,14 @@ class CreateExtensionRecordRequest(BaseModel):
     payload: dict[str, Any]
     linked_layer_id: UUID | None = None
     linked_feature_id: str | None = None
+    operation_id: UUID | None = None
+
+
+class UpdateExtensionRecordRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    expected_revision: PositiveInt
+    payload: dict[str, Any]
+    operation_id: UUID | None = None
 
 
 @router.post(f"{_ORG}/extensions/manifests", status_code=201)
@@ -113,6 +131,34 @@ def register_extension_manifest(
         commands=body.commands,
         capabilities=body.capabilities,
         entity_schemas=body.entity_schemas,
+        ui_contributions=body.ui_contributions,
+    )
+    return _manifest_wire(rec)
+
+
+@router.post(f"{_ORG}/extensions/official/{{extension_key}}/register", status_code=201)
+def register_official_extension_manifest(
+    organization_id: UUID,
+    extension_key: str,
+    auth: Annotated[AuthenticatedRequest, Depends(require_csrf)],
+    session: Annotated[Session, Depends(get_db_session, scope="function")],
+) -> dict[str, Any]:
+    manifest = official_manifest(extension_key)
+    if manifest is None:
+        raise PlatformNotFoundError("official module manifest not found")
+    ctx = context_for(auth, organization_id=organization_id)
+    rec = SqlExtensionsRepository(session).register_manifest(
+        context=ctx,
+        extension_key=str(manifest["extension_key"]),
+        version=str(manifest["version"]),
+        api_compatibility=str(manifest.get("api_compatibility", "1.x")),
+        display_name=str(manifest["display_name"]),
+        description=str(manifest.get("description", "")),
+        permissions=list(manifest.get("permissions", [])),
+        commands=list(manifest.get("commands", [])),
+        capabilities=list(manifest.get("capabilities", [])),
+        entity_schemas=dict(manifest["entity_schemas"]),
+        ui_contributions=list(manifest.get("ui_contributions", [])),
     )
     return _manifest_wire(rec)
 
@@ -140,6 +186,22 @@ def activate_project_extension(
     return _act_wire(
         SqlExtensionsRepository(session).activate_for_project(
             context=ctx, manifest_id=body.manifest_id
+        )
+    )
+
+
+@router.post(f"{_PROJ}/extensions/{{extension_key}}/disable")
+def disable_project_extension(
+    organization_id: UUID,
+    project_id: UUID,
+    extension_key: str,
+    auth: Annotated[AuthenticatedRequest, Depends(require_csrf)],
+    session: Annotated[Session, Depends(get_db_session, scope="function")],
+) -> dict[str, Any]:
+    ctx = context_for(auth, organization_id=organization_id, project_id=project_id)
+    return _act_wire(
+        SqlExtensionsRepository(session).disable_for_project(
+            context=ctx, extension_key=extension_key
         )
     )
 
@@ -174,6 +236,30 @@ def create_extension_record(
             payload=body.payload,
             linked_layer_id=body.linked_layer_id,
             linked_feature_id=body.linked_feature_id,
+            operation_id=body.operation_id,
+        )
+    )
+
+
+@router.put(f"{_PROJ}/extensions/{{extension_key}}/records/{{record_id}}")
+def update_extension_record(
+    organization_id: UUID,
+    project_id: UUID,
+    extension_key: str,
+    record_id: UUID,
+    body: UpdateExtensionRecordRequest,
+    auth: Annotated[AuthenticatedRequest, Depends(require_csrf)],
+    session: Annotated[Session, Depends(get_db_session, scope="function")],
+) -> dict[str, Any]:
+    ctx = context_for(auth, organization_id=organization_id, project_id=project_id)
+    return _rec_wire(
+        SqlExtensionsRepository(session).update_record(
+            context=ctx,
+            extension_key=extension_key,
+            record_id=record_id,
+            expected_revision=body.expected_revision,
+            payload=body.payload,
+            operation_id=body.operation_id,
         )
     )
 

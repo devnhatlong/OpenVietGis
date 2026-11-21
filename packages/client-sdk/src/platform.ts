@@ -197,8 +197,34 @@ export interface ExtensionManifest {
   display_name: string;
   description: string;
   permissions: string[];
+  commands: Array<Record<string, unknown>>;
   capabilities: string[];
   entity_schemas: Record<string, { fields: Record<string, { type: string; required?: boolean }> }>;
+  ui_contributions: Array<Record<string, unknown>>;
+}
+
+export interface ExtensionActivation {
+  id: string;
+  manifest_id: string;
+  extension_key: string;
+  status: "active" | "disabled";
+  revision: number;
+  activated_at: string;
+  disabled_at: string | null;
+  updated_at: string;
+}
+
+export interface ExtensionDataRecord {
+  id: string;
+  extension_key: string;
+  entity_name: string;
+  payload: Record<string, unknown>;
+  linked_layer_id: string | null;
+  linked_feature_id: string | null;
+  revision: number;
+  operation_id: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface ReleaseCapability {
@@ -599,8 +625,83 @@ export function listProjectActivations(
   client: ApiClient,
   orgId: string,
   projectId: string
-): Promise<{ items: Array<{ id: string; manifest_id: string; extension_key: string; status: string }> }> {
+): Promise<{ items: ExtensionActivation[] }> {
   return client.request(`${projBase(orgId, projectId)}/extensions/activations`);
+}
+
+export function activateProjectExtension(
+  client: ApiClient,
+  orgId: string,
+  projectId: string,
+  manifestId: string,
+  csrf: string
+): Promise<ExtensionActivation> {
+  return client.request<ExtensionActivation>(`${projBase(orgId, projectId)}/extensions/activations`, {
+    method: "POST",
+    body: JSON.stringify({ manifest_id: manifestId }),
+    headers: csrfHeaders(csrf)
+  });
+}
+
+export function disableProjectExtension(
+  client: ApiClient,
+  orgId: string,
+  projectId: string,
+  extensionKey: string,
+  csrf: string
+): Promise<ExtensionActivation> {
+  return client.request<ExtensionActivation>(
+    `${projBase(orgId, projectId)}/extensions/${encodeURIComponent(extensionKey)}/disable`,
+    { method: "POST", headers: csrfHeaders(csrf) }
+  );
+}
+
+export function listExtensionRecords(
+  client: ApiClient,
+  orgId: string,
+  projectId: string,
+  extensionKey: string,
+  entityName?: string
+): Promise<{ items: ExtensionDataRecord[] }> {
+  const qs = entityName ? `?entity_name=${encodeURIComponent(entityName)}` : "";
+  return client.request<{ items: ExtensionDataRecord[] }>(
+    `${projBase(orgId, projectId)}/extensions/${encodeURIComponent(extensionKey)}/records${qs}`
+  );
+}
+
+export function createExtensionRecord(
+  client: ApiClient,
+  orgId: string,
+  projectId: string,
+  extensionKey: string,
+  body: {
+    entity_name: string;
+    payload: Record<string, unknown>;
+    linked_layer_id?: string | null;
+    linked_feature_id?: string | null;
+    operation_id?: string | null;
+  },
+  csrf: string
+): Promise<ExtensionDataRecord> {
+  return client.request<ExtensionDataRecord>(
+    `${projBase(orgId, projectId)}/extensions/${encodeURIComponent(extensionKey)}/records`,
+    { method: "POST", body: JSON.stringify(body), headers: csrfHeaders(csrf) }
+  );
+}
+
+export function updateExtensionRecord(
+  client: ApiClient,
+  orgId: string,
+  projectId: string,
+  extensionKey: string,
+  recordId: string,
+  body: { expected_revision: number; payload: Record<string, unknown>; operation_id?: string | null },
+  csrf: string
+): Promise<ExtensionDataRecord> {
+  return client.request<ExtensionDataRecord>(
+    `${projBase(orgId, projectId)}/extensions/${encodeURIComponent(extensionKey)}/records/${encodeURIComponent(recordId)}`,
+    { method: "PUT", body: JSON.stringify(body), headers: csrfHeaders(csrf) }
+  );
 }
 
 // R015 Operations

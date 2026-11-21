@@ -31,6 +31,7 @@ from openvietgis_api.adapters.http import (
 )
 from openvietgis_api.adapters.http.errors import install_error_handlers
 from openvietgis_api.config import get_settings
+from openvietgis_api.domains.extensions.runtime import discover_official_module_runtimes
 
 
 def create_app() -> FastAPI:
@@ -87,6 +88,8 @@ def create_app() -> FastAPI:
     api_v1.include_router(field.router)
     api_v1.include_router(extensions.router)
     api_v1.include_router(ops.router)
+    for module_runtime in discover_official_module_runtimes():
+        api_v1.include_router(module_runtime.router)
     app.include_router(api_v1)
     install_error_handlers(app)
     return app

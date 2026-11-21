@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from uuid import uuid4
+
 from tests.fixtures.identity_tenancy import seed_access_world
 from tests.integration.spatial.test_sources import _client
 
@@ -74,6 +76,60 @@ def test_r014_core_extension_platform_generic_contracts(migrated_database: None)
 
         listed = client.get(f"{proj_base}/extensions/survey_notes/records")
         assert listed.status_code == 200 and len(listed.json()["items"]) == 1
+        first = listed.json()["items"][0]
+        assert first["revision"] == 1
+
+        # 4. Idempotent create + optimistic update
+        operation_id = str(uuid4())
+        replay_body = {
+            "entity_name": "note",
+            "payload": {"title": "Idempotent", "priority": 2},
+            "operation_id": operation_id,
+        }
+        replay_a = client.post(f"{proj_base}/extensions/survey_notes/records", json=replay_body)
+        replay_b = client.post(f"{proj_base}/extensions/survey_notes/records", json=replay_body)
+        assert replay_a.status_code == 201 and replay_b.status_code == 201
+        assert replay_a.json()["id"] == replay_b.json()["id"]
+
+        record_id = first["id"]
+        update = client.put(
+            f"{proj_base}/extensions/survey_notes/records/{record_id}",
+            json={
+                "expected_revision": 1,
+                "payload": {"title": "Updated", "priority": 3},
+                "operation_id": str(uuid4()),
+            },
+        )
+        assert update.status_code == 200, update.text
+        assert update.json()["revision"] == 2
+        assert update.json()["payload"]["title"] == "Updated"
+
+        stale = client.put(
+            f"{proj_base}/extensions/survey_notes/records/{record_id}",
+            json={
+                "expected_revision": 1,
+                "payload": {"title": "Stale", "priority": 4},
+                "operation_id": str(uuid4()),
+            },
+        )
+        assert stale.status_code == 409
+        assert stale.json()["code"] == "STALE_EXTENSION_RECORD"
+
+        # 5. Disable preserves data but blocks module record access; re-enable restores it.
+        disabled = client.post(f"{proj_base}/extensions/survey_notes/disable")
+        assert disabled.status_code == 200
+        assert disabled.json()["status"] == "disabled"
+        blocked = client.get(f"{proj_base}/extensions/survey_notes/records")
+        assert blocked.status_code == 404
+
+        enabled_again = client.post(
+            f"{proj_base}/extensions/activations", json={"manifest_id": mid}
+        )
+        assert enabled_again.status_code == 201
+        assert enabled_again.json()["status"] == "active"
+        restored = client.get(f"{proj_base}/extensions/survey_notes/records")
+        assert restored.status_code == 200
+        assert len(restored.json()["items"]) == 2
 
 
 def test_r015_production_ops_health_metrics_and_entitlements(migrated_database: None) -> None:
