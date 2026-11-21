@@ -10,31 +10,48 @@ import { Link,useParams } from "react-router-dom";
 import { apiClient } from "../../app/api";
 import { currentProtectedData,protectedQueryOptions } from "../../app/protected-query";
 import { FreshAccount } from "../auth/FreshAccount";
+import { AddDataDialog } from "./AddDataDialog";
+import {
+ buildAccessibleMapSummary,
+ type AccessibleMapState
+} from "./accessibility-summary";
 import { AttributeTable } from "./AttributeTable";
 import { CommandBar } from "./CommandBar";
 import { FeatureInspector } from "./FeatureInspector";
+import { SaveStateIndicator } from "./SaveStateIndicator";
+import { TechnicalDetailsDrawer } from "./TechnicalDetailsDrawer";
 import { LayerTree } from "./LayerTree";
+import { WorkspaceLayout } from "./WorkspaceLayout";
+import { buildAddDataCandidates } from "./add-data";
+import { buildLayerPanelItemView } from "./layer-view";
 import { createCommands,invokeCommand,type MapCommandId } from "./commands";
 import { BASEMAP_OPTIONS,type BasemapId,type MapEngine,type RenderLayer } from "./engine";
 import { createMapLibreEngine } from "./maplibre-engine";
 import { beginSave,markUnresolved,receiptMatches,saveErrorState,type PendingSave } from "./save";
-import { boundsOfGeometry,capability,combineBounds,mapResponseMatches,positionCount,selectionKey,toggleSelection,viewportMatches,type Bounds,type SelectionScope } from "./workspace";
+import { buildSaveIndicatorView } from "./save-indicator";
+import { buildTechnicalDetailsView } from "./technical-details";
+import { useUnsavedNavigationProtection } from "./unsaved-navigation";
+import { boundsOfGeometry,capability,combineBounds,defaultStyle,mapResponseMatches,positionCount,selectionKey,toggleSelection,viewportMatches,type Bounds,type SelectionScope } from "./workspace";
+import {
+ loadWorkspaceLayoutPreference,normalizeWorkspaceLayoutPreference,saveWorkspaceLayoutPreference,
+ type WorkspaceLayoutPreference
+} from "./workspace-layout";
 import "./map.css";
 
 const world:Bounds=[-180,-85.05112878,180,85.05112878];
 const defaultCamera:MapViewpoint={longitude:0,latitude:0,zoom:1,bearing:0,pitch:0,crs:4326};
 function errorMessage(error:unknown):string {
  if(error instanceof MapApiError||error instanceof SpatialApiError) {
-  if(error.code==="STALE_READ_PIN")return "The source content or schema changed. Revalidate current Layer metadata.";
-  if(error.code==="STALE_MAP_REVISION")return "The shared map changed. Reload its current revision before making a new save.";
-  if(error.code==="NO_CHANGES")return "No shared configuration changes to save.";
-  if(error.code==="OPERATION_INTENT_CONFLICT")return "This save operation has a different recorded intent. Reload authoritative state.";
-  if(error.code==="PROJECT_NOT_WRITABLE")return "The Project is currently read-only.";
-  if(error.code==="MAP_READ_UNAVAILABLE")return "The bounded map read is temporarily unavailable. Retry after revalidation.";
-  if(error.code==="TRANSFORMATION_OUT_OF_AREA")return "The geometry is outside the approved coordinate operation evidence.";
+  if(error.code==="STALE_READ_PIN")return "Nội dung hoặc lược đồ nguồn đã thay đổi. Hãy xác thực lại thông tin lớp hiện tại.";
+  if(error.code==="STALE_MAP_REVISION")return "Bản đồ dùng chung đã thay đổi. Hãy tải lại phiên bản hiện tại trước khi lưu mới.";
+  if(error.code==="NO_CHANGES")return "Không có thay đổi cấu hình dùng chung để lưu.";
+  if(error.code==="OPERATION_INTENT_CONFLICT")return "Thao tác lưu này không khớp với ý định đã ghi nhận. Hãy tải lại trạng thái hiện tại.";
+  if(error.code==="PROJECT_NOT_WRITABLE")return "Dự án hiện đang ở chế độ chỉ đọc.";
+  if(error.code==="MAP_READ_UNAVAILABLE")return "Tạm thời không thể đọc dữ liệu trong khung bản đồ. Hãy xác thực lại rồi thử lại.";
+  if(error.code==="TRANSFORMATION_OUT_OF_AREA")return "Hình học nằm ngoài phạm vi phép chuyển đổi tọa độ đã được phê duyệt.";
  }
- if(error instanceof ApiError&&[401,403,404].includes(error.status))return "Current access or resource is unavailable. Revalidate before showing protected data.";
- return "The operation is unavailable. Its result has not been assumed.";
+ if(error instanceof ApiError&&[401,403,404].includes(error.status))return "Quyền hoặc tài nguyên hiện tại không khả dụng. Hãy xác thực lại trước khi hiển thị dữ liệu được bảo vệ.";
+ return "Thao tác không khả dụng. Hệ thống không tự giả định kết quả.";
 }
 function requiresRevalidation(error:unknown):boolean {
  return (error instanceof ApiError&&[401,403,404].includes(error.status))||
@@ -42,6 +59,16 @@ function requiresRevalidation(error:unknown):boolean {
 }
 function pinnedMatches(scope:SelectionScope,context:SpatialFeatureReadContext):boolean {
  return context.organization_id===scope.organizationId&&context.project_id===scope.projectId&&context.layer_id===scope.layerId&&context.source_id===scope.sourceId&&context.content_revision===scope.contentRevision&&context.schema_revision===scope.schemaRevision;
+}
+function mapStateLabel(state:string):string {
+ return {
+  loading:"Đang tải",
+  stale:"Cần xác thực lại",
+  partial:"Hiển thị một phần",
+  usable:"Sẵn sàng",
+  unavailable:"Không khả dụng",
+  empty:"Không có dữ liệu"
+ }[state]??"Đang kiểm tra";
 }
 
 function Workspace({organizationId,projectId,accountId,project,initial,canEdit}:{organizationId:string;projectId:string;accountId:string;project:Project;initial:ProjectMap;canEdit:boolean}) {
@@ -56,12 +83,13 @@ function Workspace({organizationId,projectId,accountId,project,initial,canEdit}:
  const [viewpointIntent,setViewpointIntent]=useState<SaveMapInput["default_viewpoint"]>({mode:"preserve"});
  const [pending,setPending]=useState<PendingSave|null>(null),[notice,setNotice]=useState(""),[working,setWorking]=useState(false);
  const [showHistory,setShowHistory]=useState(false),[historyCursor,setHistoryCursor]=useState<number|undefined>();
- const [contextMenu,setContextMenu]=useState(false);
- const [basemap,setBasemap]=useState<BasemapId>(()=>window.location.protocol==="https:"?"hybrid":"grid");
+ const [contextMenu,setContextMenu]=useState(false),[addDataOpen,setAddDataOpen]=useState(false),[technicalDetailsOpen,setTechnicalDetailsOpen]=useState(false);
+ const [layoutPreference,setLayoutPreference]=useState<WorkspaceLayoutPreference>(()=>loadWorkspaceLayoutPreference());
+ const [basemap,setBasemap]=useState<BasemapId>(()=>window.location.protocol==="https:"?"google-hybrid":"grid");
  useEffect(()=>{engine.current?.setBasemap(basemap);},[basemap]);
  const initialFit=useRef(false),fitGeneration=useRef(0);
  const writable=canEdit&&project.status==="active";
- const locked=working||pending?.status==="unresolved";
+ const locked=working||pending?.status==="unresolved"||pending?.status==="conflict";
  const scopePrefix=["map-workspace",accountId,organizationId,projectId];
  const catalogQuery=useQuery({queryKey:[...scopePrefix,"catalog",catalogCursor],queryFn:()=>listSpatialLayers(apiClient,organizationId,projectId,{limit:100,...(catalogCursor?{after_id:catalogCursor}:{})}),...protectedQueryOptions});
  const catalog=currentProtectedData(catalogQuery);
@@ -89,7 +117,8 @@ function Workspace({organizationId,projectId,accountId,project,initial,canEdit}:
  const page=!activeBlocked&&activeScope&&rawPage&&pinnedMatches(activeScope,rawPage.context)&&!rawPage.context.geometry_included?rawPage:undefined;
  const detail=!activeBlocked&&activeScope&&rawDetail&&pinnedMatches(activeScope,rawDetail.context)&&rawDetail.feature.feature_id===focus?rawDetail:undefined;
 
- useEffect(()=>{setCursor(null);setPages([]);setSelection(null);fitGeneration.current++;},[activeKey]);
+ useLayoutEffect(()=>{setCursor(null);setPages([]);setSelection(null);fitGeneration.current++;},[activeKey]);
+ useLayoutEffect(()=>{setTechnicalDetailsOpen(false);},[organizationId,projectId,active]);
  useEffect(()=>{if(directBlocked&&activeKey)setBlocked(activeKey);},[directBlocked,activeKey]);
  useEffect(()=>{alive.current=true;return()=>{alive.current=false;};},[]);
  function choose(id:string):void {setActive(id);setSelection(null);setCursor(null);setPages([]);setContextMenu(false);}
@@ -103,7 +132,7 @@ function Workspace({organizationId,projectId,accountId,project,initial,canEdit}:
  useLayoutEffect(()=>{
   if(!canvas.current)return;
   const map=createMapLibreEngine(canvas.current,{viewport:(bounds,value)=>handlers.current.viewport(bounds,value),pick:(id,multiple)=>handlers.current.pick(id,multiple),ready:setEngineReady,error:()=>setEngineError(true)});
-  engine.current=map;map.setBasemap(window.location.protocol==="https:"?"hybrid":"grid");map.setCamera(initial.configuration.default_viewpoint??defaultCamera);
+  engine.current=map;map.setBasemap(window.location.protocol==="https:"?"google-hybrid":"grid");map.setCamera(initial.configuration.default_viewpoint??defaultCamera);
   return ()=>{map.clear();map.destroy();engine.current=null;};
  },[]);
  const frames:RenderLayer[]=[];
@@ -134,11 +163,20 @@ function Workspace({organizationId,projectId,accountId,project,initial,canEdit}:
  useLayoutEffect(()=>{if(!busyData)engine.current?.setLayers(frames);},[frameKey]);
  useLayoutEffect(()=>{engine.current?.setActiveLayer(configuration.layers.some(ref=>ref.layer_id===active&&ref.visible)&&!activeBlocked?active:null);engine.current?.setSelection(activeBlocked?null:active,selected);},[active,activeBlocked,selected.join(","),configuration.layers.map(ref=>ref.layer_id+ref.visible).join(",")]);
  const hasGeometry=frames.some(frame=>frame.features.length>0);
- const state=engineError?"unavailable":busyData?"loading":states.some(s=>s.startsWith("stale"))?"stale":states.some(s=>s.startsWith("partial"))?"partial":hasGeometry?"usable":states.some(s=>s.startsWith("unsupported")||s.startsWith("unavailable"))?"unavailable":"empty";
+ const state:AccessibleMapState=engineError?"unavailable":busyData?"loading":states.some(s=>s.startsWith("stale"))?"stale":states.some(s=>s.startsWith("partial"))?"partial":hasGeometry?"usable":states.some(s=>s.startsWith("unsupported")||s.startsWith("unavailable"))?"unavailable":"empty";
+ const accessibleSummary=buildAccessibleMapSummary({
+  projectName:project.name,
+  references:configuration.layers,
+  metadata,
+  activeLayerId:active,
+  selectedFeatureIds:selected,
+  focusedFeatureId:focus,
+  state
+ });
  const ready=engineReady&&!busyData&&!engineError;
  async function revalidate():Promise<void> {setBlocked(null);setSelection(null);engine.current?.clear();setNotice("");await queryClient.invalidateQueries({queryKey:scopePrefix});}
  async function fitLayers(ids:string[]):Promise<void> {
-  const generation=++fitGeneration.current;setNotice("Checking authorized display extent…");
+  const generation=++fitGeneration.current;setNotice("Đang kiểm tra phạm vi hiển thị được cấp quyền…");
   try {
    const values:Bounds[]=[];
    //32 references maximum; four bounded in flight.
@@ -185,7 +223,7 @@ function Workspace({organizationId,projectId,accountId,project,initial,canEdit}:
   if(!mapResponseMatches(organizationId,projectId,current)||current.map_id!==saved.map_id||current.configuration_revision<receipt.configuration_revision)throw new Error("Unconfirmed persisted revision");
   if(!alive.current)return;
   setSaved(current);setConfiguration(current.configuration);setViewpointIntent({mode:"preserve"});setPending({input,status:"committed"});
-  setNotice("Committed revision "+receipt.configuration_revision+". Current shared revision "+current.configuration_revision+".");
+  setNotice("Đã lưu phiên bản "+receipt.configuration_revision+". Phiên bản dùng chung hiện tại "+current.configuration_revision+".");
   queryClient.setQueryData([...scopePrefix,"definition"],current);
   await queryClient.invalidateQueries({queryKey:[...scopePrefix,"history"]});
  }
@@ -194,32 +232,37 @@ function Workspace({organizationId,projectId,accountId,project,initial,canEdit}:
   const input=retry&&pending?pending.input:{operation_id:crypto.randomUUID(),expected_revision:saved.configuration_revision,layers:configuration.layers,basemap:"grid" as const,default_viewpoint:viewpointIntent};
   const operation=beginSave(input);setPending(operation);setWorking(true);setNotice("");
   try{await loadCsrfToken(apiClient);const receipt=await saveMap(apiClient,organizationId,projectId,input);await acceptReceipt(receipt,input);}
-  catch(error){if(alive.current){const status=saveErrorState(error instanceof ApiError?error.status:undefined);setPending(status==="unresolved"?markUnresolved(operation):{...operation,status});setNotice(status==="unresolved"?"Save outcome unresolved. Reconcile or retry this same operation before making a new save.":errorMessage(error));if(status==="denied"){engine.current?.clear();await queryClient.invalidateQueries({queryKey:scopePrefix});}}}
+  catch(error){if(alive.current){const status=saveErrorState(error instanceof ApiError?error.status:undefined);setPending(status==="unresolved"?markUnresolved(operation):{...operation,status});setNotice(status==="unresolved"?"Kết quả lưu chưa xác định. Hãy đối chiếu hoặc thử lại đúng thao tác này trước khi tạo bản lưu mới.":errorMessage(error));if(status==="denied"){engine.current?.clear();await queryClient.invalidateQueries({queryKey:scopePrefix});}}}
   finally{if(alive.current)setWorking(false);}
  }
  async function reconcile():Promise<void> {
   if(!pending||!writable||working)return;setWorking(true);
   try{const receipt=await getMapOperation(apiClient,organizationId,projectId,pending.input.operation_id);await acceptReceipt(receipt,pending.input);}
-  catch(error){if(alive.current){setNotice("Save outcome remains unresolved. "+errorMessage(error));if(error instanceof ApiError&&[401,403].includes(error.status)){setPending({...pending,status:"denied"});engine.current?.clear();await queryClient.invalidateQueries({queryKey:scopePrefix});}}}
+  catch(error){if(alive.current){setNotice("Kết quả lưu vẫn chưa xác định. "+errorMessage(error));if(error instanceof ApiError&&[401,403].includes(error.status)){setPending({...pending,status:"denied"});engine.current?.clear();await queryClient.invalidateQueries({queryKey:scopePrefix});}}}
   finally{if(alive.current)setWorking(false);}
  }
  async function reloadShared():Promise<void>{
   if(pending?.status==="unresolved"){setNotice("Reconcile the pending save before replacing its local intent.");return;}
   setWorking(true);
-  try{const current=await getMap(apiClient,organizationId,projectId);if(!mapResponseMatches(organizationId,projectId,current))throw new Error("Wrong scope");setSaved(current);setConfiguration(current.configuration);setViewpointIntent({mode:"preserve"});setPending(null);setSelection(null);setActive(current.configuration.layers[0]?.layer_id??null);setNotice("Loaded shared revision "+current.configuration_revision+".");}
+  try{const current=await getMap(apiClient,organizationId,projectId);if(!mapResponseMatches(organizationId,projectId,current))throw new Error("Phạm vi dữ liệu không khớp");setSaved(current);setConfiguration(current.configuration);setViewpointIntent({mode:"preserve"});setPending(null);setSelection(null);setActive(current.configuration.layers[0]?.layer_id??null);setNotice("Đã tải phiên bản bản đồ "+current.configuration_revision+".");}
   catch(error){setNotice(errorMessage(error));}finally{setWorking(false);}
  }
  function execute(id:MapCommandId):void {
   setContextMenu(false);
+  if(id==="map.add-data")setAddDataOpen(true);
   if(id==="map.fit-layer"&&active)void fitLayers([active]);
-  if(id==="map.fit-all")void fitLayers(configuration.layers.filter((r,i)=>r.visible&&capability(metadata[i],"render")).map(r=>r.layer_id));
+  if(id==="map.fit-all")void fitLayers(visibleRenderableIds);
   if(id==="map.fit-selection")void fitSelection();
   if(id==="map.clear-selection")setSelection(null);
   if(id==="map.save")void submitSave();
   if(id==="map.set-default-viewpoint"){const current=engine.current?.getCamera()??camera;setViewpointIntent({mode:"set",value:current});setNotice("Đã đánh dấu góc nhìn hiện tại. Bấm Lưu bản đồ để ghi nhận.");}
   if(id==="map.zoom-in")engine.current?.zoom(1);if(id==="map.zoom-out")engine.current?.zoom(-1);
  }
- const commands=createCommands({hasActive:capability(activeLayer,"render"),hasVisible:configuration.layers.some((r,i)=>r.visible&&capability(metadata[i],"render")),hasSelection:selected.length>0&&capability(activeLayer,"render"),canSave:writable,busy:locked},execute);
+ const visibleMetadataPending=configuration.layers.some((ref,index)=>ref.visible&&!metadata[index]&&!metadataQueries[index]?.error);
+ const visibleRenderableIds=configuration.layers.filter((ref,index)=>ref.visible&&capability(metadata[index],"render")).map(ref=>ref.layer_id);
+ const activeLayerView=activeIndex>=0?buildLayerPanelItemView(configuration.layers[activeIndex]!,activeLayer,states[activeIndex]??"loading",active,activeIndex,configuration.layers.length):undefined;
+ const commands=createCommands({hasActive:activeLayerView?.canZoom??false,hasVisible:!visibleMetadataPending&&visibleRenderableIds.length>0,hasSelection:selected.length>0&&capability(activeLayer,"render")&&!activeBlocked,canSave:writable,canAddData:configuration.layers.length<32,busy:locked},execute);
+ const addDataCommand=commands.find(command=>command.id==="map.add-data");
  const commandRef=useRef(commands);commandRef.current=commands;
  useEffect(()=>{
   const key=(event:KeyboardEvent)=>{if(event.target instanceof HTMLElement&&(event.target.closest("input,textarea,select,[contenteditable=true]")))return;
@@ -229,31 +272,90 @@ function Workspace({organizationId,projectId,accountId,project,initial,canEdit}:
  const readError=activeBlocked?"Lớp hoặc đối tượng đang chọn cần xác thực lại quyền truy cập hiện hành.":pageQuery.error?errorMessage(pageQuery.error):null;
  const detailError=activeBlocked?readError:detailQuery.error?errorMessage(detailQuery.error):null;
  const dirty=JSON.stringify(configuration.layers)!==JSON.stringify(saved.configuration.layers)||viewpointIntent.mode!=="preserve"||saved.configuration_revision===0;
+ const saveIndicatorView=buildSaveIndicatorView({
+  dirty,
+  pendingStatus:pending?.status??null,
+  revision:saved.configuration_revision
+ });
+ const navigationBlocker=useUnsavedNavigationProtection(dirty);
  function change(layers:MapLayerReference[]):void {if(locked)return;setConfiguration({...configuration,layers});setPending(null);if(active&&!layers.some(l=>l.layer_id===active))choose(layers[0]?.layer_id??"");}
+ function updateLayoutPreference(value:WorkspaceLayoutPreference):void {
+  const normalized=normalizeWorkspaceLayoutPreference(value);
+  setLayoutPreference(normalized);
+  saveWorkspaceLayoutPreference(normalized);
+ }
+ const addDataCandidates=buildAddDataCandidates(catalog?.items??[],configuration.layers);
+ const technicalDetailsView=buildTechnicalDetailsView({organizationId,projectId,map:saved,activeLayer});
+ function addLayerToMap(layerId:string):void {
+  const candidate=addDataCandidates.find(item=>item.layerId===layerId);
+  if(locked||configuration.layers.length>=32||!candidate?.addable)return;
+  change([...configuration.layers,{layer_id:layerId,visible:true,style:{...defaultStyle}}]);
+  choose(layerId);
+  setAddDataOpen(false);
+ }
  return <main className="gis-workspace" data-testid="map-workspace">
-  <header className="gis-header"><div><Link to={"/organizations/"+organizationId+"/projects"}>← Dự án</Link><span className="gis-logo">OVG</span><h1>{project.name}<small>Không gian Bản đồ</small></h1></div><div className="gis-header-meta"><span>{project.status==="archived"?"Dự án lưu trữ (chỉ đọc)":writable?"Biên tập dự án":"Xem cục bộ · quyền đọc"}</span><Link to={"/organizations/"+organizationId+"/projects/"+projectId+"/spatial"}>Danh mục GIS</Link><Link to={"/organizations/"+organizationId+"/projects/"+projectId+"/transfers"}>Nhập / Xuất</Link><Link to={"/organizations/"+organizationId+"/projects/"+projectId+"/editing"}>Biên tập (R006)</Link><Link to={"/organizations/"+organizationId+"/projects/"+projectId+"/queries"}>Truy vấn (R007)</Link><Link to={"/organizations/"+organizationId+"/projects/"+projectId+"/processing"}>Xử lý (R008)</Link><Link to={"/organizations/"+organizationId+"/projects/"+projectId+"/cartography"}>In ấn (R009)</Link><Link to={"/organizations/"+organizationId+"/projects/"+projectId+"/platform-hub"}>Trung tâm (R010–R015)</Link></div></header>
-  <div className="map-context"><span>Tổ chức <code>{organizationId}</code></span><span>Dự án <code>{projectId}</code></span><span>Phiên bản chung {saved.configuration_revision}{dirty?" · Có thay đổi cục bộ chưa lưu":""}</span></div>
+  <header className="gis-header"><div><Link to={"/app/organizations/"+organizationId+"/projects"}>← Dự án</Link><span className="gis-logo">OVG</span><h1>{project.name}<small>Không gian bản đồ</small></h1></div><div className="gis-header-meta"><span>{project.status==="archived"?"Chỉ đọc":writable?"Chế độ chỉnh sửa":"Chế độ xem"}</span><Link to={"/app/organizations/"+organizationId+"/projects/"+projectId+"/spatial"}>Danh mục GIS</Link><Link to={"/app/organizations/"+organizationId+"/projects/"+projectId+"/transfers"}>Nhập / Xuất</Link><Link to={"/app/organizations/"+organizationId+"/projects/"+projectId+"/editing"}>Biên tập</Link><Link to={"/app/organizations/"+organizationId+"/projects/"+projectId+"/queries"}>Truy vấn</Link><Link to={"/app/organizations/"+organizationId+"/projects/"+projectId+"/processing"}>Xử lý</Link><Link to={"/app/organizations/"+organizationId+"/projects/"+projectId+"/cartography"}>In ấn</Link><Link to={"/app/organizations/"+organizationId+"/projects/"+projectId+"/platform-hub"}>Công cụ nâng cao</Link></div></header>
+  <div className="map-context">
+    <span><strong>Phiên bản bản đồ:</strong> {saved.configuration_revision}</span>
+    <span className={dirty?"map-context-unsaved":"map-context-saved"} data-save-state={saveIndicatorView.state}>{saveIndicatorView.label}</span>
+    <button
+     type="button"
+     className="map-technical-trigger"
+     aria-haspopup="dialog"
+     onClick={()=>setTechnicalDetailsOpen(true)}
+    >Thông tin kỹ thuật</button>
+  </div>
   <CommandBar commands={commands}/>
   <div className="map-basemap-bar" style={{display:"flex",flexWrap:"wrap",alignItems:"center",gap:"0.4rem",padding:"0.4rem 0.9rem",background:"#f1f5f9",borderBottom:"1px solid #cbd5e1",fontSize:"0.84rem"}}><strong>Bản đồ nền:</strong>{BASEMAP_OPTIONS.map(opt=><button key={opt.id} type="button" data-testid={"basemap-"+opt.id} style={{padding:"0.25rem 0.65rem",borderRadius:6,border:"1px solid #94a3b8",cursor:"pointer",background:basemap===opt.id?"#0f172a":"#ffffff",color:basemap===opt.id?"#ffffff":"#0f172a",fontWeight:600}} onClick={()=>setBasemap(opt.id)}>{opt.label}</button>)}</div>
-  <div className="map-body">
-   <LayerTree layers={configuration.layers} metadata={metadata} active={active} catalog={catalog?.items} locked={locked} states={states} choose={choose} change={change}
-    nextCatalog={catalog?.next_after_id?()=>{setCatalogPages([...catalogPages,catalogCursor]);setCatalogCursor(catalog.next_after_id);}:null}
-    previousCatalog={catalogPages.length?()=>{setCatalogCursor(catalogPages[catalogPages.length-1]??null);setCatalogPages(catalogPages.slice(0,-1));}:null}/>
-   <section className="map-stage" aria-label="Map canvas" onContextMenu={e=>{e.preventDefault();setContextMenu(!contextMenu);}}>
+  <WorkspaceLayout
+   preference={layoutPreference}
+   onPreferenceChange={updateLayoutPreference}
+   left={<LayerTree layers={configuration.layers} metadata={metadata} active={active} locked={locked} states={states} choose={choose} change={change}
+    zoom={id=>void fitLayers([id])}
+    addDataEnabled={addDataCommand?.enabled??false} addDataReason={addDataCommand?.reason??null}
+    openAddData={()=>invokeCommand(commands,"map.add-data","toolbar")}/>}
+   map={<section className="map-stage" aria-label="Khung bản đồ" aria-describedby="map-accessible-summary" onContextMenu={e=>{e.preventDefault();setContextMenu(!contextMenu);}}>
+    <p id="map-accessible-summary" className="sr-only" data-testid="accessible-map-summary" aria-live="polite">{accessibleSummary.text}</p>
     <div ref={canvas} className="map-canvas" data-testid="map-canvas"/>
     <div className="map-engine-signal" data-testid="map-engine-ready" data-ready={ready?"true":"false"} aria-hidden="true"/>
-    <div className="map-stage-status" role="status"><strong data-testid="map-status">{state}</strong><span>Local grid · Display EPSG:3857 · Geographic input EPSG:4326 X/Y</span></div>
-    {state==="empty"?<div className="map-blank-message"><h2>Your Project map</h2><p>{configuration.layers.length?"No readable geometry in this view.":"Add a registered Layer from the left to begin."}</p></div>:null}
-    {state==="partial"?<div className="map-partial" role="status">Bounded partial view. Zoom in to display more detail. The attribute table reads actual pinned records independently.</div>:null}
+    <div className="map-stage-status" role="status"><strong data-testid="map-status" data-state={state}>{mapStateLabel(state)}</strong><span>Lưới cục bộ · Hiển thị EPSG:3857 · Tọa độ địa lý đầu vào EPSG:4326 X/Y</span></div>
+    {state==="empty"?<div className="map-blank-message"><h2>Bản đồ dự án</h2><p>{configuration.layers.length?"Không có hình học có thể đọc trong khung nhìn này.":"Hãy thêm một lớp dữ liệu từ bảng bên trái để bắt đầu."}</p></div>:null}
+    {state==="partial"?<div className="map-partial" role="status">Khung nhìn đang hiển thị một phần dữ liệu. Hãy phóng to để xem chi tiết hơn. Bảng thuộc tính đọc độc lập các bản ghi đúng phiên bản.</div>:null}
     {contextMenu?<div className="map-context-menu" role="menu">{commands.map(c=><button role="menuitem" key={c.id} disabled={!c.enabled} title={c.reason??c.label} onClick={()=>invokeCommand(commands,c.id,"context")}>{c.label}</button>)}</div>:null}
-   </section>
-   <FeatureInspector layer={activeLayer} detail={detail} focus={focus} count={selected.length} error={detailError}/>
-  </div>
-  <div className="map-sessionbar"><span>Shift/Ctrl-click to toggle selection · {selected.length}/100 đang chọn</span><span>Tọa độ tâm {camera.longitude.toFixed(5)}, {camera.latitude.toFixed(5)} · mức thu phóng {camera.zoom.toFixed(2)}</span><button onClick={()=>void revalidate()}>Kiểm tra lại quyền truy cập</button></div>
-  <AttributeTable layer={capability(activeLayer,"feature_read")?activeLayer:undefined} page={page} selected={selected} focus={focus} select={select} pageNumber={pages.length+1} error={readError}
-   previous={pages.length?()=>{setCursor(pages[pages.length-1]??null);setPages(pages.slice(0,-1));}:null}
-   next={page?.next_after_feature_id?()=>{setPages([...pages,cursor]);setCursor(page.next_after_feature_id);}:null}/>
-  <section className="map-save-panel" aria-label="Shared map configuration"><div><h2>Cấu hình bản đồ dùng chung</h2><p data-testid="map-save-status">{pending?.status??(dirty?"chưa lưu":"đã lưu")} · phiên bản {saved.configuration_revision} · góc nhìn mặc định: {viewpointIntent.mode==="preserve"?(saved.configuration.default_viewpoint?"giữ nguyên":"chưa đặt"):viewpointIntent.mode==="clear"?"xóa khi lưu":"cập nhật khi lưu"}</p></div>
+   </section>}
+   right={<FeatureInspector layer={activeLayer} detail={detail} focus={focus} count={selected.length} error={detailError}/>}
+   bottom={<AttributeTable layer={capability(activeLayer,"feature_read")?activeLayer:undefined} page={page} selected={selected} focus={focus} select={select} pageNumber={pages.length+1} error={readError}
+    previous={pages.length?()=>{setCursor(pages[pages.length-1]??null);setPages(pages.slice(0,-1));}:null}
+    next={page?.next_after_feature_id?()=>{setPages([...pages,cursor]);setCursor(page.next_after_feature_id);}:null}/>}
+  />
+  <TechnicalDetailsDrawer
+   open={technicalDetailsOpen}
+   view={technicalDetailsView}
+   onClose={()=>setTechnicalDetailsOpen(false)}
+  />
+  <AddDataDialog
+   open={addDataOpen}
+   candidates={addDataCandidates}
+   locked={locked}
+   importPath={"/app/organizations/"+organizationId+"/projects/"+projectId+"/transfers"}
+   catalogPath={"/app/organizations/"+organizationId+"/projects/"+projectId+"/spatial"}
+   nextCatalog={catalog?.next_after_id?()=>{setCatalogPages([...catalogPages,catalogCursor]);setCatalogCursor(catalog.next_after_id);}:null}
+   previousCatalog={catalogPages.length?()=>{setCatalogCursor(catalogPages[catalogPages.length-1]??null);setCatalogPages(catalogPages.slice(0,-1));}:null}
+   onAdd={addLayerToMap}
+   onClose={()=>setAddDataOpen(false)}
+  />
+  {navigationBlocker.state==="blocked"?<div className="map-unsaved-blocker" role="dialog" aria-modal="true" aria-labelledby="map-unsaved-title">
+   <div>
+    <h2 id="map-unsaved-title">Có thay đổi bản đồ chưa lưu</h2>
+    <p>Rời trang lúc này sẽ bỏ các thay đổi cấu hình bản đồ chưa được lưu.</p>
+    <div>
+     <button type="button" onClick={()=>navigationBlocker.reset()}>Ở lại</button>
+     <button type="button" className="is-danger" onClick={()=>navigationBlocker.proceed()}>Rời đi và bỏ thay đổi</button>
+    </div>
+   </div>
+  </div>:null}
+  <div className="map-sessionbar"><span>Giữ Shift hoặc Ctrl khi bấm để chọn nhiều · {selected.length}/100 đang chọn</span><span data-testid="map-camera-summary">Tọa độ tâm {camera.longitude.toFixed(5)}, {camera.latitude.toFixed(5)} · mức thu phóng {camera.zoom.toFixed(2)}</span><button onClick={()=>void revalidate()}>Kiểm tra lại quyền truy cập</button></div>
+  <section className="map-save-panel" aria-label="Cấu hình bản đồ dùng chung"><div><h2>Cấu hình bản đồ dùng chung</h2><SaveStateIndicator dirty={dirty} pendingStatus={pending?.status??null} revision={saved.configuration_revision}/><p className="map-muted">Góc nhìn mặc định: {viewpointIntent.mode==="preserve"?(saved.configuration.default_viewpoint?"giữ nguyên":"chưa đặt"):viewpointIntent.mode==="clear"?"xóa khi lưu":"cập nhật khi lưu"}</p></div>
    <button disabled={!writable||locked} onClick={()=>invokeCommand(commands,"map.set-default-viewpoint","toolbar")}>Đặt góc nhìn mặc định</button>
    <button disabled={!writable||locked} onClick={()=>{setViewpointIntent({mode:"clear"});setPending(null);}}>Xóa góc nhìn mặc định</button>
    <button disabled={!writable||locked} onClick={()=>void submitSave()}>Lưu bản đồ</button>
@@ -262,7 +364,7 @@ function Workspace({organizationId,projectId,accountId,project,initial,canEdit}:
    <button onClick={()=>setShowHistory(!showHistory)}>{showHistory?"Ẩn":"Xem"} lịch sử bản đồ</button>
   </section>
   {notice?<p className="map-notice" role="status">{notice}</p>:null}
-  {showHistory?<section className="map-history" aria-label="Map configuration history"><h2>Lịch sử cấu hình bản đồ</h2>{history?<><ol>{history.items.map(revision=><li key={revision.configuration_revision}><strong>Phiên bản {revision.configuration_revision}</strong> · {revision.actor_display_snapshot} · {revision.created_at}<details><summary>Cấu hình trước / sau</summary><pre>{JSON.stringify({before:revision.before_configuration,after:revision.after_configuration},null,2)}</pre></details></li>)}</ol><button disabled={history.next_after_revision===null} onClick={()=>{if(history.next_after_revision!==null)setHistoryCursor(history.next_after_revision);}}>Các phiên bản cũ hơn</button><button disabled={historyCursor===undefined} onClick={()=>setHistoryCursor(undefined)}>Các phiên bản mới nhất</button></>:<p>{historyQuery.error?"Không thể truy cập lịch sử hiện tại.":"Đang kiểm tra lịch sử bản đồ…"}</p>}</section>:null}
+  {showHistory?<section className="map-history" aria-label="Lịch sử cấu hình bản đồ"><h2>Lịch sử cấu hình bản đồ</h2>{history?<><ol>{history.items.map(revision=><li key={revision.configuration_revision}><strong>Phiên bản {revision.configuration_revision}</strong> · {revision.actor_display_snapshot} · {revision.created_at}<details><summary>Cấu hình trước / sau</summary><pre>{JSON.stringify({before:revision.before_configuration,after:revision.after_configuration},null,2)}</pre></details></li>)}</ol><button disabled={history.next_after_revision===null} onClick={()=>{if(history.next_after_revision!==null)setHistoryCursor(history.next_after_revision);}}>Các phiên bản cũ hơn</button><button disabled={historyCursor===undefined} onClick={()=>setHistoryCursor(undefined)}>Các phiên bản mới nhất</button></>:<p>{historyQuery.error?"Không thể truy cập lịch sử hiện tại.":"Đang kiểm tra lịch sử bản đồ…"}</p>}</section>:null}
  </main>;
 }
 
@@ -274,7 +376,7 @@ function ProtectedMap({organizationId,projectId,accountId}:{organizationId:strin
  const project=currentProtectedData(projectQuery),permissions=currentProtectedData(permissionQuery),map=currentProtectedData(mapQuery);
  if(!project||!permissions||!map||project.id!==projectId||project.organization_id!==organizationId||project.status==="deleted"||!mapResponseMatches(organizationId,projectId,map)||!permissions.permissions.includes("project.read")){
   const error=projectQuery.error||permissionQuery.error||mapQuery.error;
-  return <main className="map-access"><Link to={"/organizations/"+organizationId+"/projects"}>← Dự án</Link><h1>Không gian Bản đồ</h1><p role={error?"alert":"status"}>{error?"Không có quyền truy cập bản đồ dự án này.":"Đang kiểm tra quyền truy cập bản đồ dự án…"}</p></main>;
+  return <main className="map-access"><Link to={"/app/organizations/"+organizationId+"/projects"}>← Dự án</Link><h1>Không gian Bản đồ</h1><p role={error?"alert":"status"}>{error?"Không có quyền truy cập bản đồ dự án này.":"Đang kiểm tra quyền truy cập bản đồ dự án…"}</p></main>;
  }
  return <Workspace key={accountId+":"+organizationId+":"+projectId} organizationId={organizationId} projectId={projectId} accountId={accountId} project={project} initial={map} canEdit={permissions.permissions.includes("project.edit")}/>;
 }

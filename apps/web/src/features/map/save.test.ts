@@ -8,7 +8,11 @@ describe("explicit save recovery",()=>{
     expect(receiptMatches(unknown,{map_id:"m",operation_id:"other",configuration_revision:3})).toBe(false);
     expect(receiptMatches(unknown,{map_id:"m",operation_id:"op",configuration_revision:3})).toBe(true);
   });
-  it("never transforms conflicts or denial into a fresh retry",()=>{
-    expect(saveErrorState(409)).toBe("conflict");expect(saveErrorState(403)).toBe("denied");expect(saveErrorState(503)).toBe("unresolved");
+  it("never transforms conflicts, denial or known validation failures into a fresh retry",()=>{
+    expect(saveErrorState(409)).toBe("conflict");
+    expect(saveErrorState(403)).toBe("denied");
+    expect(saveErrorState(422)).toBe("failed");
+    expect(saveErrorState(503)).toBe("unresolved");
+    expect(saveErrorState(undefined)).toBe("unresolved");
   });
 });

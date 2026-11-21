@@ -20,7 +20,7 @@ export function CartographyWorkbenchPage() {
   const [layerId, setLayerId] = useState("");
   const [fillColor, setFillColor] = useState("#2563eb");
   const [strokeColor, setStrokeColor] = useState("#1e3a8a");
-  const [layoutTitle, setLayoutTitle] = useState("OpenVietGIS Print Map");
+  const [layoutTitle, setLayoutTitle] = useState("Bản đồ in OpenVietGIS");
   const [paperSize, setPaperSize] = useState<"A4" | "A3">("A4");
   const [orientation, setOrientation] = useState<"portrait" | "landscape">("landscape");
   const [notice, setNotice] = useState<string | null>(null);
@@ -61,9 +61,9 @@ export function CartographyWorkbenchPage() {
         },
         csrf
       );
-      setNotice(`Đã lưu ký hiệu trung lập rev ${st.revision} with auto legend.`);
+      setNotice(`Đã lưu ký hiệu trung lập phiên bản ${st.revision} kèm chú giải tự động.`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to save style.");
+      setError(err instanceof Error ? err.message : "Không thể lưu kiểu hiển thị.");
     }
   }
 
@@ -82,15 +82,15 @@ export function CartographyWorkbenchPage() {
           paper_size: paperSize,
           orientation,
           crs_code: 4326,
-          attribution: "OpenVietGIS Project Data",
+          attribution: "Dữ liệu dự án OpenVietGIS",
           layer_ids: [activeLayerId]
         },
         csrf
       );
-      setNotice(`Đã tạo bố cục in ${lo.paper_size} ${lo.orientation}.`);
+      setNotice(`Đã tạo bố cục in ${lo.paper_size} ${lo.orientation === "landscape" ? "ngang" : "dọc"}.`);
       await qc.invalidateQueries({ queryKey: ["r009", organizationId, projectId, "layouts"] });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to create layout.");
+      setError(err instanceof Error ? err.message : "Không thể tạo bố cục in.");
     }
   }
 
@@ -109,7 +109,7 @@ export function CartographyWorkbenchPage() {
       setNotice(`Đã xuất tệp ${ex.output_format.toUpperCase()} (${ex.dpi} DPI, 1:${ex.scale_denominator}).`);
       await qc.invalidateQueries({ queryKey: ["r009", organizationId, projectId, "exports"] });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Export failed.");
+      setError(err instanceof Error ? err.message : "Xuất bản đồ không thành công.");
     }
   }
 
@@ -119,7 +119,7 @@ export function CartographyWorkbenchPage() {
         organizationId={organizationId}
         projectId={projectId}
         active="cartography"
-        title="R009 Bản đồ học & Xuất in ấn"
+        title="Bản đồ học & Xuất in ấn"
       />
       <main className="ovg-suite-body">
         {notice && <div className="ovg-notice">{notice}</div>}
@@ -193,10 +193,10 @@ export function CartographyWorkbenchPage() {
           <table className="ovg-table">
             <thead>
               <tr>
-                <th>Title</th>
+                <th>Tiêu đề</th>
                 <th>Khổ giấy</th>
                 <th>CRS</th>
-                <th>Export</th>
+                <th>Xuất bản</th>
               </tr>
             </thead>
             <tbody>

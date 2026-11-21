@@ -82,8 +82,8 @@ test("measures 100 actual map-open and select-to-authorized-inspector trials on 
   }
 
   const points = fixture.layers.find(layer => layer.name === "Points")!;
-  await page.getByRole("button", { name: "Make Points active", exact: true }).click();
-  const table = page.getByRole("table", { name: "Pinned map attributes" });
+  await page.getByRole("button", { name: "Chọn Points làm lớp hiện hành", exact: true }).click();
+  const table = page.getByRole("table", { name: "Bảng thuộc tính theo phiên bản" });
   await expect(table.getByRole("button", { name: "point-000001", exact: true })).toBeVisible();
   for (let index = 0; index < warmups + trials; index++) {
     const id = index % 2 === 0 ? "point-000001" : "point-000002";

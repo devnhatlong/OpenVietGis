@@ -4,12 +4,36 @@ import { expect, test, type Page } from "@playwright/test";
 test.use({ trace: "off", screenshot: "off", video: "off" });
 
 async function signInOwner(page: Page) {
-  await page.goto("/");
-  await page.getByRole("link", { name: /Continue with OpenVietGIS Development/ }).click();
+  await page.goto("/login");
+  await page
+    .getByRole("link", {
+      name: "Đăng nhập với OpenVietGIS Development",
+      exact: true
+    })
+    .click();
   await page.locator("#username").fill("owner-a");
   await page.locator("#password").fill("openvietgis-test-owner-a");
   await page.locator("#kc-login").click();
-  await expect(page.getByText("Owner Alpha", { exact: true })).toBeVisible();
+  await expect(page.locator(".ovg-app-shell")).toBeVisible();
+  await expect(
+    page.locator(".ovg-account-name").filter({ hasText: "Owner Alpha" })
+  ).toBeVisible();
+}
+
+async function openAccountViaUi(page: Page) {
+  await page.getByRole("button", { name: "Mở menu tài khoản" }).click();
+  await page
+    .getByRole("navigation", { name: "Tài khoản" })
+    .getByRole("link", { name: "Tài khoản & phiên đăng nhập", exact: true })
+    .click();
+}
+
+async function openInvitationsViaUi(page: Page) {
+  await page.getByRole("button", { name: "Mở menu tài khoản" }).click();
+  await page
+    .getByRole("navigation", { name: "Tài khoản" })
+    .getByRole("link", { name: "Lời mời", exact: true })
+    .click();
 }
 
 async function holdDeniedRead(
@@ -18,172 +42,369 @@ async function holdDeniedRead(
   status: number,
   navigate: () => Promise<void>,
   checkHidden: () => Promise<void>,
-  checkDenied: () => Promise<void>
+  checkDenied: () => Promise<void>,
+  checkAfterDenied?: () => Promise<void>
 ) {
   const matches = (url: URL) => url.pathname === path;
   let release = () => {};
-  const held = new Promise<void>((resolve) => { release = resolve; });
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
   await page.route(matches, async (route) => {
     await held;
     await route.fulfill({ status, json: { detail: "Denied" } });
   });
   try {
-    const requested = page.waitForRequest((request) => matches(new URL(request.url())) && request.method() === "GET");
+    const requested = page.waitForRequest(
+      (request) =>
+        matches(new URL(request.url())) && request.method() === "GET"
+    );
     await navigate();
     await requested;
     await checkHidden();
     release();
     await checkDenied();
-    await checkHidden();
+    await (checkAfterDenied ?? checkHidden)();
   } finally {
     release();
     await page.unroute(matches);
   }
 }
 
-test("identity links never render a private cached payload during or after a denied refetch", async ({ page }) => {
-  await signInOwner(page);
-  const path = "/api/v1/me/identity-links";
-  const sentinel = "synthetic-private-subject";
-  const matches = (url: URL) => url.pathname === path;
-  await page.route(matches, (route) => route.fulfill({
-    json: [
-      { id: "synthetic-one", issuer: "https://identity.example.test", subject: sentinel },
-      { id: "synthetic-two", issuer: "https://identity.example.test", subject: "synthetic-other-subject" }
-    ]
-  }));
-  const identityLink = page.getByRole("link", { name: "Identity & session" });
-  await identityLink.click();
-  await expect(page.getByText(sentinel, { exact: false })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Unlink", exact: true })).toHaveCount(2);
-  await page.getByRole("link", { name: "← Organizations" }).click();
-  await expect(identityLink).toBeVisible();
-  await page.unroute(matches);
+test(
+  "identity links never render a private cached payload during or after a denied refetch",
+  async ({ page }) => {
+    await signInOwner(page);
+    const path = "/api/v1/me/identity-links";
+    const sentinel = "synthetic-private-subject";
+    const matches = (url: URL) => url.pathname === path;
 
-  // In-app navigation preserves a warm cache. Only the delayed network response differs.
-  await holdDeniedRead(page, path, 403, () => identityLink.click(), async () => {
-    await expect(page.getByText(sentinel, { exact: false })).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "Unlink", exact: true })).toHaveCount(0);
-    await expect(page.getByRole("link", { name: /^Link / })).toHaveCount(0);
-  }, async () => {
-    await expect(page.getByRole("alert")).toContainText("Unable to load linked identities.");
-  });
-});
+    await page.route(matches, (route) =>
+      route.fulfill({
+        json: [
+          {
+            id: "synthetic-one",
+            issuer: "https://identity.example.test",
+            subject: sentinel
+          },
+          {
+            id: "synthetic-two",
+            issuer: "https://identity.example.test",
+            subject: "synthetic-other-subject"
+          }
+        ]
+      })
+    );
 
-test("unlinking the active identity revalidates the account even when the DELETE succeeds", async ({ page }) => {
-  await signInOwner(page);
-  const linksPath = "/api/v1/me/identity-links";
-  const currentSubject = "synthetic-active-identity";
-  const matches = (url: URL) => url.pathname === linksPath;
-  let unlinked = false;
-  await page.route(matches, async (route) => {
-    if (route.request().method() === "DELETE") {
-      unlinked = true;
-      await route.fulfill({ status: 204 });
-      return;
-    }
-    const remainingLink = { id: "synthetic-other", issuer: "https://identity.example.test", subject: "synthetic-other-subject" };
-    await route.fulfill({ json: unlinked ? [remainingLink] : [
-      { id: "synthetic-active", issuer: "https://identity.example.test", subject: currentSubject },
-      remainingLink
-    ] });
-  });
-  try {
-    await page.getByRole("link", { name: "Identity & session" }).click();
-    await expect(page.getByText("Owner Alpha", { exact: false })).toBeVisible();
-    const activeLink = page.locator("li").filter({ hasText: currentSubject });
-    await expect(activeLink).toBeVisible();
+    await openAccountViaUi(page);
+    const privateDetails = page
+      .locator("details.account-technical")
+      .filter({ hasText: sentinel });
+    await privateDetails.locator("summary").click();
+    await expect(page.getByText(sentinel, { exact: false })).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Hủy liên kết", exact: true })
+    ).toHaveCount(2);
 
-    // The server accepted unlink and cascaded the active identity session; the
-    // subsequent account read must be denied, not the otherwise successful links read.
-    await holdDeniedRead(page, "/api/v1/me", 401,
-      () => activeLink.getByRole("button", { name: "Unlink", exact: true }).click(),
+    await page.unroute(matches);
+
+    // Focus revalidation preserves the warm query cache. The private payload
+    // must disappear immediately while authorization is being re-checked.
+    await holdDeniedRead(
+      page,
+      path,
+      403,
+      () =>
+        page.evaluate(() => {
+          window.dispatchEvent(new Event("visibilitychange"));
+        }),
       async () => {
-        expect(unlinked).toBe(true);
-        await expect(page.getByText("Owner Alpha", { exact: false })).toHaveCount(0);
-        await expect(page.getByRole("heading", { name: "Identity & session" })).toHaveCount(0);
-        await expect(page.getByRole("button", { name: "Sign out" })).toHaveCount(0);
+        await expect(page.getByText(sentinel, { exact: false })).toHaveCount(0);
+        await expect(
+          page.getByRole("button", { name: "Hủy liên kết", exact: true })
+        ).toHaveCount(0);
+        await expect(
+          page.getByRole("link", { name: /^Liên kết / })
+        ).toHaveCount(0);
       },
       async () => {
-        await expect(page.getByRole("heading", { name: "Sign in to OpenVietGIS" })).toBeVisible();
+        await expect(page.getByRole("alert")).toContainText(
+          "Không thể tải danh tính đã liên kết"
+        );
+      }
+    );
+  }
+);
+
+test(
+  "unlinking the active identity revalidates the account even when the DELETE succeeds",
+  async ({ page }) => {
+    await signInOwner(page);
+    const linksPath = "/api/v1/me/identity-links";
+    const currentSubject = "synthetic-active-identity";
+    const matches = (url: URL) => url.pathname === linksPath;
+    let unlinked = false;
+
+    await page.route(matches, async (route) => {
+      if (route.request().method() === "DELETE") {
+        unlinked = true;
+        await route.fulfill({ status: 204 });
+        return;
+      }
+      const remainingLink = {
+        id: "synthetic-other",
+        issuer: "https://identity.example.test",
+        subject: "synthetic-other-subject"
+      };
+      await route.fulfill({
+        json: unlinked
+          ? [remainingLink]
+          : [
+              {
+                id: "synthetic-active",
+                issuer: "https://identity.example.test",
+                subject: currentSubject
+              },
+              remainingLink
+            ]
       });
-  } finally {
-    await page.unroute(matches);
-  }
-});
-
-test("membership administration is unmounted while prior permissions are revalidated", async ({ page }) => {
-  await signInOwner(page);
-  const suffix = Date.now().toString();
-  const organizationName = "Membership freshness " + suffix;
-  await page.getByLabel("Organization name").fill(organizationName);
-  await page.getByLabel("Organization slug").fill("membership-freshness-" + suffix);
-  await page.getByRole("button", { name: "Create organization" }).click();
-  await page.getByRole("link", { name: organizationName, exact: true }).click();
-  const organizationId = new URL(page.url()).pathname.split("/").at(-1);
-  expect(organizationId).toMatch(/^[0-9a-f-]{36}$/);
-
-  const membershipLink = page.getByRole("link", { name: "Membership and access" });
-  await membershipLink.click();
-  await expect(page.getByTestId("member-list").locator("li").first()).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Resource grants" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Invitations", exact: true })).toBeVisible();
-  // A normal server-side lifecycle conflict must keep the safe error notice and
-  // administration controls mounted, while child lists may revalidate.
-  const memberMutation = (url: URL) =>
-    url.pathname.startsWith("/api/v1/organizations/" + organizationId + "/members/");
-  await page.route(memberMutation, (route) => route.fulfill({ status: 409, json: { detail: "Conflict" } }));
-  try {
-    await page.getByTestId("member-list").locator("li").first().getByRole("button", { name: "Suspend" }).click();
-    await expect(page.getByRole("alert")).toContainText("Unable to change membership.");
-    await expect(page.getByRole("heading", { name: "Invitations", exact: true })).toBeVisible();
-    await expect(page.getByTestId("member-list").locator("li").first()).toBeVisible();
-  } finally {
-    await page.unroute(memberMutation);
-  }
-
-  const invitationMutation = (url: URL) => url.pathname === "/api/v1/organizations/" + organizationId + "/invitations";
-  await page.route(invitationMutation, (route) => route.fulfill({ status: 422, json: { detail: "Unprocessable" } }));
-  try {
-    const recipientInput = page.getByLabel("Recipient email");
-    await recipientInput.fill("synthetic-recipient@example.test");
-    await page.getByRole("button", { name: "Issue invitation" }).click();
-    await expect(page.getByText("Unable to issue invitation.", { exact: true })).toBeVisible();
-    await expect(recipientInput).toHaveValue("synthetic-recipient@example.test");
-    await expect(page.getByRole("region", { name: "Issued invitation" })).toHaveCount(0);
-  } finally {
-    await page.unroute(invitationMutation);
-  }
-  await page.getByRole("link", { name: "← Organization", exact: true }).click();
-  await expect(membershipLink).toBeVisible();
-
-  await holdDeniedRead(page, "/api/v1/organizations/" + organizationId + "/effective-permissions", 403,
-    () => membershipLink.click(),
-    async () => {
-      await expect(page.getByTestId("member-list")).toHaveCount(0);
-      await expect(page.getByTestId("resource-grant-list")).toHaveCount(0);
-      await expect(page.getByRole("heading", { name: "Invitations", exact: true })).toHaveCount(0);
-      await expect(page.getByRole("region", { name: "Issued invitation" })).toHaveCount(0);
-    },
-    async () => {
-      await expect(page.getByRole("alert")).toContainText("Unable to load organization access.");
     });
-});
 
-test("invitation acceptance is hidden during account refetch and preserves login return-to on denial", async ({ page }) => {
-  await signInOwner(page);
-  const acceptLink = page.getByRole("link", { name: "Accept invitation", exact: true });
-  await acceptLink.click();
-  await expect(page.getByLabel("Invitation handoff")).toBeVisible();
-  await page.getByRole("link", { name: "← Organizations", exact: true }).click();
-  await expect(acceptLink).toBeVisible();
+    try {
+      await openAccountViaUi(page);
+      await expect(
+        page.getByText("Owner Alpha", { exact: false }).first()
+      ).toBeVisible();
 
-  await holdDeniedRead(page, "/api/v1/me", 401, () => acceptLink.click(), async () => {
-    await expect(page.getByLabel("Invitation handoff")).toHaveCount(0);
-  }, async () => {
-    await expect(page.getByRole("heading", { name: "Sign in to OpenVietGIS" })).toBeVisible();
-    const login = page.getByRole("link", { name: /Continue with OpenVietGIS Development/ });
-    const href = await login.getAttribute("href");
-    expect(new URL(href ?? "", page.url()).searchParams.get("return_to")).toBe("/invitations/accept");
-  });
-});
+      const activeLink = page.locator("li").filter({ hasText: currentSubject });
+      await expect(activeLink).toBeVisible();
+
+      await holdDeniedRead(
+        page,
+        "/api/v1/me",
+        401,
+        () =>
+          activeLink
+            .getByRole("button", { name: "Hủy liên kết", exact: true })
+            .click(),
+        async () => {
+          expect(unlinked).toBe(true);
+          await expect(page.locator(".ovg-app-shell")).toBeVisible();
+          await expect(
+            page.getByRole("heading", {
+              name: "Tài khoản & phiên đăng nhập"
+            })
+          ).toBeVisible();
+          await expect(activeLink).toHaveCount(0);
+        },
+        async () => {
+          await expect(
+            page.getByRole("heading", { name: "Đăng nhập OpenVietGIS" })
+          ).toBeVisible();
+        },
+        async () => {
+          await expect(
+            page.getByRole("heading", {
+              name: "Tài khoản & phiên đăng nhập"
+            })
+          ).toHaveCount(0);
+          await expect(page.locator(".ovg-app-shell")).toHaveCount(0);
+        }
+      );
+    } finally {
+      await page.unroute(matches);
+    }
+  }
+);
+
+test(
+  "membership administration is unmounted while prior permissions are revalidated",
+  async ({ page }) => {
+    await signInOwner(page);
+    const suffix = Date.now().toString();
+    const organizationName = "Membership freshness " + suffix;
+
+    await page.goto("/app/organizations");
+    await page.getByLabel("Tên tổ chức").fill(organizationName);
+    await page
+      .getByLabel("Mã định danh tổ chức")
+      .fill("membership-freshness-" + suffix);
+    await page
+      .getByRole("button", { name: "Tạo tổ chức", exact: true })
+      .click();
+
+    await page
+      .getByRole("link", { name: organizationName, exact: true })
+      .click();
+
+    const organizationId = new URL(page.url()).pathname.split("/").at(-1);
+    expect(organizationId).toMatch(/^[0-9a-f-]{36}$/);
+
+    const membershipLink = page.getByRole("link", {
+      name: "Thành viên & phân quyền",
+      exact: true
+    });
+    await membershipLink.click();
+
+    await expect(
+      page.getByTestId("member-list").locator("li").first()
+    ).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Phân quyền tài nguyên" })
+    ).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Lời mời", exact: true })
+    ).toBeVisible();
+
+    // A normal lifecycle conflict keeps safe errors and controls mounted.
+    const memberMutation = (url: URL) =>
+      url.pathname.startsWith(
+        "/api/v1/organizations/" + organizationId + "/members/"
+      );
+
+    await page.route(memberMutation, (route) =>
+      route.fulfill({ status: 409, json: { detail: "Conflict" } })
+    );
+
+    try {
+      await page
+        .getByTestId("member-list")
+        .locator("li")
+        .first()
+        .getByRole("button", { name: "Tạm khóa" })
+        .click();
+      await expect(page.getByRole("alert")).toContainText(
+        "Không thể thay đổi tư cách thành viên"
+      );
+      await expect(
+        page.getByRole("heading", { name: "Lời mời", exact: true })
+      ).toBeVisible();
+      await expect(
+        page.getByTestId("member-list").locator("li").first()
+      ).toBeVisible();
+    } finally {
+      await page.unroute(memberMutation);
+    }
+
+    const invitationMutation = (url: URL) =>
+      url.pathname ===
+      "/api/v1/organizations/" + organizationId + "/invitations";
+
+    await page.route(invitationMutation, (route) =>
+      route.fulfill({ status: 422, json: { detail: "Unprocessable" } })
+    );
+
+    try {
+      const recipientInput = page.getByLabel("Email người nhận");
+      await recipientInput.fill("synthetic-recipient@example.test");
+      await page
+        .getByRole("button", { name: "Gửi lời mời", exact: true })
+        .click();
+      await expect(
+        page.getByText("Không thể gửi lời mời.", { exact: true })
+      ).toBeVisible();
+      await expect(recipientInput).toHaveValue(
+        "synthetic-recipient@example.test"
+      );
+      await expect(
+        page.getByRole("region", { name: "Lời mời đã tạo" })
+      ).toHaveCount(0);
+    } finally {
+      await page.unroute(invitationMutation);
+    }
+
+    await page
+      .getByRole("link", { name: "← Tổ chức", exact: true })
+      .click();
+    const membershipLinkAgain = page.getByRole("link", {
+      name: "Thành viên & phân quyền",
+      exact: true
+    });
+    await expect(membershipLinkAgain).toBeVisible();
+
+    await holdDeniedRead(
+      page,
+      "/api/v1/organizations/" +
+        organizationId +
+        "/effective-permissions",
+      403,
+      () => membershipLinkAgain.click(),
+      async () => {
+        await expect(page.getByTestId("member-list")).toHaveCount(0);
+        await expect(
+          page.getByTestId("resource-grant-list")
+        ).toHaveCount(0);
+        await expect(
+          page.getByRole("heading", { name: "Lời mời", exact: true })
+        ).toHaveCount(0);
+        await expect(
+          page.getByRole("region", { name: "Lời mời đã tạo" })
+        ).toHaveCount(0);
+      },
+      async () => {
+        await expect(page.getByRole("alert")).toContainText(
+          "Không thể tải quyền truy cập tổ chức"
+        );
+      }
+    );
+  }
+);
+
+test(
+  "invitation acceptance keeps the shell stable during account refetch and preserves login return-to on denial",
+  async ({ page }) => {
+    await signInOwner(page);
+
+    await openInvitationsViaUi(page);
+    await expect(page.getByLabel("Thông tin lời mời")).toBeVisible();
+
+    const matches = (url: URL) => url.pathname === "/api/v1/me";
+    let release = () => {};
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+
+    await page.route(matches, async (route) => {
+      await held;
+      await route.fulfill({ status: 401, json: { detail: "Denied" } });
+    });
+
+    try {
+      const requested = page.waitForRequest(
+        (request) =>
+          matches(new URL(request.url())) && request.method() === "GET"
+      );
+
+      await page.evaluate(() => {
+        window.dispatchEvent(new Event("visibilitychange"));
+      });
+
+      await requested;
+
+      // Background revalidation must not flash the public shell or unmount the
+      // authenticated route while the server answer is still pending.
+      await expect(page.locator(".ovg-app-shell")).toBeVisible();
+      await expect(page.getByLabel("Thông tin lời mời")).toBeVisible();
+
+      release();
+
+      await expect(
+        page.getByRole("heading", { name: "Đăng nhập OpenVietGIS" })
+      ).toBeVisible();
+      await expect(page.locator(".ovg-app-shell")).toHaveCount(0);
+      await expect(page.getByLabel("Thông tin lời mời")).toHaveCount(0);
+
+      const login = page.getByRole("link", {
+        name: "Đăng nhập với OpenVietGIS Development",
+        exact: true
+      });
+      const href = await login.getAttribute("href");
+      expect(
+        new URL(href ?? "", page.url()).searchParams.get("return_to")
+      ).toBe("/app/invitations/accept");
+    } finally {
+      release();
+      await page.unroute(matches);
+    }
+  }
+);

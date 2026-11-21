@@ -23,8 +23,75 @@ import { useState } from "react";
 import { useParams } from "react-router-dom";
 import { apiClient } from "../../app/api";
 import { ProjectToolbar } from "./ProjectToolbar";
+import {
+  entitlementTierLabel,
+  externalAvailabilityLabel,
+  releaseProfileLabel,
+  releaseStatusLabel
+} from "./platform-release-state";
 
 type HubTab = "external" | "collab" | "cad" | "field" | "extensions" | "ops";
+
+function platformStatusLabel(status: string): string {
+  const labels: Record<string, string> = {
+    loading: "Đang tải",
+    ready: "Sẵn sàng",
+    not_ready: "Chưa sẵn sàng",
+    pending: "Đang chờ",
+    approved: "Đã phê duyệt",
+    rejected: "Đã từ chối",
+    queued: "Đang chờ",
+    active: "Đang xử lý",
+    succeeded: "Thành công",
+    completed: "Hoàn tất",
+    failed: "Thất bại",
+    cancelled: "Đã hủy",
+    canceled: "Đã hủy"
+  };
+  return labels[status] ?? status;
+}
+
+function releaseCapabilityLabel(id: string, fallback: string): string {
+  const labels: Record<string, string> = {
+    R001: "Nền tảng hệ thống",
+    R002: "Danh tính, tổ chức & phân vùng dữ liệu",
+    R003: "Danh mục dữ liệu không gian & hệ tọa độ",
+    R004: "Không gian bản đồ",
+    R005: "Nhập / Xuất & tác vụ bền vững",
+    R006: "Biên tập & lịch sử thay đổi",
+    R007: "Truy vấn thuộc tính & không gian",
+    R008: "Xử lý không gian & tác vụ",
+    R009: "Bản đồ trình bày & xuất bản in",
+    R010: "Nguồn dữ liệu ngoài",
+    R011: "Cộng tác nhóm & duyệt thay đổi",
+    R012: "CAD 2D & COGO chính xác",
+    R013: "Hiện trường, ngoại tuyến & đồng bộ",
+    R014: "Nền tảng mô-đun mở rộng",
+    R015: "Vận hành sản xuất & tự triển khai"
+  };
+  return labels[id] ?? fallback;
+}
+
+function eventKindLabel(kind: string): string {
+  const labels: Record<string, string> = {
+    changeset_created: "Tạo bộ thay đổi",
+    changeset_committed: "Ghi nhận bộ thay đổi",
+    review_requested: "Yêu cầu duyệt",
+    review_decided: "Đã duyệt thay đổi",
+    comment_added: "Thêm bình luận"
+  };
+  return labels[kind] ?? kind;
+}
+
+function cadDirectionLabel(direction: string): string {
+  const labels: Record<string, string> = {
+    import: "Nhập",
+    export: "Xuất",
+    dxf_to_layer: "DXF → Lớp",
+    layer_to_dxf: "Lớp → DXF"
+  };
+  return labels[direction] ?? direction.toUpperCase();
+}
 
 export function PlatformHubPage() {
   const { organizationId = "", projectId = "" } = useParams();
@@ -107,18 +174,18 @@ export function PlatformHubPage() {
         organizationId={organizationId}
         projectId={projectId}
         active="hub"
-        title="R010–R015 Trung tâm Nền tảng GIS & Vận hành"
+        title="Trung tâm Nền tảng GIS & Vận hành"
       />
       <main className="ovg-suite-body">
         <div className="ovg-tabs" role="tablist">
           {(
             [
-              ["ops", "R015 Vận hành & Sẵn sàng"],
-              ["external", "R010 Nguồn dữ liệu ngoài"],
-              ["collab", "R011 Cộng tác nhóm"],
-              ["cad", "R012 CAD 2D & COGO"],
-              ["field", "R013 Hiện trường & Ngoại tuyến"],
-              ["extensions", "R014 Nền tảng Module"]
+              ["ops", "Vận hành & Sẵn sàng"],
+              ["external", "Nguồn dữ liệu ngoài"],
+              ["collab", "Cộng tác nhóm"],
+              ["cad", "CAD 2D & COGO"],
+              ["field", "Hiện trường & Ngoại tuyến"],
+              ["extensions", "Nền tảng Module"]
             ] as Array<[HubTab, string]>
           ).map(([k, label]) => (
             <button
@@ -139,31 +206,33 @@ export function PlatformHubPage() {
 
         {tab === "ops" && (
           <section className="ovg-card" data-testid="ops-readiness-panel">
-            <h2>R015 Vận hành Production & Năng lực phát hành</h2>
+            <h2>Kiểm tra phụ thuộc & Nghiệm thu phát hành</h2>
             <p>
-              <strong>Trạng thái sẵn sàng:</strong> {readyQ.data?.status ?? "loading"} ·{" "}
-              <strong>PostGIS:</strong> {readyQ.data?.postgis_version ?? "—"} ·{" "}
-              <strong>Gói cấu hình:</strong> {entQ.data?.plan_tier ?? "self_host_community"} (tách biệt phân quyền R002)
+              <strong>Trạng thái phụ thuộc:</strong> {readyQ.isError ? "Không xác nhận được" : readyQ.data?.status ? platformStatusLabel(readyQ.data.status) : "Đang tải"} ·{" "}
+              <strong>PostGIS:</strong> {readyQ.data?.postgis_version ?? "—"}
+            </p>
+            <p>
+              <strong>Hồ sơ phát hành:</strong> {releaseProfileLabel(capsQ.data)}.
+              {" "}Phụ thuộc hoạt động không đồng nghĩa với nghiệm thu sản phẩm.
+            </p>
+            <p>
+              <strong>Gói cấu hình:</strong> {entitlementTierLabel(entQ.data?.plan_tier)} · Chỉ là thông tin cấu hình, không thực thi hạn mức hoặc cấp quyền truy cập.
             </p>
             <table className="ovg-table">
               <thead>
                 <tr>
-                  <th>Phiên bản</th>
                   <th>Năng lực</th>
-                  <th>Cột mốc</th>
-                  <th>Trạng thái</th>
+                  <th>Giai đoạn</th>
+                  <th>Nghiệm thu phát hành</th>
                 </tr>
               </thead>
               <tbody>
                 {(capsQ.data?.items ?? []).map((c) => (
                   <tr key={c.id}>
-                    <td>
-                      <strong>{c.id}</strong>
-                    </td>
-                    <td>{c.name}</td>
+                    <td>{releaseCapabilityLabel(c.id, c.name)}</td>
                     <td>{c.milestone}</td>
                     <td>
-                      <span className="ovg-badge">{c.enabled ? "Đang bật" : "Đã tắt"}</span>
+                      <span className="ovg-badge">{releaseStatusLabel(c, capsQ.data)}</span>
                     </td>
                   </tr>
                 ))}
@@ -174,10 +243,10 @@ export function PlatformHubPage() {
 
         {tab === "external" && (
           <section className="ovg-card">
-            <h2>R010 Nguồn dữ liệu ngoài (Allowlist chống SSRF)</h2>
+            <h2>Nguồn dữ liệu ngoài (Danh sách cho phép chống SSRF)</h2>
             <div className="ovg-form-row">
               <label>
-                Tên miền được phép (Allowlist)
+                Tên miền được phép
                 <input value={extHost} onChange={(e) => setExtHost(e.target.value)} />
               </label>
               <button
@@ -205,26 +274,26 @@ export function PlatformHubPage() {
                       },
                       csrf
                     );
-                    setNotice(`Allowlisted ${extHost} and registered read-only WMS connection.`);
+                    setNotice(`Đã thêm ${extHost} vào danh sách cho phép và đăng ký cấu hình WMS. Xem trạng thái xác minh bên dưới.`);
                     await qc.invalidateQueries({ queryKey: ["hub", organizationId] });
                   } catch (err) {
-                    setError(err instanceof Error ? err.message : "Failed.");
+                    setError(err instanceof Error ? err.message : "Không thành công.");
                   }
                 }}
               >
-                Thêm Allowlist & Kết nối
+                Thêm vào danh sách cho phép & kết nối
               </button>
               <label style={{ flex: 1 }}>
-                Endpoint URL
+                URL điểm cuối
                 <input value={extUrl} onChange={(e) => setExtUrl(e.target.value)} />
               </label>
             </div>
-            <p>Allowlisted Hosts: {(allowlistQ.data?.items ?? []).map((h) => h.hostname).join(", ") || "None"}</p>
+            <p>Máy chủ trong danh sách cho phép: {(allowlistQ.data?.items ?? []).map((h) => h.hostname).join(", ") || "Không có"}</p>
             <ul>
               {(extConnsQ.data?.items ?? []).map((c) => (
                 <li key={c.id}>
                   <strong>{c.name}</strong> ({c.protocol}) — {c.endpoint_url}
-                  {" — "}{c.lifecycle === "revoked" ? "Đã thu hồi" : "Chưa xác minh · chỉ cấu hình"}
+                  {" — "}{externalAvailabilityLabel(c)}
                 </li>
               ))}
             </ul>
@@ -233,12 +302,12 @@ export function PlatformHubPage() {
 
         {tab === "collab" && (
           <section className="ovg-card">
-            <h2>R011 Cộng tác nhóm & Duyệt thay đổi sau Commit</h2>
+            <h2>Cộng tác nhóm & Duyệt thay đổi sau ghi nhận</h2>
             <h3>Yêu cầu duyệt thay đổi ({reviewsQ.data?.items.length ?? 0})</h3>
             <ul>
               {(reviewsQ.data?.items ?? []).map((r) => (
                 <li key={r.id}>
-                  Changeset <code>{r.changeset_id.slice(0, 8)}</code> — <strong>{r.status}</strong>{" "}
+                  Bộ thay đổi <code>{r.changeset_id.slice(0, 8)}</code> — <strong>{platformStatusLabel(r.status)}</strong>{" "}
                   {r.status === "pending" && (
                     <button
                       type="button"
@@ -250,13 +319,13 @@ export function PlatformHubPage() {
                           organizationId,
                           projectId,
                           r.id,
-                          { status: "approved", decision_note: "Approved in UI" },
+                          { status: "approved", decision_note: "Đã phê duyệt trên giao diện" },
                           csrf
                         );
                         await qc.invalidateQueries({ queryKey: ["hub", organizationId, projectId] });
                       }}
                     >
-                      Approve
+                      Phê duyệt
                     </button>
                   )}
                 </li>
@@ -266,7 +335,7 @@ export function PlatformHubPage() {
             <ul>
               {(actsQ.data?.items ?? []).map((a) => (
                 <li key={a.id}>
-                  [{a.event_kind}] {a.actor_display}: {a.summary}
+                  [{eventKindLabel(a.event_kind)}] {a.actor_display}: {a.summary}
                 </li>
               ))}
             </ul>
@@ -275,7 +344,7 @@ export function PlatformHubPage() {
 
         {tab === "cad" && (
           <section className="ovg-card">
-            <h2>R012 Trao đổi CAD 2D DXF & Tính toán COGO chính xác</h2>
+            <h2>Trao đổi CAD 2D DXF & Tính toán COGO chính xác</h2>
             <div className="ovg-form-row">
               <label>
                 Tọa độ gốc X
@@ -315,7 +384,7 @@ export function PlatformHubPage() {
                       `Tọa độ điểm tính được: (${res.endpoint[0].toFixed(4)}, ${res.endpoint[1].toFixed(4)})`
                     );
                   } catch (err) {
-                    setError(err instanceof Error ? err.message : "COGO computation failed.");
+                    setError(err instanceof Error ? err.message : "Tính toán COGO không thành công.");
                   }
                 }}
               >
@@ -323,12 +392,12 @@ export function PlatformHubPage() {
               </button>
             </div>
             {cogoOut && <p className="ovg-notice">{cogoOut}</p>}
-            <h3>CAD Conversions ({cadQ.data?.items.length ?? 0})</h3>
+            <h3>Chuyển đổi CAD ({cadQ.data?.items.length ?? 0})</h3>
             <ul>
               {(cadQ.data?.items ?? []).map((c) => (
                 <li key={c.id}>
-                  {c.direction.toUpperCase()} {c.filename} ({c.cad_format}, EPSG:{c.crs_code}) —{" "}
-                  {c.status}
+                  {cadDirectionLabel(c.direction)} {c.filename} ({c.cad_format}, EPSG:{c.crs_code}) —{" "}
+                  {platformStatusLabel(c.status)}
                 </li>
               ))}
             </ul>
@@ -337,7 +406,7 @@ export function PlatformHubPage() {
 
         {tab === "field" && (
           <section className="ovg-card">
-            <h2>R013 Gói dữ liệu Hiện trường & Ngoại tuyến (GeoPackage)</h2>
+            <h2>Gói dữ liệu Hiện trường & Ngoại tuyến (GeoPackage)</h2>
             <div className="ovg-form-row">
               <label>
                 Tên gói ngoại tuyến
@@ -365,10 +434,10 @@ export function PlatformHubPage() {
                       },
                       csrf
                     );
-                    setNotice(`Created offline GeoPackage ${pk.name} (${pk.feature_count} features).`);
+                    setNotice(`Đã tạo GeoPackage ngoại tuyến ${pk.name} (${pk.feature_count} đối tượng).`);
                     await qc.invalidateQueries({ queryKey: ["hub", organizationId, projectId, "field"] });
                   } catch (err) {
-                    setError(err instanceof Error ? err.message : "Package build failed.");
+                    setError(err instanceof Error ? err.message : "Tạo gói dữ liệu không thành công.");
                   }
                 }}
               >
@@ -378,13 +447,13 @@ export function PlatformHubPage() {
             <ul>
               {(fieldQ.data?.items ?? []).map((p) => (
                 <li key={p.id}>
-                  <strong>{p.name}</strong> ({p.feature_count} features, expires {p.expires_at}) —{" "}
+                  <strong>{p.name}</strong> ({p.feature_count} đối tượng, hết hạn {p.expires_at}) —{" "}
                   <a
                     href={offlinePackageDownloadUrl(organizationId, projectId, p.id)}
                     target="_blank"
                     rel="noreferrer"
                   >
-                    Download .gpkg
+                    Tải xuống .gpkg
                   </a>
                 </li>
               ))}
@@ -394,9 +463,9 @@ export function PlatformHubPage() {
 
         {tab === "extensions" && (
           <section className="ovg-card">
-            <h2>R014 Nền tảng Module mở rộng động (Manifest)</h2>
+            <h2>Nền tảng mô-đun mở rộng động (Manifest)</h2>
             <p>
-              Số Manifest Module đã đăng ký trong tổ chức:{" "}
+              Số manifest mô-đun đã đăng ký trong tổ chức:{" "}
               <strong>{extManifestsQ.data?.items.length ?? 0}</strong>
             </p>
             <ul>

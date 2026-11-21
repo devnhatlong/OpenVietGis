@@ -1,26 +1,32 @@
-import { ApiError, getCurrentUser, type CurrentUser } from "@openvietgis/client-sdk";
-import { useQuery } from "@tanstack/react-query";
+import type { CurrentUser } from "@openvietgis/client-sdk";
 import type { ReactNode } from "react";
 
-import { apiClient } from "../../app/api";
-import { currentProtectedData, protectedQueryOptions } from "../../app/protected-query";
-import { LoginPanel } from "./LoginPanel";
+import {
+  SessionBoundary,
+  useOptionalSession
+} from "../../app/session/SessionBoundary";
 
-export function FreshAccount({ children }: { children: (account: CurrentUser) => ReactNode }) {
-  const user = useQuery({
-    queryKey: ["me"],
-    queryFn: () => getCurrentUser(apiClient),
-    ...protectedQueryOptions
-  });
+function SessionAccount({
+  children
+}: {
+  children: (account: CurrentUser) => ReactNode;
+}) {
+  const session = useOptionalSession();
+  if (!session) return null;
+  return children(session.account);
+}
 
-  if (user.fetchStatus !== "idle" || user.isPending) {
-    return <p>Checking your account…</p>;
-  }
-  if (user.error instanceof ApiError && user.error.status === 401) return <LoginPanel />;
+export function FreshAccount({
+  children
+}: {
+  children: (account: CurrentUser) => ReactNode;
+}) {
+  const session = useOptionalSession();
+  if (session) return children(session.account);
 
-  const account = currentProtectedData(user);
-  if (!account || account.status !== "active") {
-    return <p role="alert">Unable to load your account.</p>;
-  }
-  return children(account);
+  return (
+    <SessionBoundary>
+      <SessionAccount>{children}</SessionAccount>
+    </SessionBoundary>
+  );
 }

@@ -205,8 +205,36 @@ export interface ExtensionManifest {
 export interface ReleaseCapability {
   id: string;
   name: string;
+  /** Release certification, not a runtime feature switch. */
   enabled: boolean;
   milestone: string;
+  status: "unverified" | "unsupported" | "disabled" | "accepted";
+  reason: string;
+  required_for_team: boolean;
+}
+
+export interface ReleaseCapabilityReport {
+  profile: string;
+  profile_status: "unverified" | "accepted";
+  verified_candidate: string | null;
+  verification_record: string | null;
+  production_ready: boolean;
+  enabled_semantics: "release_certification";
+  total_releases: number;
+  accepted_release_count: number;
+  items: ReleaseCapability[];
+}
+
+export interface OpsHealthReadiness {
+  status: "ready" | "not_ready";
+  database: "ok" | "unavailable";
+  postgis: "ok" | "unavailable";
+  postgis_version: string | null;
+  postgresql_version: string | null;
+  artifact_store: "ok" | "unavailable";
+  scope: "dependency_probe_only";
+  production_ready: boolean;
+  checked_at: string;
 }
 
 function projBase(orgId: string, projectId: string): string {
@@ -607,13 +635,13 @@ export function listProjectActivations(
 // R015 Operations
 export function getOpsHealthReady(
   client: ApiClient
-): Promise<{ status: string; database: string; postgis_version: string; artifact_store: string }> {
+): Promise<OpsHealthReadiness> {
   return client.request("/ops/health/ready");
 }
 
 export function getOpsReleaseCapabilities(
   client: ApiClient
-): Promise<{ profile: string; total_releases: number; items: ReleaseCapability[] }> {
+): Promise<ReleaseCapabilityReport> {
   return client.request("/ops/release-capabilities");
 }
 
@@ -626,6 +654,9 @@ export function getOrgEntitlement(
   max_projects: number;
   max_storage_mb: number;
   authorization_distinct: boolean;
+  data_deletion_on_plan_change: boolean;
+  /** Optional commercial configuration; no quota/feature enforcement. */
+  enforcement: "metadata_only";
 }> {
   return client.request(`/organizations/${encodeURIComponent(orgId)}/ops/entitlement`);
 }

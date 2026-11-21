@@ -1,5 +1,6 @@
 import {
   Map as LibreMap,
+  NavigationControl,
   setWorkerCount,
   setWorkerUrl,
   type GeoJSONSourceSpecification,
@@ -88,6 +89,22 @@ const RASTER_LAYERS: Record<
       attribution: "© CARTO"
     }
   ],
+  "google-satellite": [
+    {
+      id: "bm-google-satellite",
+      tiles: ["https://mt0.google.com/vt/lyrs=s&x={x}&y={y}&z={z}"],
+      maxzoom: 20,
+      attribution: "© Google"
+    }
+  ],
+  "google-hybrid": [
+    {
+      id: "bm-google-hybrid",
+      tiles: ["https://mt0.google.com/vt/lyrs=y&x={x}&y={y}&z={z}"],
+      maxzoom: 20,
+      attribution: "© Google"
+    }
+  ],
   topo: [
     {
       id: "bm-topo",
@@ -117,6 +134,7 @@ export function createMapLibreEngine(container: HTMLElement, events: MapEngineEv
     renderWorldCopies: false,
     maxPitch: 60,
     fadeDuration: 0,
+    keyboard: true,
     center: [105.84, 21.03],
     zoom: 5,
     style: {
@@ -138,6 +156,36 @@ export function createMapLibreEngine(container: HTMLElement, events: MapEngineEv
       ]
     }
   });
+
+  // Keep core map navigation available without leaking MapLibre controls into
+  // business components. Keyboard, wheel and drag navigation stay enabled and
+  // one visible control provides equivalent zoom/bearing actions.
+  map.keyboard.enable();
+  map.scrollZoom.enable();
+  map.dragPan.enable();
+  map.addControl(
+    new NavigationControl({
+      showCompass: true,
+      showZoom: true,
+      visualizePitch: true
+    }),
+    "bottom-right"
+  );
+
+  const zoomIn = container.querySelector<HTMLButtonElement>(
+    ".maplibregl-ctrl-zoom-in"
+  );
+  const zoomOut = container.querySelector<HTMLButtonElement>(
+    ".maplibregl-ctrl-zoom-out"
+  );
+  if (zoomIn) {
+    zoomIn.title = "Phóng to bản đồ";
+    zoomIn.setAttribute("aria-label", "Phóng to bản đồ");
+  }
+  if (zoomOut) {
+    zoomOut.title = "Thu nhỏ bản đồ";
+    zoomOut.setAttribute("aria-label", "Thu nhỏ bản đồ");
+  }
 
   let layers: RenderLayer[] = [];
   let active: string | null = null;
@@ -357,13 +405,24 @@ export function createMapLibreEngine(container: HTMLElement, events: MapEngineEv
     getCamera: camera,
     fitBounds(value: Bounds) {
       const [w, s, e, n] = value;
-      map.fitBounds(
+      const target = map.cameraForBounds(
         [
           [w, s],
           [e, n]
         ],
-        { padding: 48, maxZoom: 18, duration: 0 }
+        { padding: 48, maxZoom: 18 }
       );
+      if (!target) return;
+      map.jumpTo({
+        ...(target.center ? { center: target.center } : {}),
+        ...(typeof target.zoom === "number" ? { zoom: target.zoom } : {}),
+        ...(typeof target.bearing === "number" ? { bearing: target.bearing } : {}),
+        ...(typeof target.pitch === "number" ? { pitch: target.pitch } : {})
+      });
+      // Publish the exact resulting viewport synchronously. Relying only on
+      // MapLibre's moveend after fitBounds can lag behind repeated renderer
+      // lifecycles and leave protected viewport queries pinned to stale bounds.
+      settle();
     },
     zoom(delta) {
       map.zoomTo(Math.max(0, Math.min(22, map.getZoom() + delta)), { duration: 0 });

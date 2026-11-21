@@ -79,7 +79,7 @@ export function previousHistoryPage(state: HistoryTraversal): HistoryTraversal {
 export function formatHistoryValue(value: unknown): string {
   if (value === null || typeof value === "string" || typeof value === "boolean" ||
       (typeof value === "number" && Number.isFinite(value))) return JSON.stringify(value);
-  return "Unavailable";
+  return "Không khả dụng";
 }
 
 function positiveRevision(value: unknown): value is number {
@@ -90,16 +90,16 @@ function positiveRevision(value: unknown): value is number {
 export function revisionEntries(resourceType: string, revision: unknown): [string, number | string][] {
   if (typeof revision !== "object" || revision === null) return [];
   if (resourceType === "layer" && "layer_revision" in revision && positiveRevision(revision.layer_revision)) {
-    return [["Layer revision", revision.layer_revision]];
+    return [["Phiên bản lớp", revision.layer_revision]];
   }
   if (resourceType === "data_source" && "catalog_revision" in revision &&
       positiveRevision(revision.catalog_revision) && "content_revision" in revision &&
       typeof revision.content_revision === "string" && "schema_revision" in revision &&
       typeof revision.schema_revision === "string") {
     return [
-      ["Catalog revision", revision.catalog_revision],
-      ["Content revision", revision.content_revision],
-      ["Schema revision", revision.schema_revision]
+      ["Phiên bản danh mục", revision.catalog_revision],
+      ["Phiên bản nội dung", revision.content_revision],
+      ["Phiên bản lược đồ", revision.schema_revision]
     ];
   }
   return [];

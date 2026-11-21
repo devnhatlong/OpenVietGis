@@ -1,22 +1,300 @@
-import { useState } from "react";
-import type { MapLayerReference,SpatialLayer } from "@openvietgis/client-sdk";
-import { capability,defaultStyle,previewMove } from "./workspace";
-export function LayerTree({layers,metadata,active,catalog,nextCatalog,previousCatalog,change,choose,locked,states}:{layers:MapLayerReference[];metadata:(SpatialLayer|undefined)[];active:string|null;catalog:SpatialLayer[]|undefined;nextCatalog:(()=>void)|null;previousCatalog:(()=>void)|null;change:(layers:MapLayerReference[])=>void;choose:(id:string)=>void;locked:boolean;states:string[]}) {
- const [add,setAdd]=useState("");
- return <aside className="map-layers" aria-label="Map layer tree">
-  <h2>Danh sách lớp <span className="map-badge">{layers.length}/32</span></h2>
-  <label>Thêm lớp từ danh mục <select data-testid="add-map-layer" aria-label="Add a catalog Layer" value={add} onChange={e=>setAdd(e.target.value)} disabled={locked||!catalog}><option value="">Chọn lớp dữ liệu…</option>{catalog?.filter(l=>!layers.some(r=>r.layer_id===l.id)).map(l=><option key={l.id} value={l.id}>{l.name}{capability(l,"render")?"":" (không hỗ trợ vẽ)"}</option>)}</select></label>
-  <button type="button" disabled={locked||!add||layers.length>=32} onClick={()=>{if(add){change([...layers,{layer_id:add,visible:true,style:{...defaultStyle}}]);choose(add);setAdd("");}}}>+ Thêm lớp</button>
-  <div className="map-catalog-pages"><button disabled={!previousCatalog} onClick={()=>previousCatalog?.()}>Trang trước</button><button disabled={!nextCatalog} onClick={()=>nextCatalog?.()}>Trang sau</button></div>
-  {!catalog?<p role="status">Đang tải danh mục lớp…</p>:null}
-  {!layers.length?<p className="map-empty">Chọn một lớp bên trên để hiển thị trên bản đồ, hoặc nhập thêm dữ liệu tại mục Nhập / Xuất.</p>:null}
-  <ol>{layers.map((ref,index)=>{const layer=metadata[index],name=layer?.name??"Lớp không khả dụng";return <li key={ref.layer_id} data-testid={"map-layer-"+ref.layer_id} className={active===ref.layer_id?"is-active":""}>
-   <div className="map-layer-title"><input type="checkbox" aria-label={"Show "+name} checked={ref.visible} disabled={locked} onChange={()=>change(layers.map(l=>l.layer_id===ref.layer_id?{...l,visible:!l.visible}:l))}/><button type="button" aria-label={"Make "+name+" active"} aria-pressed={active===ref.layer_id} onClick={()=>choose(ref.layer_id)}>{name}</button></div>
-   <p data-testid={"viewport-state-"+ref.layer_id}>{states[index]??"loading"}</p>
-   {layer?<p className="map-muted">{layer.source.schema.geometry_family} · Hệ tọa độ gốc EPSG:{layer.source.stored_crs?.code??"unknown"}<br/><code>{layer.id}</code></p>:null}
-   <div className="map-layer-tools"><button type="button" disabled={locked||index===0} aria-label={"Move "+name+" up"} onClick={()=>change(previewMove(layers,ref.layer_id,-1))}>↑</button><button type="button" disabled={locked||index===layers.length-1} aria-label={"Move "+name+" down"} onClick={()=>change(previewMove(layers,ref.layer_id,1))}>↓</button><button type="button" disabled={locked} aria-label={"Remove "+name+" from map"} onClick={()=>change(layers.filter(l=>l.layer_id!==ref.layer_id))}>Gỡ lớp</button></div>
-   <details><summary>Tùy chỉnh hiển thị</summary><fieldset disabled={locked||!capability(layer,"style")}><label>Màu sắc <input type="color" aria-label={"Color "+name} data-testid={"color-"+ref.layer_id} value={ref.style.color} onChange={e=>change(layers.map(l=>l.layer_id===ref.layer_id?{...l,style:{...l.style,color:e.target.value}}:l))}/></label>{(["opacity","width","radius"] as const).map(key=><label key={key}>{key}<input type="range" aria-label={key+" "+name} min={key==="opacity"?0:key==="width"?1:2} max={key==="opacity"?1:key==="width"?12:20} step={key==="opacity"?.1:1} value={ref.style[key]} onChange={e=>change(layers.map(l=>l.layer_id===ref.layer_id?{...l,style:{...l.style,[key]:Number(e.target.value)}}:l))}/><output>{ref.style[key]}</output></label>)}</fieldset></details>
-  </li>;})}</ol>
-  <p className="map-muted">Xem trước hiển thị cục bộ. Dữ liệu gốc không bị thay đổi.</p>
- </aside>;
+import type {
+  MapLayerReference,
+  SpatialLayer
+} from "@openvietgis/client-sdk";
+
+import {
+  createLayerCommands,
+  invokeLayerCommand,
+  type LayerCommandId
+} from "./commands";
+import { buildLayerPanelItemView } from "./layer-view";
+import { capability, previewMove } from "./workspace";
+
+function geometryLabel(value: string): string {
+  return {
+    Point: "Điểm",
+    LineString: "Đường",
+    Polygon: "Vùng"
+  }[value] ?? value;
+}
+
+export function LayerTree({
+  layers,
+  metadata,
+  active,
+  locked,
+  states,
+  change,
+  choose,
+  zoom,
+  addDataEnabled,
+  addDataReason,
+  openAddData
+}: {
+  layers: MapLayerReference[];
+  metadata: (SpatialLayer | undefined)[];
+  active: string | null;
+  locked: boolean;
+  states: string[];
+  change: (layers: MapLayerReference[]) => void;
+  choose: (id: string) => void;
+  zoom: (id: string) => void;
+  addDataEnabled: boolean;
+  addDataReason: string | null;
+  openAddData: () => void;
+}) {
+  return (
+    <aside className="map-layers" aria-label="Danh sách lớp bản đồ">
+      <div className="map-layer-panel-head">
+        <div>
+          <h2>
+            Lớp dữ liệu <span className="map-badge">{layers.length}/32</span>
+          </h2>
+          <p>Thứ tự trên xuống tương ứng với thứ tự hiển thị trên bản đồ.</p>
+        </div>
+        <button
+          type="button"
+          className="map-add-data-trigger"
+          disabled={!addDataEnabled}
+          title={addDataReason ?? undefined}
+          onClick={openAddData}
+        >
+          + Thêm dữ liệu
+        </button>
+      </div>
+
+      {!layers.length ? (
+        <div className="map-layer-empty">
+          <strong>Chưa có lớp dữ liệu trên bản đồ</strong>
+          <span>
+            Thêm một lớp đã có trong danh mục hoặc nhập dữ liệu mới để bắt đầu.
+          </span>
+          <button type="button" disabled={!addDataEnabled} title={addDataReason ?? undefined} onClick={openAddData}>
+            Thêm dữ liệu
+          </button>
+        </div>
+      ) : null}
+
+      <ol>
+        {layers.map((reference, index) => {
+          const layer = metadata[index];
+          const view = buildLayerPanelItemView(
+            reference,
+            layer,
+            states[index] ?? "loading",
+            active,
+            index,
+            layers.length
+          );
+          const commands = createLayerCommands(
+            {
+              name: view.name,
+              canZoom: view.canZoom,
+              canMoveUp: view.canMoveUp,
+              canMoveDown: view.canMoveDown,
+              visible: view.visible,
+              canRemove: view.canRemove,
+              locked,
+              disabledReason: view.disabledReason
+            },
+            (id: LayerCommandId) => {
+              if (id === "layer.zoom") zoom(reference.layer_id);
+              if (id === "layer.move-up")
+                change(previewMove(layers, reference.layer_id, -1));
+              if (id === "layer.move-down")
+                change(previewMove(layers, reference.layer_id, 1));
+              if (id === "layer.toggle-visibility")
+                change(
+                  layers.map((item) =>
+                    item.layer_id === reference.layer_id
+                      ? { ...item, visible: !item.visible }
+                      : item
+                  )
+                );
+              if (id === "layer.remove")
+                change(
+                  layers.filter(
+                    (item) => item.layer_id !== reference.layer_id
+                  )
+                );
+            }
+          );
+
+          const zoomCommand = commands.find((item) => item.id === "layer.zoom");
+          const upCommand = commands.find((item) => item.id === "layer.move-up");
+          const downCommand = commands.find(
+            (item) => item.id === "layer.move-down"
+          );
+          const visibilityCommand = commands.find(
+            (item) => item.id === "layer.toggle-visibility"
+          );
+          const removeCommand = commands.find(
+            (item) => item.id === "layer.remove"
+          );
+
+          return (
+            <li
+              key={reference.layer_id}
+              data-testid={"map-layer-" + reference.layer_id}
+              className={view.active ? "is-active" : ""}
+            >
+              <div className="map-layer-title">
+                <input
+                  type="checkbox"
+                  aria-label={"Hiển thị " + view.name}
+                  checked={reference.visible}
+                  disabled={!visibilityCommand?.enabled}
+                  onChange={() =>
+                    invokeLayerCommand(commands, "layer.toggle-visibility")
+                  }
+                />
+                <button
+                  type="button"
+                  aria-label={"Chọn " + view.name + " làm lớp hiện hành"}
+                  aria-pressed={view.active}
+                  onClick={() => choose(reference.layer_id)}
+                >
+                  {view.name}
+                </button>
+              </div>
+
+              <div className="map-layer-summary">
+                <span
+                  className={"map-layer-state is-" + view.availability}
+                  data-testid={"viewport-state-" + reference.layer_id}
+                  data-state={view.availability}
+                >
+                  {view.availabilityLabel}
+                </span>
+                {layer ? (
+                  <span>
+                    {geometryLabel(layer.source.schema.geometry_family)}
+                    {" · "}
+                    {layer.source.stored_crs
+                      ? "EPSG:" + layer.source.stored_crs.code
+                      : "CRS chưa xác định"}
+                  </span>
+                ) : null}
+              </div>
+
+              <div className="map-layer-tools">
+                <button
+                  type="button"
+                  disabled={!zoomCommand?.enabled}
+                  title={zoomCommand?.reason ?? undefined}
+                  aria-label={"Thu phóng tới " + view.name}
+                  onClick={() => invokeLayerCommand(commands, "layer.zoom")}
+                >
+                  Thu phóng
+                </button>
+                <button
+                  type="button"
+                  disabled={!upCommand?.enabled}
+                  title={upCommand?.reason ?? undefined}
+                  aria-label={"Đưa " + view.name + " lên trên"}
+                  onClick={() => invokeLayerCommand(commands, "layer.move-up")}
+                >
+                  ↑
+                </button>
+                <button
+                  type="button"
+                  disabled={!downCommand?.enabled}
+                  title={downCommand?.reason ?? undefined}
+                  aria-label={"Đưa " + view.name + " xuống dưới"}
+                  onClick={() =>
+                    invokeLayerCommand(commands, "layer.move-down")
+                  }
+                >
+                  ↓
+                </button>
+                <button
+                  type="button"
+                  disabled={!removeCommand?.enabled}
+                  title={removeCommand?.reason ?? undefined}
+                  aria-label={"Gỡ " + view.name + " khỏi bản đồ"}
+                  onClick={() => invokeLayerCommand(commands, "layer.remove")}
+                >
+                  Gỡ
+                </button>
+              </div>
+
+              <details>
+                <summary>Tùy chỉnh hiển thị</summary>
+                <fieldset disabled={locked || !capability(layer, "style")}>
+                  <label>
+                    Màu sắc{" "}
+                    <input
+                      type="color"
+                      aria-label={"Màu sắc " + view.name}
+                      data-testid={"color-" + reference.layer_id}
+                      value={reference.style.color}
+                      onChange={(event) =>
+                        change(
+                          layers.map((item) =>
+                            item.layer_id === reference.layer_id
+                              ? {
+                                  ...item,
+                                  style: {
+                                    ...item.style,
+                                    color: event.target.value
+                                  }
+                                }
+                              : item
+                          )
+                        )
+                      }
+                    />
+                  </label>
+                  {(["opacity", "width", "radius"] as const).map((key) => {
+                    const label =
+                      key === "opacity"
+                        ? "Độ mờ"
+                        : key === "width"
+                          ? "Độ rộng"
+                          : "Bán kính";
+                    return (
+                      <label key={key}>
+                        {label}
+                        <input
+                          type="range"
+                          aria-label={label + " " + view.name}
+                          min={key === "opacity" ? 0 : key === "width" ? 1 : 2}
+                          max={key === "opacity" ? 1 : key === "width" ? 12 : 20}
+                          step={key === "opacity" ? 0.1 : 1}
+                          value={reference.style[key]}
+                          onChange={(event) =>
+                            change(
+                              layers.map((item) =>
+                                item.layer_id === reference.layer_id
+                                  ? {
+                                      ...item,
+                                      style: {
+                                        ...item.style,
+                                        [key]: Number(event.target.value)
+                                      }
+                                    }
+                                  : item
+                              )
+                            )
+                          }
+                        />
+                        <output>{reference.style[key]}</output>
+                      </label>
+                    );
+                  })}
+                </fieldset>
+              </details>
+
+            </li>
+          );
+        })}
+      </ol>
+
+      <p className="map-muted">
+        Sắp xếp và kiểu hiển thị chỉ là cấu hình bản đồ. Dữ liệu nguồn không bị
+        thay đổi.
+      </p>
+    </aside>
+  );
 }
