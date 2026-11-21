@@ -38,7 +38,8 @@
 
 ## Decision 7 — Map accessibility uses a region + synchronized textual data
 
-**Decision**: Name the map canvas region, keep keyboard map navigation available, provide zoom controls, and make the synchronized Attribute Table/Inspector the text alternative for feature facts. Do not claim full screen-reader equivalence for spatial visual relationships in the first slice.
+**Decision**: Name the map canvas region, keep keyboard map navigation available, provide
+oom controls, and make the synchronized Attribute Table/Inspector the text alternative for feature facts. Do not claim full screen-reader equivalence for spatial visual relationships in the first slice.
 
 **Rationale**: UI UX Pro Max marks Map Text Alternative as critical and recommends a named map region plus text summary/list/table.
 
@@ -74,3 +75,26 @@
 **Decision**: No new client-owned map configuration, selection, permission, capability or revision semantics are introduced. UI state wraps accepted R004 contracts.
 
 **Rationale**: This is a UX child slice; duplicating domain semantics would violate capability/revision boundaries.
+
+## Dependency reconciliation — 2026-11-21
+
+**Accepted parent checkpoint**: R004 convergence/documentation commit `990e73502889f976068c1c96f122a8a684c2b9b7`, which records verified R004 code SHA `a993542cefa91ea499f4ba8f19ced3e8dcd31513`.
+
+**Current implementation ancestry**: this child worktree descends from `c6d449fc0ead93e259b79b87e63c1c894bd16c93` (`integration/r006-r015-complete`), and `git merge-base --is-ancestor 990e735 HEAD` is true. Therefore the child is not based on the historical `c5cc5a9` scaffold and does not require a destructive rebase onto an older R004-only branch.
+
+**Parent contract reconciliation**:
+
+- Map configuration, configuration revision/CAS, save operation identity, conflict and unresolved acknowledgement semantics remain parent-owned.
+- Layer/source identity, content/schema revision pins, capability checks, authorization reads and stale-read behavior remain parent-owned.
+- Selection continues to use stable feature IDs and the accepted selection scope key; panel/layout state must not create a second selection model.
+- Viewport payloads remain bounded and authoritative; the UX layer must not infer full extents from a partial viewport.
+- Existing command IDs remain the parent command surface. Spec 017 may add presentation commands for Add Data/reorder/panels, but may not redefine save/query permission semantics.
+- R005 is present in the current integration baseline, so Add Data may expose the canonical Import/Export handoff instead of inventing ingestion behavior.
+
+**Reconciliation adjustments**:
+
+- Current R004 already includes a working `LayerTree`, `AttributeTable`, `FeatureInspector`, command registry and stable MapLibre engine boundary. Spec 017 extends these instead of replacing them.
+- A post-R004 regression fix now gates “Fit All” until visible-layer metadata has settled and publishes the fitted viewport synchronously; this is treated as preserved parent behavior because it fixes a renderer timing race without changing domain semantics.
+- R004 SC009 remains a separately recorded human usability gate. This child slice does not claim that evidence.
+
+**Shared UI ownership**: Spec 016 is converged in this same worktree at commit `4d17350`, with shared tokens/primitives/AppShell already present under `apps/web/src/ui` and `apps/web/src/app/shell`. Spec 017 will reuse them and will not create a second design system.

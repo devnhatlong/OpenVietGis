@@ -14,11 +14,11 @@ description: "Dependency-ordered implementation tasks for OpenVietGIS GIS Worksp
 
 **Purpose**: Prevent implementation on a stale or concurrently owned R004 contract baseline.
 
-- [ ] T001 Verify and record the exact accepted/converged parent R004 commit in `specs/017-gis-workspace-ux/quickstart.md`; STOP implementation if no accepted R004 baseline exists
-- [ ] T002 Reconcile `specs/017-gis-workspace-ux/spec.md`, `plan.md`, and `contracts/` against the accepted parent R004 Map/Layer/selection/configuration/command contracts and document any required adjustment in `specs/017-gis-workspace-ux/research.md`
-- [ ] T003 Rebase/transplant this child slice onto the accepted R004 baseline in the isolated implementation worktree and record the exact base in `specs/017-gis-workspace-ux/quickstart.md`
-- [ ] T004 Determine whether R002-FE shared UI tokens/primitives are already merged; record reuse/ownership decision in `specs/017-gis-workspace-ux/research.md` and do not create a duplicate design system
-- [ ] T005 Record existing R004 web unit, Playwright, performance and bundle baselines in `specs/017-gis-workspace-ux/quickstart.md`
+- [x] T001 Verify and record the exact accepted/converged parent R004 commit in `specs/017-gis-workspace-ux/quickstart.md`; STOP implementation if no accepted R004 baseline exists
+- [x] T002 Reconcile `specs/017-gis-workspace-ux/spec.md`, `plan.md`, and `contracts/` against the accepted parent R004 Map/Layer/selection/configuration/command contracts and document any required adjustment in `specs/017-gis-workspace-ux/research.md`
+- [x] T003 Rebase/transplant this child slice onto the accepted R004 baseline in the isolated implementation worktree and record the exact base in `specs/017-gis-workspace-ux/quickstart.md`
+- [x] T004 Determine whether R002-FE shared UI tokens/primitives are already merged; record reuse/ownership decision in `specs/017-gis-workspace-ux/research.md` and do not create a duplicate design system
+- [x] T005 Record existing R004 web unit, Playwright, performance and bundle baselines in `specs/017-gis-workspace-ux/quickstart.md`
 
 **Checkpoint**: No runtime task below may start before T001–T005 are complete.
 
