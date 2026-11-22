@@ -12,55 +12,57 @@ export function LandingPage() {
           <span className="ovg-brand-mark">OVG</span>
           <span>
             <strong>OpenVietGIS</strong>
-            <small>Nền tảng GIS web mã nguồn mở</small>
+            <small>Studio GIS Web & Không gian số</small>
           </span>
         </Link>
         <nav aria-label="Điều hướng trang giới thiệu">
-          <a href="#features">Tính năng</a>
+          <a href="#features">Năng lực</a>
           <a href="#workflow">Quy trình</a>
-          <Link to="/login">Đăng nhập</Link>
+          <Link className="ovg-nav-cta" to="/login">Đăng nhập →</Link>
         </nav>
       </header>
 
-      <section id="main-content" className="ovg-hero">
-        <div className="ovg-hero-copy">
-          <span className="ovg-eyebrow">GIS WEB · POSTGIS · BẢN ĐỒ VIỆT NAM</span>
-          <h1>Quản lý dữ liệu không gian trên một giao diện hiện đại, thuần Việt.</h1>
-          <p className="ovg-hero-lead">
-            OpenVietGIS giúp tổ chức quản lý lớp dữ liệu, bản đồ, biên tập, truy vấn,
-            xử lý không gian, nhập/xuất và cộng tác trong cùng một hệ thống.
-          </p>
-          <div className="ovg-hero-actions">
-            <Link className="ovg-primary-link" to="/login">Đăng nhập</Link>
-            <a className="ovg-secondary-link" href="#features">Xem tính năng</a>
+      <section id="main-content" className="ovg-hero-wrap">
+        <div className="ovg-hero">
+          <div className="ovg-hero-copy">
+            <span className="ovg-eyebrow">OPENVietGIS STUDIO 3.0 · POSTGIS · VN-2000 · AUTOCAD DXF</span>
+            <h1>Nền tảng GIS đám mây thế hệ mới cho dữ liệu không gian Việt Nam.</h1>
+            <p className="ovg-hero-lead">
+              Một studio hợp nhất cho bản đồ vệ tinh & vector, biên tập PostGIS, chuyển đổi bản vẽ
+              AutoCAD DXF/COGO, tích hợp WMS/WMTS/COG bên thứ 3 và hệ sinh thái plugin nghiệp vụ.
+            </p>
+            <div className="ovg-hero-actions">
+              <Link className="ovg-primary-link" to="/login">Mở không gian làm việc</Link>
+              <a className="ovg-secondary-link" href="#features">Khám phá tính năng</a>
+            </div>
+            <div className="ovg-proof-row" aria-label="Năng lực nền tảng">
+              <span><b>PostGIS + VN-2000</b><small>Chuẩn tọa độ & lịch sử thay đổi</small></span>
+              <span><b>AutoCAD & COGO</b><small>Nhập DXF 2D, kiểm tra & trắc địa</small></span>
+              <span><b>WMS / COG / Plugin</b><small>Mở rộng nghiệp vụ theo dự án</small></span>
+            </div>
           </div>
-          <div className="ovg-proof-row" aria-label="Năng lực nền tảng">
-            <span><b>PostGIS</b><small>Dữ liệu không gian chuẩn</small></span>
-            <span><b>Bản đồ web</b><small>Không gian làm việc GIS</small></span>
-            <span><b>GeoPackage</b><small>Nhập / xuất dữ liệu</small></span>
-          </div>
-        </div>
 
-        <div className="ovg-map-preview" aria-label="Minh họa không gian bản đồ OpenVietGIS">
-          <div className="ovg-map-toolbar">
-            <span>OpenVietGIS</span>
-            <span className="ovg-map-status">● Sẵn sàng</span>
-          </div>
-          <div className="ovg-map-stage-preview">
-            <div className="ovg-map-grid" />
-            <div className="ovg-map-road ovg-road-a" />
-            <div className="ovg-map-road ovg-road-b" />
-            <div className="ovg-map-shape ovg-shape-a" />
-            <div className="ovg-map-shape ovg-shape-b" />
-            <div className="ovg-map-pin ovg-pin-a"><i /></div>
-            <div className="ovg-map-pin ovg-pin-b"><i /></div>
-            <aside className="ovg-map-layer-card">
-              <strong>Lớp dữ liệu</strong>
-              <span>☑ Ranh giới khu vực</span>
-              <span>☑ Điểm công trình</span>
-              <span>☑ Tuyến giao thông</span>
-            </aside>
-            <div className="ovg-map-coordinates">EPSG:4326 · 10.7769, 106.7009</div>
+          <div className="ovg-map-preview" aria-label="Minh họa không gian bản đồ OpenVietGIS">
+            <div className="ovg-map-toolbar">
+              <span>OpenVietGIS Studio · Hà Nội</span>
+              <span className="ovg-map-status">● Trực tuyến</span>
+            </div>
+            <div className="ovg-map-stage-preview">
+              <div className="ovg-map-grid" />
+              <div className="ovg-map-road ovg-road-a" />
+              <div className="ovg-map-road ovg-road-b" />
+              <div className="ovg-map-shape ovg-shape-a" />
+              <div className="ovg-map-shape ovg-shape-b" />
+              <div className="ovg-map-pin ovg-pin-a" />
+              <div className="ovg-map-pin ovg-pin-b" />
+              <aside className="ovg-map-layer-card">
+                <strong>Lớp dữ liệu GIS</strong>
+                <span>● Tuyến phố Hoàn Kiếm (DXF)</span>
+                <span>● Điểm địa danh Hà Nội</span>
+                <span>● Ảnh vệ tinh Sentinel-2 COG</span>
+              </aside>
+              <div className="ovg-map-coordinates">EPSG:4326 · 21.0285°N, 105.8542°E</div>
+            </div>
           </div>
         </div>
       </section>
@@ -68,61 +70,46 @@ export function LandingPage() {
       <section id="features" className="ovg-feature-section">
         <div className="ovg-section-heading">
           <div>
-            <span className="ovg-eyebrow">NĂNG LỰC CỐT LÕI</span>
-            <h2>Một workspace GIS cho toàn bộ vòng đời dữ liệu bản đồ.</h2>
+            <span className="ovg-eyebrow">HỆ SINH THÁI TOÀN DIỆN</span>
+            <h2>Mọi công cụ GIS, CAD và dữ liệu hiện trường trong một nền tảng.</h2>
           </div>
         </div>
         <div className="ovg-feature-grid">
           <article>
             <span className="ovg-feature-icon">01</span>
-            <h3>Quản lý lớp dữ liệu</h3>
-            <p>Tổ chức nguồn dữ liệu, lớp hiển thị, CRS, thuộc tính và phiên bản một cách rõ ràng.</p>
+            <h3>Không gian Bản đồ Web</h3>
+            <p>Hiển thị mượt lớp PostGIS trên nền vệ tinh Google/Esri/OSM, bảng thuộc tính và tra cứu tức thì.</p>
           </article>
           <article>
             <span className="ovg-feature-icon">02</span>
-            <h3>Không gian bản đồ</h3>
-            <p>Làm việc với bản đồ nền, lớp GIS, thuộc tính và lựa chọn đối tượng trong cùng workspace.</p>
+            <h3>AutoCAD DXF & COGO</h3>
+            <p>Đọc trực tiếp bản vẽ DXF 2D hệ VN-2000, kiểm tra hình học và tính toán tọa độ trắc địa chính xác.</p>
           </article>
           <article>
             <span className="ovg-feature-icon">03</span>
-            <h3>Biên tập & truy vấn</h3>
-            <p>Chỉnh sửa đối tượng, lọc thuộc tính, truy vấn không gian và theo dõi lịch sử thay đổi.</p>
+            <h3>Tích hợp Bên thứ 3</h3>
+            <p>Kết nối an toàn dịch vụ WMS, WMTS/XYZ, WFS và ảnh vệ tinh COG với danh sách máy chủ kiểm soát SSRF.</p>
           </article>
           <article>
             <span className="ovg-feature-icon">04</span>
-            <h3>Nhập / xuất chuẩn GIS</h3>
-            <p>Đưa dữ liệu vào Project, kiểm tra CRS và xuất kết quả qua các định dạng GIS phổ biến.</p>
+            <h3>Biên tập, Phân tích & Plugin</h3>
+            <p>Vẽ sửa hình học, Buffer/Clip, in bản đồ PDF và kích hoạt mô-đun nghiệp vụ độc lập theo từng dự án.</p>
           </article>
         </div>
       </section>
 
       <section id="workflow" className="ovg-workflow">
         <div>
-          <span className="ovg-eyebrow">QUY TRÌNH</span>
-          <h2>Từ dữ liệu thô đến bản đồ dùng chung.</h2>
+          <span className="ovg-eyebrow">QUY TRÌNH CHUẨN HÓA</span>
+          <h2>Từ dữ liệu bản vẽ thô đến bản đồ vận hành thực tế.</h2>
         </div>
         <ol>
-          <li><b>01</b><span><strong>Nhập dữ liệu</strong><small>Đưa dữ liệu vào Project</small></span></li>
-          <li><b>02</b><span><strong>Kiểm tra & chuẩn hóa</strong><small>CRS, schema, phạm vi</small></span></li>
-          <li><b>03</b><span><strong>Hiển thị & phân tích</strong><small>Bản đồ, truy vấn, xử lý</small></span></li>
-          <li><b>04</b><span><strong>Chia sẻ & vận hành</strong><small>Phân quyền, lịch sử, xuất bản</small></span></li>
+          <li><b>01</b><div><strong>Nạp dữ liệu đa nguồn</strong><small>GeoJSON, GeoPackage, Shapefile, DXF 2D hoặc WMS/COG</small></div></li>
+          <li><b>02</b><div><strong>Biên tập & Kiểm tra CRS</strong><small>Chỉnh sửa trực tiếp, lưu lịch sử phiên bản và chuẩn hóa tọa độ</small></div></li>
+          <li><b>03</b><div><strong>Phân tích & Cộng tác</strong><small>Buffer, Clip, lọc thuộc tính, bình luận và phê duyệt theo vai trò</small></div></li>
+          <li><b>04</b><div><strong>Xuất bản & Thực địa</strong><small>In bản đồ PDF, xuất chuẩn GIS và đồng bộ ngoại tuyến hiện trường</small></div></li>
         </ol>
       </section>
-
-      <section className="ovg-public-cta" aria-labelledby="public-cta-title">
-        <span className="ovg-eyebrow">KHÔNG GIAN LÀM VIỆC</span>
-        <h2 id="public-cta-title">Sẵn sàng mở OpenVietGIS?</h2>
-        <p>Đăng nhập bằng tài khoản đã được cấp để truy cập đúng tổ chức và dự án của bạn.</p>
-        <Link className="ovg-primary-link" to="/login">Đi tới đăng nhập</Link>
-      </section>
-
-      <footer className="ovg-landing-footer">
-        <div className="ovg-brand">
-          <span className="ovg-brand-mark">OVG</span>
-          <span><strong>OpenVietGIS</strong><small>Nền tảng GIS web</small></span>
-        </div>
-        <span>© 2026 OpenVietGIS · Xây dựng cho dữ liệu không gian Việt Nam</span>
-      </footer>
     </main>
   );
 }

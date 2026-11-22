@@ -172,7 +172,7 @@
 }
 
 /* === OpenVietGIS Studio 2.0 Transfers Polish === */
-.transfers-page { font-family: var(--ovg-font-sans, "Be Vietnam Pro", system-ui, sans-serif); max-width: 1280px; padding: 24px 28px 44px; }
+.transfers-page { font-family: var(--ovg-font-sans, "Be Vietnam Pro", system-ui, sans-serif); width: 100%; max-width: none; padding: 14px 18px 32px; }
 .transfers-card { border-radius: 16px; border: 1px solid #e2e8f0; box-shadow: 0 1px 3px rgba(15,23,42,0.06); padding: 22px 24px; }
 .transfers-primary { background: #0f766e; border-radius: 8px; padding: 9px 16px; font-weight: 600; }
 .transfers-primary:hover:enabled { background: #0d5e58; }

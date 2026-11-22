@@ -43,6 +43,7 @@ export function ActiveModuleLinks({
       .filter((item) => item.slot === slot && typeof item.route_suffix === "string")
       .map((item) => ({
         id: `${manifest.id}:${String(item.id ?? item.route_suffix)}`,
+        extensionKey: manifest.extension_key,
         label: typeof item.label === "string" ? item.label : manifest.display_name,
         suffix: String(item.route_suffix)
       }));
@@ -55,7 +56,10 @@ export function ActiveModuleLinks({
         if (sourceId) query.set("sourceId", sourceId);
         if (featureId) query.set("featureId", featureId);
         const suffix = query.size ? `${item.suffix}?${query}` : item.suffix;
-        const to = `/app/organizations/${encodeURIComponent(organizationId)}/projects/${encodeURIComponent(projectId)}${suffix}`;
+        const to =
+          slot === "project_route"
+            ? `/app/organizations/${encodeURIComponent(organizationId)}/projects/${encodeURIComponent(projectId)}/map?tool=${encodeURIComponent(`ext:${item.extensionKey}`)}`
+            : `/app/organizations/${encodeURIComponent(organizationId)}/projects/${encodeURIComponent(projectId)}${suffix}`;
 
         if (variant === "nav") {
           return (

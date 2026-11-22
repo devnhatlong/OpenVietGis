@@ -1,10 +1,11 @@
 import { useState, type ReactNode } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 
 import { AccountMenu } from "../../features/auth/AccountMenu";
 import { AppNavigation } from "./AppNavigation";
 import { Breadcrumbs } from "./Breadcrumbs";
 import { CommandPalette } from "./CommandPalette";
+import { ThemeToggle } from "./ThemeToggle";
 import {
   loadShellPreference,
   saveShellPreference
@@ -12,9 +13,12 @@ import {
 import "./app-shell.css";
 
 export function AppShell({ children }: { children: ReactNode }) {
+  const location = useLocation();
+  const isMapWorkstation = /\/projects\/[^/]+\/map$/.test(location.pathname);
   const [collapsed, setCollapsed] = useState(
     () => loadShellPreference().navigationCollapsed
   );
+  const effectiveCollapsed = isMapWorkstation ? true : collapsed;
 
   function toggleNavigation() {
     const next = !collapsed;
@@ -23,17 +27,17 @@ export function AppShell({ children }: { children: ReactNode }) {
   }
 
   return (
-    <div className={collapsed ? "ovg-app-shell is-collapsed" : "ovg-app-shell"}>
+    <div className={[effectiveCollapsed ? "is-collapsed" : "", isMapWorkstation ? "is-map-workstation" : "", "ovg-app-shell"].filter(Boolean).join(" ")}>
       <a className="ovg-skip-link" href="#ovg-app-content">Bỏ qua điều hướng</a>
 
       <aside className="ovg-app-sidebar">
         <Link className="ovg-app-brand" to="/app" aria-label="OpenVietGIS - Trang làm việc">
           <span className="ovg-brand-mark">OVG</span>
-          {collapsed ? null : (
-            <span><strong>OpenVietGIS</strong><small>GIS Workspace</small></span>
+          {effectiveCollapsed ? null : (
+            <span><strong>OpenVietGIS</strong><small>Studio 3.0</small></span>
           )}
         </Link>
-        <AppNavigation collapsed={collapsed} />
+        <AppNavigation collapsed={effectiveCollapsed} />
         <button
           className="ovg-sidebar-toggle"
           type="button"
@@ -51,6 +55,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           <Breadcrumbs />
           <div className="ovg-app-topbar-actions">
             <CommandPalette />
+            <ThemeToggle />
             <AccountMenu />
           </div>
         </header>

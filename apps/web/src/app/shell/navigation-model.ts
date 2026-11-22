@@ -79,7 +79,7 @@ export function buildNavigationItems(
     {
       id: "autocad",
       labelKey: "AutoCAD / DXF & COGO",
-      destination: project + "/platform-hub?tab=cad",
+      destination: project + "/map?tool=cad",
       scope: "project",
       availability: "visible",
       short: "CAD",
@@ -88,7 +88,7 @@ export function buildNavigationItems(
     {
       id: "editing",
       labelKey: "Biên tập GIS (Vẽ/Sửa)",
-      destination: project + "/editing",
+      destination: project + "/map?tool=editing",
       scope: "project",
       availability: "visible",
       short: "BT",
@@ -97,7 +97,7 @@ export function buildNavigationItems(
     {
       id: "queries",
       labelKey: "Truy vấn & Lọc GIS",
-      destination: project + "/queries",
+      destination: project + "/map?tool=queries",
       scope: "project",
       availability: "visible",
       short: "TV",
@@ -106,7 +106,7 @@ export function buildNavigationItems(
     {
       id: "processing",
       labelKey: "Phân tích (Buffer/Clip)",
-      destination: project + "/processing",
+      destination: project + "/map?tool=processing",
       scope: "project",
       availability: "visible",
       short: "XL",
@@ -115,7 +115,7 @@ export function buildNavigationItems(
     {
       id: "cartography",
       labelKey: "Trình bày & In Bản đồ",
-      destination: project + "/cartography",
+      destination: project + "/map?tool=cartography",
       scope: "project",
       availability: "visible",
       short: "IN",
@@ -124,7 +124,7 @@ export function buildNavigationItems(
     {
       id: "external-sources",
       labelKey: "Tích hợp Bên thứ 3 (WMS/COG)",
-      destination: project + "/platform-hub?tab=external",
+      destination: project + "/map?tool=external",
       scope: "project",
       availability: "visible",
       short: "T3",
@@ -133,7 +133,7 @@ export function buildNavigationItems(
     {
       id: "spatial",
       labelKey: "Danh mục Lớp & CRS",
-      destination: project + "/spatial",
+      destination: project + "/map?tool=spatial",
       scope: "project",
       availability: "visible",
       short: "DL",
@@ -142,7 +142,7 @@ export function buildNavigationItems(
     {
       id: "transfers",
       labelKey: "Nhập / Xuất dữ liệu",
-      destination: project + "/transfers",
+      destination: project + "/map?tool=transfers",
       scope: "project",
       availability: "visible",
       short: "NX",
@@ -151,7 +151,7 @@ export function buildNavigationItems(
     {
       id: "field-offline",
       labelKey: "Thực địa & Ngoại tuyến",
-      destination: project + "/platform-hub?tab=field",
+      destination: project + "/map?tool=field",
       scope: "project",
       availability: "visible",
       short: "HT",
@@ -160,7 +160,7 @@ export function buildNavigationItems(
     {
       id: "collab",
       labelKey: "Cộng tác & Duyệt",
-      destination: project + "/platform-hub?tab=collab",
+      destination: project + "/map?tool=collab",
       scope: "project",
       availability: "visible",
       short: "CT",
@@ -169,7 +169,7 @@ export function buildNavigationItems(
     {
       id: "tools",
       labelKey: "Plugin & Hệ thống",
-      destination: project + "/platform-hub?tab=extensions",
+      destination: project + "/map?tool=extensions",
       scope: "project",
       availability: "visible",
       short: "CC",

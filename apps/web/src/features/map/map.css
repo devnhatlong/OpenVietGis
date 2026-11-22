@@ -309,3 +309,827 @@
   border: 1px solid #e2e8f0;
   box-shadow: 0 2px 8px rgba(15, 23, 42, 0.08);
 }
+
+
+/* === OpenVietGIS Studio 3.0 Full-Bleed Map Canvas & Light/Dark Surfaces === */
+.gis-workspace {
+  --ink: var(--ovg-text);
+  --muted: var(--ovg-text-muted);
+  --line: var(--ovg-border);
+  --brand: var(--ovg-primary);
+  background: var(--ovg-bg) !important;
+  color: var(--ovg-text) !important;
+}
+.gis-header {
+  min-height: 46px !important;
+  padding: 6px 16px !important;
+  background: var(--ovg-surface) !important;
+  color: var(--ovg-text) !important;
+  border-bottom: 1px solid var(--ovg-border) !important;
+  gap: 10px !important;
+}
+.gis-header-left { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.gis-header h1 { font-size: 15px !important; color: var(--ovg-text) !important; display: flex; align-items: center; gap: 6px; }
+.gis-header h1 small {
+  margin: 0 !important;
+  font-size: 10.5px !important;
+  font-weight: 700 !important;
+  color: var(--ovg-primary) !important;
+  background: var(--ovg-primary-soft) !important;
+  border: 1px solid var(--ovg-primary-border);
+  padding: 1px 7px !important;
+  border-radius: 999px;
+}
+.map-status-pill,
+.map-mode-pill {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--ovg-surface-muted);
+  border: 1px solid var(--ovg-border);
+  color: var(--ovg-text-secondary);
+}
+.map-status-pill.map-context-saved { background: var(--ovg-success-soft); color: var(--ovg-success); border-color: transparent; }
+.map-status-pill.map-context-unsaved { background: var(--ovg-warning-soft); color: var(--ovg-warning); border-color: transparent; }
+.gis-header a,
+.gis-header .map-technical-trigger {
+  color: var(--ovg-text-secondary) !important;
+  background: var(--ovg-surface-muted) !important;
+  border: 1px solid var(--ovg-border) !important;
+  padding: 5px 10px !important;
+  border-radius: 7px !important;
+  font-size: 12px !important;
+  font-weight: 600 !important;
+}
+.gis-header a:hover,
+.gis-header .map-technical-trigger:hover {
+  border-color: var(--ovg-primary) !important;
+  background: var(--ovg-primary-soft) !important;
+  color: var(--ovg-primary) !important;
+}
+.map-commandbar {
+  min-height: 40px !important;
+  padding: 5px 16px !important;
+  background: var(--ovg-surface) !important;
+  border-bottom: 1px solid var(--ovg-border) !important;
+}
+.gis-workspace button {
+  background: var(--ovg-surface) !important;
+  color: var(--ovg-text-secondary) !important;
+  border-color: var(--ovg-border-strong) !important;
+}
+.gis-workspace button:hover:enabled {
+  border-color: var(--ovg-primary) !important;
+  background: var(--ovg-primary-soft) !important;
+  color: var(--ovg-primary) !important;
+}
+.map-workspace-layout {
+  height: calc(100dvh - 140px) !important;
+  min-height: 540px !important;
+  max-height: none !important;
+}
+.map-layers,
+.map-inspector,
+.map-attributes,
+.map-history {
+  background: var(--ovg-surface) !important;
+  color: var(--ovg-text) !important;
+  border-color: var(--ovg-border) !important;
+}
+.map-attributes thead { background: var(--ovg-surface-muted) !important; }
+.map-attributes th, .map-attributes td { border-color: var(--ovg-border) !important; color: var(--ovg-text-secondary); }
+.map-layers li { background: var(--ovg-surface-muted); border-color: var(--ovg-border) !important; }
+.map-layers li.is-active { border-color: var(--ovg-primary) !important; box-shadow: inset 3px 0 var(--ovg-primary) !important; }
+.map-stage-status strong { background: #07131f !important; color: #5eead4 !important; border-radius: 6px !important; }
+.map-stage-status span { background: var(--ovg-glass) !important; backdrop-filter: blur(8px); color: var(--ovg-text) !important; border: 1px solid var(--ovg-border); border-radius: 6px !important; }
+.map-layout-controls {
+  background: var(--ovg-glass) !important;
+  border-color: var(--ovg-border) !important;
+}
+
+/* Floating Glassmorphic Basemap Dock inside Map Canvas */
+.map-basemap-dock {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  right: 56px;
+  z-index: 4;
+  display: flex;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  gap: 5px;
+  padding: 5px;
+  max-width: fit-content;
+  background: var(--ovg-glass);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--ovg-border);
+  border-radius: 12px;
+  box-shadow: var(--ovg-shadow-md);
+  scrollbar-width: none;
+}
+.map-basemap-dock::-webkit-scrollbar { display: none; }
+.map-basemap-dock button {
+  flex: none;
+  white-space: nowrap !important;
+  padding: 5px 10px !important;
+  border-radius: 8px !important;
+  font-size: 11.5px !important;
+  font-weight: 600 !important;
+  border: 1px solid transparent !important;
+  background: transparent !important;
+  color: var(--ovg-text-secondary) !important;
+}
+.map-basemap-dock button:hover:enabled {
+  background: var(--ovg-primary-soft) !important;
+  color: var(--ovg-primary) !important;
+}
+.map-basemap-dock button.is-selected {
+  background: #07131f !important;
+  color: #ffffff !important;
+  border-color: #0f766e !important;
+}
+
+
+/* === OpenVietGIS Desktop GIS/CAD Workstation (ArcGIS Pro / QGIS / AutoCAD / MapInfo) === */
+.gis-workspace {
+  display: flex;
+  flex-direction: column;
+  height: calc(100dvh - 46px);
+  overflow: hidden;
+}
+
+.gis-ribbon {
+  flex: 0 0 auto;
+  background: var(--ovg-surface);
+  border-bottom: 1px solid var(--ovg-border);
+  z-index: 20;
+}
+
+.gis-ribbon .gis-header {
+  min-height: 38px !important;
+  padding: 4px 12px !important;
+  background: var(--ovg-surface-muted) !important;
+  border-bottom: 1px solid var(--ovg-border) !important;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.gis-ribbon-tabs {
+  display: flex;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  gap: 2px;
+  scrollbar-width: none;
+}
+.gis-ribbon-tabs::-webkit-scrollbar { display: none; }
+
+.gis-ribbon-tab {
+  position: relative;
+  flex: none;
+  border: 0 !important;
+  background: transparent !important;
+  color: var(--ovg-text-muted) !important;
+  padding: 6px 12px !important;
+  border-radius: 6px 6px 0 0 !important;
+  font-size: 12px !important;
+  font-weight: 700 !important;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.gis-ribbon-tab:hover { color: var(--ovg-text) !important; background: var(--ovg-surface) !important; }
+.gis-ribbon-tab.is-active,
+.gis-ribbon-tab[aria-selected="true"] {
+  color: var(--ovg-primary) !important;
+  background: var(--ovg-surface) !important;
+}
+.gis-ribbon-tab.is-active::after,
+.gis-ribbon-tab[aria-selected="true"]::after {
+  content: "";
+  position: absolute;
+  inset: auto 8px 0 8px;
+  border-block-end: 2.5px solid var(--ovg-primary);
+}
+
+.gis-ribbon-bar {
+  display: flex;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  align-items: stretch;
+  gap: 0;
+  padding: 5px 12px;
+  background: var(--ovg-surface);
+  scrollbar-width: thin;
+}
+
+.gis-ribbon-group {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 0 12px;
+  border-right: 1px solid var(--ovg-border);
+  flex: none;
+}
+.gis-ribbon-group:first-child { padding-left: 0; }
+.gis-ribbon-group:last-child { border-right: 0; }
+.gis-ribbon-group-title {
+  font-size: 9.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ovg-text-muted);
+}
+.gis-ribbon-group-btns {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.gis-ribbon-group-btns button {
+  padding: 4px 10px !important;
+  font-size: 11.8px !important;
+  font-weight: 600 !important;
+  border-radius: 6px !important;
+  white-space: nowrap !important;
+}
+.gis-ribbon-group-btns button.is-accent {
+  background: var(--ovg-primary) !important;
+  border-color: var(--ovg-primary) !important;
+  color: var(--ovg-primary-fg) !important;
+}
+.gis-ribbon-group-btns button.is-accent:hover:enabled {
+  background: var(--ovg-primary-strong) !important;
+  color: var(--ovg-primary-fg) !important;
+}
+.gis-ribbon-group-btns button.is-on {
+  background: var(--ovg-primary-soft) !important;
+  border-color: var(--ovg-primary) !important;
+  color: var(--ovg-primary) !important;
+}
+
+.gis-workstation-stage {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  overflow: hidden;
+  position: relative;
+}
+
+/* QGIS / AutoCAD Left Activity Rail */
+.gis-activity-rail {
+  flex: 0 0 54px;
+  width: 54px;
+  background: #07131f;
+  border-right: 1px solid rgba(148, 163, 184, 0.18);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 6px 4px;
+  overflow-y: auto;
+  scrollbar-width: none;
+  z-index: 15;
+}
+.gis-activity-rail::-webkit-scrollbar { display: none; }
+.gis-rail-sep { width: 28px; height: 1px; background: rgba(148, 163, 184, 0.22); margin: 3px 0; flex: none; }
+.gis-rail-btn {
+  width: 46px;
+  padding: 5px 2px !important;
+  border-radius: 7px !important;
+  border: 1px solid transparent !important;
+  background: transparent !important;
+  color: #94a3b8 !important;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  cursor: pointer;
+  flex: none;
+}
+.gis-rail-btn span {
+  font-size: 9px;
+  font-weight: 600;
+  line-height: 1.1;
+  max-width: 44px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.gis-rail-btn:hover {
+  background: rgba(255, 255, 255, 0.08) !important;
+  color: #ffffff !important;
+  border-color: transparent !important;
+}
+.gis-rail-btn.is-module {
+  color: #5eead4 !important;
+  border-color: rgba(45, 212, 191, 0.28) !important;
+  background: rgba(15, 118, 110, 0.18) !important;
+}
+.gis-rail-btn.is-active {
+  background: linear-gradient(135deg, #0f766e 0%, #14b8a6 100%) !important;
+  color: #ffffff !important;
+  border-color: #2dd4bf !important;
+  box-shadow: 0 3px 10px rgba(20, 184, 166, 0.35);
+}
+
+.gis-workstation-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  position: relative;
+  display: flex;
+}
+
+.gis-workstation-main > .map-workspace-layout {
+  flex: 1 1 auto;
+  width: 100%;
+  height: 100% !important;
+  min-height: 0 !important;
+  max-height: none !important;
+}
+
+/* Hide redundant floating toggle pills inside map layout because Ribbon & Statusbar already control panels */
+.gis-workstation-main .map-layout-controls {
+  display: none !important;
+}
+.gis-workstation-main .map-inspector {
+  padding-top: 14px !important;
+}
+
+/* ArcGIS Pro / QGIS Dockable Slide-Over Tool Panel inside the Map */
+.gis-tool-dock {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(500px, calc(100% - 16px));
+  background: var(--ovg-bg);
+  border-left: 1px solid var(--ovg-border-strong);
+  box-shadow: -12px 0 36px rgba(7, 19, 31, 0.24);
+  z-index: 25;
+  display: flex;
+  flex-direction: column;
+  transition: width 0.18s ease;
+}
+.gis-tool-dock.is-wide {
+  width: min(820px, calc(100% - 16px));
+}
+.gis-tool-dock-head {
+  flex: 0 0 auto;
+  height: 44px;
+  padding: 0 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  background: var(--ovg-surface);
+  border-bottom: 1px solid var(--ovg-border);
+}
+.gis-tool-dock-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.gis-tool-dock-title strong {
+  font-size: 13.5px;
+  font-weight: 800;
+  color: var(--ovg-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.gis-dock-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--ovg-primary);
+  flex: none;
+}
+.gis-tool-dock-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.gis-tool-dock-actions button {
+  padding: 4px 9px !important;
+  font-size: 11.5px !important;
+}
+.gis-tool-dock-actions button.is-close {
+  width: 28px;
+  padding: 4px !important;
+}
+
+.gis-tool-dock-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  container-type: inline-size;
+}
+.gis-dock-loading,
+.gis-dock-empty {
+  padding: 28px 20px;
+  color: var(--ovg-text-muted);
+  text-align: center;
+}
+
+/* Automatically hide redundant standalone page headers when embedded inside the Map Dock! */
+.gis-tool-dock-body .ovg-toolbar,
+.gis-tool-dock-body .hn-head,
+.gis-tool-dock-body .transfers-header {
+  display: none !important;
+}
+.gis-tool-dock-body .ovg-suite,
+.gis-tool-dock-body .hn-shell {
+  min-height: auto !important;
+}
+.gis-tool-dock-body .ovg-suite-body,
+.gis-tool-dock-body .hn-main,
+.gis-tool-dock-body .transfers-page {
+  padding: 14px 16px 28px !important;
+  max-width: none !important;
+}
+.gis-tool-dock-body .ovg-card,
+.gis-tool-dock-body .hn-card,
+.gis-tool-dock-body .transfers-card {
+  padding: 15px 16px !important;
+  border-radius: 12px !important;
+}
+.gis-tool-dock-body .hn-kpi-strip {
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: 8px !important;
+}
+.gis-tool-dock-body .hn-kpi-card { padding: 10px 12px !important; }
+.gis-tool-dock-body .hn-kpi-card strong { font-size: 20px !important; }
+.gis-tool-dock-body .ovg-grid-2 {
+  grid-template-columns: 1fr !important;
+}
+
+/* QGIS / AutoCAD Bottom Status Bar */
+.gis-statusbar {
+  flex: 0 0 26px;
+  height: 26px;
+  padding: 0 12px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  background: #07131f;
+  color: #cbd5e1;
+  border-top: 1px solid rgba(148, 163, 184, 0.2);
+  font-size: 11px;
+  font-family: var(--ovg-font-mono);
+  overflow-x: auto;
+  white-space: nowrap;
+}
+.gis-sb-item.is-live { color: #2dd4bf; font-weight: 700; }
+.gis-sb-item.is-tool { margin-left: auto; color: #38bdf8; font-weight: 600; }
+
+
+/* === Full-Screen 100dvh Zero-Chrome Map Menubar + Floating Map Action HUD === */
+.gis-workspace {
+  height: 100dvh !important;
+  max-height: 100dvh !important;
+  overflow: hidden !important;
+}
+
+.gis-top-menubar {
+  flex: 0 0 42px;
+  height: 42px;
+  padding: 0 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  background: var(--ovg-surface);
+  border-bottom: 1px solid var(--ovg-border);
+  z-index: 35;
+}
+.gis-home-badge {
+  display: grid !important;
+  place-items: center;
+  width: 30px;
+  height: 28px;
+  border-radius: 7px !important;
+  background: linear-gradient(135deg, #2dd4bf 0%, #0f766e 100%) !important;
+  color: #ffffff !important;
+  font-size: 10.5px !important;
+  font-weight: 800 !important;
+  border: 0 !important;
+  padding: 0 !important;
+  text-decoration: none;
+}
+.gis-top-menubar h1 {
+  font-size: 13.5px !important;
+  font-weight: 800 !important;
+  margin: 0 !important;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+.gis-top-menubar h1 small {
+  font-size: 10px !important;
+  padding: 1px 6px !important;
+  border-radius: 999px;
+  background: var(--ovg-primary-soft);
+  color: var(--ovg-primary);
+}
+.gis-top-menubar .gis-back-btn {
+  padding: 4px 8px !important;
+  font-size: 11.5px !important;
+  border-radius: 6px !important;
+  border: 1px solid var(--ovg-border) !important;
+  background: var(--ovg-surface-muted) !important;
+  color: var(--ovg-text-secondary) !important;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.gis-menubar-tabs {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.gis-menubar-tabs::-webkit-scrollbar { display: none; }
+.gis-menu-btn {
+  position: relative;
+  flex: none;
+  padding: 5px 10px !important;
+  border: 1px solid transparent !important;
+  border-radius: 7px !important;
+  background: transparent !important;
+  color: var(--ovg-text-secondary) !important;
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.gis-menu-btn:hover {
+  background: var(--ovg-surface-muted) !important;
+  color: var(--ovg-text) !important;
+}
+.gis-menu-btn.is-module {
+  color: var(--ovg-primary) !important;
+  background: var(--ovg-primary-soft) !important;
+  border-color: var(--ovg-primary-border) !important;
+}
+.gis-menu-btn.is-active {
+  background: var(--ovg-primary) !important;
+  color: var(--ovg-primary-fg) !important;
+  border-color: var(--ovg-primary) !important;
+}
+
+.gis-top-menubar .gis-header-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+}
+.gis-top-menubar .ovg-command-trigger {
+  min-height: 30px;
+  padding: 0 8px;
+  font-size: 11px;
+}
+.gis-top-menubar .ovg-theme-toggle { width: 30px; height: 30px; }
+.gis-top-menubar .ovg-account-menu > summary { min-height: 30px; padding: 2px 8px 2px 3px; font-size: 11.5px; }
+.gis-top-menubar .ovg-account-avatar { width: 22px; height: 22px; font-size: 9px; }
+.gis-top-menubar .map-command-search { min-width: auto !important; }
+.gis-top-menubar .map-command-search summary {
+  padding: 4px 8px;
+  border: 1px solid var(--ovg-border);
+  border-radius: 6px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--ovg-text-secondary);
+  list-style: none;
+}
+
+/* Floating Glassmorphic Action HUD hovering directly ON TOP of the Map Canvas */
+.map-floating-hud {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 6px;
+  max-width: calc(100% - 24px);
+  overflow-x: auto;
+  background: var(--ovg-glass);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--ovg-border);
+  border-radius: 10px;
+  box-shadow: var(--ovg-shadow-md);
+  scrollbar-width: none;
+}
+.map-floating-hud::-webkit-scrollbar { display: none; }
+.map-floating-hud button {
+  flex: none;
+  white-space: nowrap !important;
+  padding: 4px 9px !important;
+  border-radius: 7px !important;
+  font-size: 11.5px !important;
+  font-weight: 600 !important;
+  border: 1px solid transparent !important;
+  background: transparent !important;
+  color: var(--ovg-text) !important;
+}
+.map-floating-hud button:hover:enabled {
+  background: var(--ovg-primary-soft) !important;
+  color: var(--ovg-primary) !important;
+}
+.map-floating-hud button.is-primary {
+  background: var(--ovg-primary) !important;
+  color: var(--ovg-primary-fg) !important;
+}
+.map-floating-hud button.is-on {
+  background: var(--ovg-primary-soft) !important;
+  color: var(--ovg-primary) !important;
+  border-color: var(--ovg-primary-border) !important;
+}
+.map-hud-sep {
+  width: 1px;
+  height: 18px;
+  background: var(--ovg-border-strong);
+  margin: 0 2px;
+  flex: none;
+}
+
+/* Move map-stage-status subtly to bottom-right or hide duplicate text since bottom statusbar already shows it */
+.map-stage-status {
+  top: auto !important;
+  bottom: 58px !important;
+  left: 12px !important;
+  right: auto !important;
+}
+
+
+/* === Final 4 Pixel-Perfection Fixes for Full-Bleed GIS/CAD Workstation === */
+/* 1. Reclaim +120px vertical map height: hide legacy bottom save panel & session bar (Lưu bản đồ is in floating HUD & Statusbar is flush at bottom!) */
+.gis-workspace .map-sessionbar,
+.gis-workspace .map-save-panel {
+  display: none !important;
+}
+
+/* 2. Keep 42px Top Menubar strictly single-row with zero wrapping/clipping */
+.gis-top-menubar {
+  height: 44px !important;
+  flex: 0 0 44px !important;
+  overflow: hidden;
+}
+.gis-top-menubar .gis-header-left {
+  flex-wrap: nowrap !important;
+  gap: 7px !important;
+  min-width: 0;
+  flex: 0 1 auto;
+}
+.gis-top-menubar .map-mode-pill {
+  display: none !important;
+}
+
+/* 3. Keep dark QGIS/AutoCAD Activity Rail icons crisp on dark slate in BOTH Light & Dark themes */
+.gis-workspace .gis-activity-rail .gis-rail-btn {
+  background: transparent !important;
+  color: #94a3b8 !important;
+  border: 1px solid transparent !important;
+}
+.gis-workspace .gis-activity-rail .gis-rail-btn:hover {
+  background: rgba(255, 255, 255, 0.1) !important;
+  color: #ffffff !important;
+  border-color: transparent !important;
+}
+.gis-workspace .gis-activity-rail .gis-rail-btn.is-module {
+  background: rgba(15, 118, 110, 0.22) !important;
+  color: #5eead4 !important;
+  border-color: rgba(45, 212, 191, 0.35) !important;
+}
+.gis-workspace .gis-activity-rail .gis-rail-btn.is-active {
+  background: linear-gradient(135deg, #0f766e 0%, #14b8a6 100%) !important;
+  color: #ffffff !important;
+  border-color: #2dd4bf !important;
+}
+
+/* 4. Fix Dark Mode contrast for .map-badge & hide verbose LayerTree footer disclaimer */
+.gis-workspace .map-badge {
+  background: var(--ovg-surface-muted) !important;
+  color: var(--ovg-text-secondary) !important;
+  border: 1px solid var(--ovg-border) !important;
+}
+.gis-workspace .map-layers > p.map-muted {
+  display: none !important;
+}
+
+
+/* === Ultra-Clean Minimalist GIS/CAD Workstation (Zero Duplication, Pure Map!) === */
+.gis-workspace .map-sessionbar,
+.gis-workspace .map-save-panel,
+.gis-workspace .map-notice {
+  display: none !important;
+}
+.gis-workspace .map-stage-status {
+  display: none !important;
+}
+
+.gis-top-menubar {
+  height: 44px !important;
+  flex: 0 0 44px !important;
+  padding: 0 12px !important;
+  overflow: visible !important;
+}
+.gis-top-menubar .gis-header-left {
+  flex-wrap: nowrap !important;
+  gap: 8px !important;
+  min-width: 0;
+}
+.gis-top-menubar .gis-top-primary {
+  background: var(--ovg-primary) !important;
+  border-color: var(--ovg-primary) !important;
+  color: var(--ovg-primary-fg) !important;
+  font-weight: 700 !important;
+  padding: 5px 11px !important;
+  font-size: 12px !important;
+}
+.gis-top-menubar .gis-top-primary:hover:enabled {
+  background: var(--ovg-primary-strong) !important;
+  color: var(--ovg-primary-fg) !important;
+}
+.gis-top-menubar button {
+  padding: 5px 10px !important;
+  font-size: 12px !important;
+  border-radius: 7px !important;
+}
+.gis-top-menubar button.is-on {
+  background: var(--ovg-primary-soft) !important;
+  border-color: var(--ovg-primary) !important;
+  color: var(--ovg-primary) !important;
+}
+.gis-top-sep {
+  width: 1px;
+  height: 18px;
+  background: var(--ovg-border-strong);
+  margin: 0 2px;
+}
+
+/* Compact 1-button Basemap Switcher in bottom-left corner of Map Canvas */
+.map-basemap-picker {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  z-index: 6;
+}
+.map-basemap-picker > summary {
+  list-style: none;
+  cursor: pointer;
+  user-select: none;
+  padding: 6px 12px;
+  border-radius: 9px;
+  background: var(--ovg-glass);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--ovg-border-strong);
+  color: var(--ovg-text);
+  font-size: 12px;
+  font-weight: 700;
+  box-shadow: var(--ovg-shadow-md);
+}
+.map-basemap-picker > summary::-webkit-details-marker { display: none; }
+.map-basemap-picker[open] > summary {
+  border-color: var(--ovg-primary);
+}
+.map-basemap-menu {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 6px);
+  min-width: 220px;
+  display: grid;
+  gap: 3px;
+  padding: 6px;
+  border-radius: 11px;
+  background: var(--ovg-surface-elevated);
+  border: 1px solid var(--ovg-border-strong);
+  box-shadow: var(--ovg-shadow-lg);
+}
+.map-basemap-menu button {
+  width: 100%;
+  text-align: left;
+  padding: 6px 10px !important;
+  border-radius: 7px !important;
+  border: 1px solid transparent !important;
+  background: transparent !important;
+  color: var(--ovg-text-secondary) !important;
+  font-size: 12px !important;
+  font-weight: 600 !important;
+}
+.map-basemap-menu button:hover:enabled {
+  background: var(--ovg-primary-soft) !important;
+  color: var(--ovg-primary) !important;
+}
+.map-basemap-menu button.is-selected {
+  background: var(--ovg-primary) !important;
+  color: var(--ovg-primary-fg) !important;
+}

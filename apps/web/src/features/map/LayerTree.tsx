@@ -51,7 +51,6 @@ export function LayerTree({
           <h2>
             Lớp dữ liệu <span className="map-badge">{layers.length}/32</span>
           </h2>
-          <p>Thứ tự trên xuống tương ứng với thứ tự hiển thị trên bản đồ.</p>
         </div>
         <button
           type="button"

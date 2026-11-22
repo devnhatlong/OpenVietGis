@@ -124,7 +124,6 @@ export function CadImportPanel({ organizationId, projectId, onImported }: Props)
   return (
     <section aria-label="Kiểm tra và nhập DXF">
       <h3>Nhập DXF 2D · kiểm tra trước khi xuất bản</h3>
-      <p>DXF R2010, R2013 và R2018; điểm, đường và polyline thẳng; ARC, CIRCLE và bulge chỉ xấp xỉ khi có dung sai. Không hỗ trợ DWG, 3D, bề rộng polyline hoặc bản vẽ chưa định vị. Lớp mới chỉ chứa một họ hình học; các phần loại trừ được báo cáo.</p>
       <fieldset disabled={pending}>
         <legend>Thông số bản vẽ</legend>
         <div className="ovg-form-row">

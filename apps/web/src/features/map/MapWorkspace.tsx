@@ -1,3 +1,4 @@
+import { listExtensionManifests, listProjectActivations } from "@openvietgis/client-sdk";
 import {
  ApiError,MapApiError,SpatialApiError,getEffectivePermissions,getMap,getMapDisplayExtent,getMapOperation,getMapViewport,
  getProject,getSpatialFeature,getSpatialLayer,listMapHistory,listSpatialLayers,loadCsrfToken,readSpatialFeatures,saveMap,
@@ -6,11 +7,13 @@ import {
 } from "@openvietgis/client-sdk";
 import { useQueries,useQuery,useQueryClient } from "@tanstack/react-query";
 import { useEffect,useLayoutEffect,useRef,useState } from "react";
-import { Link,useNavigate,useParams } from "react-router-dom";
+import { Link,useNavigate,useParams,useSearchParams } from "react-router-dom";
 import { canonicalOrganizationPath,canonicalProjectPath } from "../../app/route-contract";
 import { apiClient } from "../../app/api";
 import { currentProtectedData,protectedQueryOptions } from "../../app/protected-query";
-import { ActiveModuleLinks } from "../extensions/ActiveModuleLinks";
+import { MapActivityRail } from "./MapActivityRail";
+import { MapRibbon } from "./MapRibbon";
+import { MapToolDock,type ActiveModuleSummary,type MapDockToolId } from "./MapToolDock";
 import { FreshAccount } from "../auth/FreshAccount";
 import { AddDataDialog } from "./AddDataDialog";
 import {
@@ -18,7 +21,6 @@ import {
  type AccessibleMapState
 } from "./accessibility-summary";
 import { AttributeTable } from "./AttributeTable";
-import { CommandBar } from "./CommandBar";
 import { FeatureInspector } from "./FeatureInspector";
 import { SaveStateIndicator } from "./SaveStateIndicator";
 import { TechnicalDetailsDrawer } from "./TechnicalDetailsDrawer";
@@ -90,6 +92,23 @@ function Workspace({organizationId,projectId,accountId,project,initial,canEdit,c
  const [pending,setPending]=useState<PendingSave|null>(null),[notice,setNotice]=useState(""),[working,setWorking]=useState(false);
  const [showHistory,setShowHistory]=useState(false),[historyCursor,setHistoryCursor]=useState<number|undefined>();
  const [contextMenu,setContextMenu]=useState(false),[addDataOpen,setAddDataOpen]=useState(false),[technicalDetailsOpen,setTechnicalDetailsOpen]=useState(false);
+ const [searchParams,setSearchParams]=useSearchParams();
+ const rawTool=searchParams.get("tool");
+ const activeTool=(rawTool as MapDockToolId|null)??null;
+ function setActiveTool(next:MapDockToolId|null){
+  const params=new URLSearchParams(searchParams);
+  if(next){params.set("tool",next);}else{params.delete("tool");}
+  setSearchParams(params,{replace:true});
+ }
+ const extActivations=useQuery({queryKey:["module-links",organizationId,projectId,"activations"],queryFn:()=>listProjectActivations(apiClient,organizationId,projectId),enabled:Boolean(organizationId&&projectId)});
+ const extManifests=useQuery({queryKey:["module-links",organizationId,"manifests"],queryFn:()=>listExtensionManifests(apiClient,organizationId),enabled:Boolean(organizationId)});
+ const activeModules:ActiveModuleSummary[]=(()=>{
+  const activeIds=new Set((extActivations.data?.items??[]).filter(item=>item.status==="active").map(item=>item.manifest_id));
+  return (extManifests.data?.items??[]).filter(m=>activeIds.has(m.id)).map(m=>{
+   const routeItem=(m.ui_contributions??[]).find(c=>c.slot==="project_route");
+   return {extensionKey:m.extension_key,label:typeof routeItem?.label==="string"?routeItem.label:m.display_name};
+  });
+ })();
  const [layoutPreference,setLayoutPreference]=useState<WorkspaceLayoutPreference>(()=>loadWorkspaceLayoutPreference());
  const defaultBasemap:BasemapId=isBasemapAvailable("google-hybrid")?"google-hybrid":LOCAL_BASEMAP;
  const [basemap,setBasemap]=useState<BasemapId>(defaultBasemap);
@@ -317,41 +336,82 @@ function Workspace({organizationId,projectId,accountId,project,initial,canEdit,c
   setAddDataOpen(false);
  }
  return <main className="gis-workspace" data-testid="map-workspace">
-  <header className="gis-header"><div><Link to={"/app/organizations/"+organizationId+"/projects"}>← Dự án</Link><span className="gis-logo">OVG</span><h1>{project.name}<small>Không gian bản đồ</small></h1></div><div className="gis-header-meta"><span>{project.status==="archived"?"Chỉ đọc":writable?"Chế độ chỉnh sửa":"Chế độ xem"}</span><Link to={"/app/organizations/"+organizationId+"/projects/"+projectId+"/transfers"}>Nhập / Xuất</Link><Link to={"/app/organizations/"+organizationId+"/projects/"+projectId+"/spatial"}>Danh mục GIS</Link><ActiveModuleLinks organizationId={organizationId} projectId={projectId} slot="project_route" /><ActiveModuleLinks organizationId={organizationId} projectId={projectId} slot="project_tool" sourceId={activeLayer?.source.id??null} featureId={selected[0]??null} /></div></header>
-  <div className="map-context">
-    <span><strong>Phiên bản bản đồ:</strong> {saved.configuration_revision}</span>
-    <span className={dirty?"map-context-unsaved":"map-context-saved"} data-save-state={saveIndicatorView.state}>{saveIndicatorView.label}</span>
-    <button
-     type="button"
-     className="map-technical-trigger"
-     aria-haspopup="dialog"
-     onClick={()=>setTechnicalDetailsOpen(true)}
-    >Thông tin kỹ thuật</button>
-    <span role="status" title={isBasemapAvailable("google-hybrid")?"Bản đồ nền trực tuyến sẵn sàng (HTTPS)":ONLINE_BASEMAP_UNAVAILABLE} aria-label={isBasemapAvailable("google-hybrid")?"Bản đồ nền trực tuyến sẵn sàng":ONLINE_BASEMAP_UNAVAILABLE}>{isBasemapAvailable("google-hybrid")?"Nền vệ tinh & OSM trực tuyến: Sẵn sàng":"Nền trực tuyến chưa phê duyệt"}</span>
-  </div>
-  <CommandBar commands={commands}/>
-  <div className="map-basemap-bar" style={{display:"flex",flexWrap:"wrap",alignItems:"center",gap:"0.4rem",padding:"0.4rem 0.9rem",background:"#f1f5f9",borderBottom:"1px solid #cbd5e1",fontSize:"0.84rem"}}><strong>Bản đồ nền:</strong>{BASEMAP_OPTIONS.map(opt=><button key={opt.id} type="button" data-testid={"basemap-"+opt.id} disabled={!opt.available} aria-pressed={basemap===opt.id} title={opt.available?undefined:ONLINE_BASEMAP_UNAVAILABLE} style={{padding:"0.25rem 0.65rem",borderRadius:6,border:"1px solid #94a3b8",cursor:opt.available?"pointer":"not-allowed",background:basemap===opt.id?"#0f172a":"#ffffff",color:basemap===opt.id?"#ffffff":opt.available?"#0f172a":"#64748b",fontWeight:600}} onClick={()=>{if(isBasemapAvailable(opt.id))setBasemap(opt.id);}}>{opt.label}</button>)}</div>
-  <WorkspaceLayout
-   preference={layoutPreference}
-   onPreferenceChange={updateLayoutPreference}
-   left={<LayerTree layers={configuration.layers} metadata={metadata} active={active} locked={locked} states={states} choose={choose} change={change}
-    zoom={id=>void fitLayers([id])}
-    addDataEnabled={addDataCommand?.enabled??false} addDataReason={addDataCommand?.reason??null}
-    openAddData={()=>invokeCommand(commands,"map.add-data","toolbar")}/>}
-   map={<section className="map-stage" aria-label="Khung bản đồ" aria-describedby="map-accessible-summary" onContextMenu={e=>{e.preventDefault();setContextMenu(!contextMenu);}}>
-    <p id="map-accessible-summary" className="sr-only" data-testid="accessible-map-summary" aria-live="polite">{accessibleSummary.text}</p>
-    <div ref={canvas} className="map-canvas" data-testid="map-canvas"/>
-    <div className="map-engine-signal" data-testid="map-engine-ready" data-ready={ready?"true":"false"} aria-hidden="true"/>
-    <div className="map-stage-status" role="status"><strong data-testid="map-status" data-state={state}>{mapStateLabel(state)}</strong><span>{BASEMAP_OPTIONS.find(b=>b.id===basemap)?.label??"Lưới cục bộ"} · Hiển thị EPSG:3857 · EPSG:4326 X/Y</span></div>
-    {state==="empty"?<div className="map-blank-message"><h2>Bản đồ dự án</h2><p>{configuration.layers.length?"Không có hình học có thể đọc trong khung nhìn này.":"Hãy thêm một lớp dữ liệu từ bảng bên trái để bắt đầu."}</p></div>:null}
-    {state==="partial"?<div className="map-partial" role="status">Khung nhìn đang hiển thị một phần dữ liệu. Hãy phóng to để xem chi tiết hơn. Bảng thuộc tính đọc độc lập các bản ghi đúng phiên bản.</div>:null}
-    {contextMenu?<div className="map-context-menu" role="menu">{commands.filter(isCanvasCommand).map(c=><button role="menuitem" key={c.id} disabled={!c.enabled} title={c.reason??c.label} onClick={()=>invokeCommand(commands,c.id,"context")}>{c.label}</button>)}</div>:null}
-   </section>}
-   right={<FeatureInspector layer={activeLayer} detail={detail} focus={focus} count={selected.length} error={detailError}/>}
-   bottom={<AttributeTable layer={capability(activeLayer,"feature_read")?activeLayer:undefined} page={page} selected={selected} focus={focus} select={select} pageNumber={pages.length+1} error={readError}
-    previous={pages.length?()=>{setCursor(pages[pages.length-1]??null);setPages(pages.slice(0,-1));}:null}
-    next={page?.next_after_feature_id?()=>{setPages([...pages,cursor]);setCursor(page.next_after_feature_id);}:null}/>}
+  <MapRibbon
+   organizationId={organizationId}
+   projectName={project.name}
+   revision={saved.configuration_revision}
+   writable={writable}
+   archived={project.status==="archived"}
+   dirty={dirty}
+   saveState={saveIndicatorView.state}
+   saveLabel={saveIndicatorView.label}
+   commands={commands}
+   activeTool={activeTool}
+   activeModules={activeModules}
+   leftOpen={!layoutPreference.leftPanelCollapsed}
+   rightOpen={!layoutPreference.rightPanelCollapsed}
+   tableOpen={!layoutPreference.attributeTableCollapsed}
+   onToggleLeft={()=>updateLayoutPreference({...layoutPreference,leftPanelCollapsed:!layoutPreference.leftPanelCollapsed})}
+   onToggleRight={()=>updateLayoutPreference({...layoutPreference,rightPanelCollapsed:!layoutPreference.rightPanelCollapsed})}
+   onToggleTable={()=>updateLayoutPreference({...layoutPreference,attributeTableCollapsed:!layoutPreference.attributeTableCollapsed})}
+   onSelectTool={setActiveTool}
+   onOpenTechnical={()=>setTechnicalDetailsOpen(true)}
   />
+  <div className="gis-workstation-stage">
+   <MapActivityRail
+    leftOpen={!layoutPreference.leftPanelCollapsed}
+    activeTool={activeTool}
+    activeModules={activeModules}
+    onToggleLeft={()=>updateLayoutPreference({...layoutPreference,leftPanelCollapsed:!layoutPreference.leftPanelCollapsed})}
+    onSelectTool={setActiveTool}
+   />
+   <div className="gis-workstation-main">
+    <WorkspaceLayout
+     preference={layoutPreference}
+     onPreferenceChange={updateLayoutPreference}
+     left={<LayerTree layers={configuration.layers} metadata={metadata} active={active} locked={locked} states={states} choose={choose} change={change}
+      zoom={id=>void fitLayers([id])}
+      addDataEnabled={addDataCommand?.enabled??false} addDataReason={addDataCommand?.reason??null}
+      openAddData={()=>invokeCommand(commands,"map.add-data","toolbar")}/>}
+     map={<section className="map-stage" aria-label="Khung bản đồ" aria-describedby="map-accessible-summary" onContextMenu={e=>{e.preventDefault();setContextMenu(!contextMenu);}}>
+      <p id="map-accessible-summary" className="sr-only" data-testid="accessible-map-summary" aria-live="polite">{accessibleSummary.text}</p>
+      <div ref={canvas} className="map-canvas" data-testid="map-canvas"/>
+      <div className="map-engine-signal" data-testid="map-engine-ready" data-ready={ready?"true":"false"} aria-hidden="true"/>
+      <div className="map-stage-status" role="status"><strong data-testid="map-status" data-state={state}>{mapStateLabel(state)}</strong><span>{BASEMAP_OPTIONS.find(b=>b.id===basemap)?.label??"Lưới cục bộ"} · EPSG:3857 / EPSG:4326</span></div>
+      {state==="empty"?<div className="map-blank-message"><h2>Bản đồ dự án</h2><p>{configuration.layers.length?"Không có hình học có thể đọc trong khung nhìn này.":"Hãy thêm một lớp dữ liệu từ bảng bên trái để bắt đầu."}</p></div>:null}
+      {state==="partial"?<div className="map-partial" role="status">Khung nhìn đang hiển thị một phần dữ liệu. Hãy phóng to để xem chi tiết hơn. Bảng thuộc tính đọc độc lập các bản ghi đúng phiên bản.</div>:null}
+      <details className="map-basemap-picker">
+       <summary>Nền: {BASEMAP_OPTIONS.find(b=>b.id===basemap)?.label??"Lưới cục bộ"} ▾</summary>
+       <div className="map-basemap-menu" role="group" aria-label="Bản đồ nền">
+        {BASEMAP_OPTIONS.map(opt=><button key={opt.id} type="button" data-testid={"basemap-"+opt.id} disabled={!opt.available} aria-pressed={basemap===opt.id} title={opt.available?undefined:ONLINE_BASEMAP_UNAVAILABLE} className={basemap===opt.id?"is-selected":""} onClick={()=>{if(isBasemapAvailable(opt.id))setBasemap(opt.id);}}>{opt.label}</button>)}
+       </div>
+      </details>
+      {contextMenu?<div className="map-context-menu" role="menu">{commands.filter(isCanvasCommand).map(c=><button role="menuitem" key={c.id} disabled={!c.enabled} title={c.reason??c.label} onClick={()=>invokeCommand(commands,c.id,"context")}>{c.label}</button>)}</div>:null}
+     </section>}
+     right={<FeatureInspector layer={activeLayer} detail={detail} focus={focus} count={selected.length} error={detailError}/>}
+     bottom={<AttributeTable layer={capability(activeLayer,"feature_read")?activeLayer:undefined} page={page} selected={selected} focus={focus} select={select} pageNumber={pages.length+1} error={readError}
+      previous={pages.length?()=>{setCursor(pages[pages.length-1]??null);setPages(pages.slice(0,-1));}:null}
+      next={page?.next_after_feature_id?()=>{setPages([...pages,cursor]);setCursor(page.next_after_feature_id);}:null}/>}
+    />
+    {activeTool?(
+     <MapToolDock
+      tool={activeTool}
+      organizationId={organizationId}
+      projectId={projectId}
+      activeModules={activeModules}
+      onClose={()=>setActiveTool(null)}
+     />
+    ):null}
+   </div>
+  </div>
+  <footer className="gis-statusbar" role="status" aria-label="Thanh trạng thái bản đồ">
+   <span className="gis-sb-item is-live">● {mapStateLabel(state)}</span>
+   <span className="gis-sb-item">CRS: EPSG:3857 · EPSG:4326 (WGS84 / VN-2000)</span>
+   <span className="gis-sb-item">Nền: {BASEMAP_OPTIONS.find(b=>b.id===basemap)?.label??"Lưới cục bộ"}</span>
+   <span className="gis-sb-item">Lớp: {configuration.layers.length}</span>
+   <span className="gis-sb-item">Đang chọn: {selected.length}</span>
+   {activeTool?<span className="gis-sb-item is-tool">Đang mở công cụ: {activeTool}</span>:null}
+  </footer>
   <TechnicalDetailsDrawer
    open={technicalDetailsOpen}
    view={technicalDetailsView}

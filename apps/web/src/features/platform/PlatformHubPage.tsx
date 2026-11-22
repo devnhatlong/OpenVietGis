@@ -17,7 +17,7 @@ import {
   registerOfficialExtension
 } from "@openvietgis/client-sdk";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { apiClient } from "../../app/api";
 import { ProjectToolbar } from "./ProjectToolbar";
@@ -83,15 +83,27 @@ function cadDirectionLabel(direction: string): string {
   return labels[direction] ?? direction.toUpperCase();
 }
 
-export function PlatformHubPage() {
+export function PlatformHubPage({ embeddedTab }: { embeddedTab?: HubTab } = {}) {
   const { organizationId = "", projectId = "" } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
   const qc = useQueryClient();
+  const [localTab, setLocalTab] = useState<HubTab>(embeddedTab ?? "cad");
+  useEffect(() => {
+    if (embeddedTab) setLocalTab(embeddedTab);
+  }, [embeddedTab]);
   const requestedTab = searchParams.get("tab") as HubTab | null;
   const validTabs: HubTab[] = ["cad", "external", "field", "collab", "extensions", "ops"];
-  const tab: HubTab = requestedTab && validTabs.includes(requestedTab) ? requestedTab : "cad";
+  const tab: HubTab = embeddedTab
+    ? localTab
+    : requestedTab && validTabs.includes(requestedTab)
+      ? requestedTab
+      : "cad";
   function setTab(next: HubTab) {
-    setSearchParams({ tab: next });
+    if (embeddedTab) {
+      setLocalTab(next);
+    } else {
+      setSearchParams({ tab: next });
+    }
   }
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -310,7 +322,6 @@ export function PlatformHubPage() {
                 <input value={extLicense} onChange={(e) => setExtLicense(e.target.value)} />
               </label>
             </div>
-            <p>Chỉ xem mẫu đối với dịch vụ công khai và vùng mẫu được quản trị viên phê duyệt.</p>
             <p>Máy chủ trong danh sách cho phép: {(allowlistQ.data?.items ?? []).map((h) => h.hostname).join(", ") || "Không có"}</p>
             <ul>
               {(extConnsQ.data?.items ?? []).map((c) => (
@@ -334,7 +345,6 @@ export function PlatformHubPage() {
           <section className="ovg-card">
             <h2>Trao đổi CAD 2D DXF & Tính thử COGO mặt phẳng</h2>
             <CadImportPanel key={`${organizationId}/${projectId}`} organizationId={organizationId} projectId={projectId} onImported={() => { void cadQ.refetch(); }} />
-            <p>Kết quả tính thử theo đơn vị tọa độ đã nhập, chưa gắn CRS, không phải tọa độ khảo sát và không xuất bản bản đồ.</p>
             <div className="ovg-form-row">
               <label>
                 Tọa độ gốc X
@@ -405,7 +415,6 @@ export function PlatformHubPage() {
         {tab === "field" && (
           <section className="ovg-card">
             <h2>Không gian hiện trường ngoại tuyến</h2>
-            <p>Chọn vùng dữ liệu có quyền, tải và xác minh GeoPackage; lưu bản nháp trên thiết bị, đồng bộ khi có kết nối.</p>
             <Link
               className="ovg-btn"
               to={`/offline-field/${encodeURIComponent(organizationId)}/${encodeURIComponent(projectId)}`}

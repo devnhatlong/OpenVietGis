@@ -1,94 +1,298 @@
-:root{font-family:var(--ovg-font-sans,"Be Vietnam Pro",Inter,ui-sans-serif,system-ui,sans-serif);color:#10283c;background:#f6f9fb}
-*{box-sizing:border-box}
-body{margin:0;background:#f6f9fb}
-.ovg-landing{min-height:100vh;background:linear-gradient(180deg,#f8fbfd 0,#eef5f7 100%);color:#123047}
-.ovg-landing a{text-decoration:none}
-.ovg-landing-header{height:76px;max-width:1240px;margin:0 auto;padding:0 28px;display:flex;align-items:center;justify-content:space-between}
-.ovg-brand{display:flex;gap:11px;align-items:center;color:#123047}
-.ovg-login-logo{display:grid;place-items:center;width:42px;height:42px;border-radius:11px;background:#0b5f58;color:white;font-weight:850;letter-spacing:.06em;box-shadow:0 8px 18px #0b5f5822}
-.ovg-brand strong{display:block;font-size:16px}
-.ovg-brand small{display:block;color:#6d8190;font-size:11px;margin-top:2px}
-.ovg-landing-header nav{display:flex;gap:26px;align-items:center}
-.ovg-landing-header nav a{color:#526b7c;font-size:14px;font-weight:650}
-.ovg-landing-header nav a:last-child{padding:9px 16px;border:1px solid #b9c9d3;border-radius:8px;color:#123047;background:#fff}
-.ovg-hero{max-width:1240px;margin:0 auto;padding:82px 28px 92px;display:grid;grid-template-columns:1.03fr .97fr;gap:72px;align-items:center}
-.ovg-eyebrow{display:inline-block;font-size:11px;font-weight:800;letter-spacing:.18em;color:#0b7168}
-.ovg-hero h1{font-size:54px;line-height:1.06;letter-spacing:-.045em;margin:16px 0 20px;max-width:690px;color:#0d2a40}
-.ovg-hero-lead{font-size:18px;line-height:1.7;color:#5d7484;max-width:650px;margin:0}
-.ovg-hero-actions{display:flex;gap:12px;margin:30px 0 34px}
-.ovg-primary-link,.ovg-secondary-link{display:inline-flex;align-items:center;justify-content:center;min-height:46px;padding:0 21px;border-radius:9px;font-weight:750;font-size:14px}
-.ovg-primary-link{background:#0b665e;color:#fff;box-shadow:0 10px 25px #0b665e2f}
-.ovg-secondary-link{background:#fff;color:#21455d;border:1px solid #c8d6df}
-.ovg-proof-row{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;max-width:610px}
-.ovg-proof-row span{padding:13px 14px;border-left:2px solid #8fc8c2}
-.ovg-proof-row b{display:block;font-size:13px}
-.ovg-proof-row small{display:block;color:#78909f;margin-top:3px;font-size:11px}
-.ovg-map-preview{border:1px solid #cad9df;border-radius:18px;background:#fff;box-shadow:0 28px 70px #254b5b1f;overflow:hidden;transform:rotate(.2deg)}
-.ovg-map-toolbar{height:52px;display:flex;align-items:center;justify-content:space-between;padding:0 18px;border-bottom:1px solid #dce6ea;font-size:12px;font-weight:750}
-.ovg-map-status{color:#27745e}
-.ovg-map-stage-preview{height:390px;position:relative;overflow:hidden;background:linear-gradient(145deg,#d8e8df,#adcfc2 55%,#d6e7df)}
-.ovg-map-grid{position:absolute;inset:0;background-image:linear-gradient(#ffffff26 1px,transparent 1px),linear-gradient(90deg,#ffffff26 1px,transparent 1px);background-size:34px 34px}
-.ovg-map-road{position:absolute;background:#f3efe2;border:5px solid #ffffffa8;box-shadow:0 0 0 1px #8b9f9470}
-.ovg-road-a{width:570px;height:18px;left:-90px;top:180px;transform:rotate(-15deg)}
-.ovg-road-b{width:430px;height:14px;right:-120px;top:238px;transform:rotate(38deg)}
-.ovg-map-shape{position:absolute;border:2px solid #0f766e;background:#1f9d8d2b}
-.ovg-shape-a{left:130px;top:82px;width:142px;height:110px;clip-path:polygon(8% 12%,80% 0,100% 54%,72% 100%,0 86%)}
-.ovg-shape-b{right:64px;bottom:64px;width:122px;height:88px;clip-path:polygon(0 18%,68% 0,100% 60%,58% 100%,12% 78%)}
-.ovg-map-pin{position:absolute;width:18px;height:18px;border:4px solid #fff;border-radius:50%;background:#e05252;box-shadow:0 2px 10px #1a334866}
-.ovg-pin-a{left:224px;top:137px}.ovg-pin-b{right:111px;bottom:104px}
-.ovg-map-layer-card{position:absolute;left:16px;bottom:16px;width:180px;padding:12px;border:1px solid #cbd8dc;border-radius:9px;background:#ffffffed;box-shadow:0 8px 18px #294b5a26;display:grid;gap:7px;font-size:11px}
-.ovg-map-layer-card strong{font-size:12px}.ovg-map-layer-card span{color:#526d79}
-.ovg-map-coordinates{position:absolute;right:14px;bottom:12px;padding:5px 8px;background:#173d4ccc;color:#fff;border-radius:5px;font-size:10px}
-.ovg-feature-section{padding:84px 28px 92px;background:#fff;border-top:1px solid #dde7eb;border-bottom:1px solid #dde7eb}
-.ovg-section-heading,.ovg-feature-grid{max-width:1184px;margin-left:auto;margin-right:auto}
-.ovg-section-heading{display:flex;align-items:end;justify-content:space-between;gap:32px;margin-bottom:38px}
-.ovg-section-heading h2{font-size:35px;letter-spacing:-.025em;max-width:660px;margin:10px 0 0;color:#153248}
-.ovg-feature-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
-.ovg-feature-grid article{padding:24px;border:1px solid #dbe5ea;border-radius:12px;background:#fbfdfe}
-.ovg-feature-icon{display:grid;place-items:center;width:34px;height:34px;border-radius:8px;background:#e4f2ef;color:#0b7168;font-size:11px;font-weight:800}
-.ovg-feature-grid h3{font-size:16px;margin:22px 0 9px}.ovg-feature-grid p{font-size:13px;line-height:1.65;color:#6b808e;margin:0}
-.ovg-workflow{max-width:1184px;margin:0 auto;padding:92px 0;display:grid;grid-template-columns:.72fr 1.28fr;gap:80px}
-.ovg-workflow h2{font-size:35px;letter-spacing:-.025em;margin:12px 0 0}
-.ovg-workflow ol{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(2,1fr);gap:14px}
-.ovg-workflow li{display:flex;align-items:center;gap:16px;padding:17px;border:1px solid #cfdee4;border-radius:11px;background:#fff}
-.ovg-workflow li>b{color:#0b7168}.ovg-workflow li strong,.ovg-workflow li small{display:block}.ovg-workflow li small{margin-top:4px;color:#7b8f9c}
-.ovg-login-section{padding:88px max(28px,calc((100vw - 1184px)/2));display:grid;grid-template-columns:1fr 440px;gap:100px;align-items:center;background:#0e2c40;color:#f6fbfd}
-.ovg-login-copy h2{font-size:38px;margin:12px 0 14px}.ovg-login-copy p{color:#b6cbd7;line-height:1.7;max-width:600px}.ovg-login-copy ul{padding-left:18px;color:#d7e5eb;line-height:2}
-.ovg-login-card{background:#fff;color:#18364a;border-radius:16px;padding:30px;box-shadow:0 22px 55px #0719235c}
-.ovg-login-logo{margin-bottom:20px}.ovg-login-card h2{font-size:24px;margin:0 0 8px}.ovg-login-card>p{color:#6d8290;margin:0 0 22px}
-.ovg-provider-list{display:grid;gap:10px}.ovg-provider-button{display:flex;align-items:center;gap:12px;padding:13px 14px;border-radius:9px;background:#0b665e;color:#fff;font-weight:750}
-.ovg-provider-icon{display:grid;place-items:center;width:26px;height:26px;border-radius:50%;background:#ffffff1f}
-.ovg-login-state,.ovg-login-error{padding:11px 12px;border-radius:8px;margin-bottom:12px;font-size:13px}.ovg-login-state{background:#eef6f6}.ovg-login-error{background:#fff0ef;color:#9b3d3a}
-.ovg-login-note{display:block;color:#8496a2;margin-top:16px;line-height:1.5}
-.ovg-auth-loading{min-height:100vh;display:grid;place-items:center;align-content:center;gap:14px;background:#f3f7f9;color:#607887;font:14px system-ui}.ovg-auth-loading p{margin:0}.ovg-auth-loading .ovg-login-logo{margin:0}
-.ovg-landing-footer{max-width:1240px;margin:0 auto;padding:30px 28px;display:flex;justify-content:space-between;align-items:center;color:#718692;font-size:12px}
-.ovg-landing-footer .ovg-brand-mark{width:34px;height:34px;font-size:11px}
-@media(max-width:900px){.ovg-landing-header nav{display:none}.ovg-hero{grid-template-columns:1fr;padding-top:48px}.ovg-hero h1{font-size:42px}.ovg-feature-grid{grid-template-columns:1fr 1fr}.ovg-workflow{padding:70px 28px;grid-template-columns:1fr}.ovg-login-section{grid-template-columns:1fr;gap:42px}.ovg-login-card{max-width:520px}.ovg-map-stage-preview{height:330px}}
-@media(max-width:580px){.ovg-hero h1{font-size:36px}.ovg-proof-row,.ovg-feature-grid,.ovg-workflow ol{grid-template-columns:1fr}.ovg-map-preview{display:none}.ovg-landing-footer{align-items:flex-start;gap:20px;flex-direction:column}}
-
-.ovg-public-cta{padding:76px 28px;text-align:center;background:#0e2c40;color:#f6fbfd}
-.ovg-public-cta h2{font-size:36px;letter-spacing:-.025em;margin:12px 0}
-.ovg-public-cta p{max-width:650px;margin:0 auto 24px;color:#b6cbd7;line-height:1.7}
-.ovg-public-cta .ovg-primary-link{background:#fff;color:#0b5f58;box-shadow:none}
-
-.ovg-login-page{min-height:100vh;background:linear-gradient(135deg,#f8fbfd 0%,#edf5f4 100%);color:#123047}
-.ovg-login-page-header{height:76px;max-width:1184px;margin:0 auto;padding:0 28px;display:flex;align-items:center;justify-content:space-between}
-.ovg-login-page-header a{text-decoration:none}
-.ovg-back-link{font-size:13px;font-weight:700;color:#526b7c}
-.ovg-login-page-main{max-width:1080px;margin:0 auto;min-height:calc(100vh - 76px);padding:72px 28px 96px;display:grid;grid-template-columns:minmax(0,1fr) 420px;gap:88px;align-items:center}
-.ovg-login-intro h1{font-size:43px;line-height:1.1;letter-spacing:-.035em;margin:14px 0 18px;max-width:620px}
-.ovg-login-intro p{font-size:16px;line-height:1.7;color:#617887;max-width:610px}
-.ovg-login-intro ul{margin:24px 0 0;padding-left:20px;color:#385468;line-height:2}
-.ovg-login-page .ovg-login-card{border:1px solid #dbe5ea;box-shadow:0 24px 58px #17374720}
-.ovg-login-page .ovg-provider-button{text-decoration:none;min-height:48px}
-@media(max-width:900px){
-  .ovg-login-page-main{grid-template-columns:1fr;gap:36px;padding-top:48px}
-  .ovg-login-intro h1{font-size:36px}
-  .ovg-login-page .ovg-login-card{max-width:560px;width:100%}
+.ovg-landing {
+  min-height: 100dvh;
+  background: var(--ovg-bg);
+  color: var(--ovg-text);
+  font-family: var(--ovg-font-sans);
 }
-@media(max-width:580px){
-  .ovg-login-page-header{height:68px;padding:0 18px}
-  .ovg-login-page-main{padding:36px 18px 64px}
-  .ovg-login-intro h1{font-size:31px}
-  .ovg-back-link{font-size:12px}
+.ovg-landing a { text-decoration: none; }
+
+.ovg-landing-header {
+  height: 70px;
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: 0 28px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.ovg-brand { display: flex; gap: 11px; align-items: center; color: var(--ovg-text); }
+.ovg-brand strong { display: block; font-size: 16px; font-weight: 800; letter-spacing: -0.02em; }
+.ovg-brand small { display: block; color: var(--ovg-text-muted); font-size: 11px; margin-top: 1px; }
+.ovg-landing-header nav { display: flex; gap: 22px; align-items: center; }
+.ovg-landing-header nav a { color: var(--ovg-text-secondary); font-size: 13.5px; font-weight: 600; }
+.ovg-landing-header nav a:hover { color: var(--ovg-primary); }
+.ovg-landing-header nav a.ovg-nav-cta {
+  padding: 8px 16px;
+  border-radius: var(--ovg-radius-pill);
+  background: var(--ovg-primary);
+  color: var(--ovg-primary-fg);
+  font-weight: 700;
+}
+
+.ovg-hero-wrap {
+  background: linear-gradient(135deg, #07131f 0%, #0d2a3d 55%, #0f6b63 100%);
+  color: #f8fafc;
+}
+.ovg-hero {
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: 72px 28px 82px;
+  display: grid;
+  grid-template-columns: 1.05fr 0.95fr;
+  gap: 56px;
+  align-items: center;
+}
+.ovg-eyebrow {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #5eead4;
+}
+.ovg-hero h1 {
+  font-size: clamp(1.9rem, 1.4rem + 1.8vw, 3.1rem);
+  line-height: 1.1;
+  letter-spacing: -0.03em;
+  margin: 14px 0 18px;
+  color: #ffffff;
+}
+.ovg-hero-lead {
+  font-size: 16px;
+  line-height: 1.7;
+  color: #cbd5e1;
+  max-width: 600px;
+  margin: 0;
+}
+.ovg-hero-actions { display: flex; flex-wrap: wrap; gap: 12px; margin: 28px 0 34px; }
+.ovg-primary-link, .ovg-secondary-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0 22px;
+  border-radius: var(--ovg-radius-md);
+  font-weight: 700;
+  font-size: 14px;
+  transition: transform 0.15s ease;
+}
+.ovg-primary-link { background: #14b8a6; color: #042f2e; box-shadow: 0 10px 26px rgba(20, 184, 166, 0.34); }
+.ovg-primary-link:hover { background: #2dd4bf; transform: translateY(-1px); }
+.ovg-secondary-link { background: rgba(255, 255, 255, 0.08); color: #ffffff; border: 1px solid rgba(255, 255, 255, 0.24); }
+.ovg-secondary-link:hover { background: rgba(255, 255, 255, 0.16); }
+
+.ovg-proof-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.ovg-proof-row span { padding: 10px 12px; border-left: 2px solid #2dd4bf; background: rgba(255, 255, 255, 0.04); border-radius: 0 8px 8px 0; }
+.ovg-proof-row b { display: block; font-size: 13px; color: #ffffff; }
+.ovg-proof-row small { display: block; color: #94a3b8; margin-top: 3px; font-size: 11px; }
+
+.ovg-map-preview {
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  border-radius: 18px;
+  background: #0b192c;
+  box-shadow: 0 30px 70px rgba(0, 0, 0, 0.45);
+  overflow: hidden;
+}
+.ovg-map-toolbar {
+  height: 46px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+  font-size: 12px;
+  font-weight: 700;
+  color: #e2e8f0;
+}
+.ovg-map-status { color: #2dd4bf; }
+.ovg-map-stage-preview {
+  height: 360px;
+  position: relative;
+  overflow: hidden;
+  background: radial-gradient(circle at 60% 40%, #134e4a 0%, #0b2538 55%, #07131f 100%);
+}
+.ovg-map-grid {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(94, 234, 212, 0.1) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(94, 234, 212, 0.1) 1px, transparent 1px);
+  background-size: 30px 30px;
+}
+.ovg-map-road { position: absolute; background: rgba(248, 250, 252, 0.85); box-shadow: 0 0 12px rgba(45, 212, 191, 0.35); }
+.ovg-road-a { width: 560px; height: 6px; left: -60px; top: 170px; transform: rotate(-14deg); }
+.ovg-road-b { width: 420px; height: 4px; right: -80px; top: 215px; transform: rotate(36deg); }
+.ovg-map-shape { position: absolute; border: 2px solid #2dd4bf; background: rgba(45, 212, 191, 0.22); }
+.ovg-shape-a { left: 110px; top: 72px; width: 150px; height: 110px; clip-path: polygon(8% 12%, 80% 0, 100% 54%, 72% 100%, 0 86%); }
+.ovg-shape-b { right: 56px; bottom: 58px; width: 124px; height: 88px; clip-path: polygon(0 18%, 68% 0, 100% 60%, 58% 100%, 12% 78%); }
+.ovg-map-pin { position: absolute; width: 16px; height: 16px; border: 3px solid #ffffff; border-radius: 50%; background: #f43f5e; box-shadow: 0 0 0 6px rgba(244, 63, 94, 0.28); }
+.ovg-pin-a { left: 205px; top: 128px; }
+.ovg-pin-b { right: 102px; bottom: 98px; }
+.ovg-map-layer-card {
+  position: absolute;
+  left: 14px;
+  bottom: 14px;
+  width: 215px;
+  padding: 12px 14px;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  border-radius: 12px;
+  background: rgba(7, 19, 31, 0.86);
+  backdrop-filter: blur(10px);
+  display: grid;
+  gap: 6px;
+  font-size: 11.5px;
+  color: #e2e8f0;
+}
+.ovg-map-layer-card strong { font-size: 12px; color: #5eead4; }
+.ovg-map-coordinates {
+  position: absolute;
+  right: 14px;
+  bottom: 14px;
+  padding: 5px 10px;
+  background: rgba(7, 19, 31, 0.86);
+  color: #cbd5e1;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  border-radius: 8px;
+  font: 11px var(--ovg-font-mono);
+}
+
+.ovg-feature-section {
+  padding: 76px 28px;
+  background: var(--ovg-surface);
+  border-bottom: 1px solid var(--ovg-border);
+}
+.ovg-section-heading, .ovg-feature-grid { max-width: 1184px; margin-left: auto; margin-right: auto; }
+.ovg-section-heading { margin-bottom: 34px; }
+.ovg-section-heading .ovg-eyebrow { color: var(--ovg-primary); }
+.ovg-section-heading h2 { font-size: clamp(1.5rem, 1.2rem + 1vw, 2.15rem); letter-spacing: -0.025em; max-width: 680px; margin: 10px 0 0; color: var(--ovg-text); }
+.ovg-feature-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
+.ovg-feature-grid article {
+  padding: 22px;
+  border: 1px solid var(--ovg-border);
+  border-radius: var(--ovg-radius-lg);
+  background: var(--ovg-surface-muted);
+}
+.ovg-feature-icon {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: var(--ovg-primary-soft);
+  color: var(--ovg-primary);
+  font-size: 12px;
+  font-weight: 800;
+}
+.ovg-feature-grid h3 { font-size: 15.5px; margin: 18px 0 8px; color: var(--ovg-text); }
+.ovg-feature-grid p { font-size: 13px; line-height: 1.6; color: var(--ovg-text-muted); margin: 0; }
+
+.ovg-workflow {
+  max-width: 1184px;
+  margin: 0 auto;
+  padding: 76px 28px;
+  display: grid;
+  grid-template-columns: 0.78fr 1.22fr;
+  gap: 56px;
+  align-items: center;
+}
+.ovg-workflow .ovg-eyebrow { color: var(--ovg-primary); }
+.ovg-workflow h2 { font-size: clamp(1.5rem, 1.2rem + 1vw, 2.1rem); letter-spacing: -0.025em; margin: 10px 0 0; }
+.ovg-workflow ol { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.ovg-workflow li {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 18px;
+  border: 1px solid var(--ovg-border);
+  border-radius: var(--ovg-radius-md);
+  background: var(--ovg-surface);
+  box-shadow: var(--ovg-shadow-xs);
+}
+.ovg-workflow li > b { color: var(--ovg-primary); font-family: var(--ovg-font-mono); font-size: 13px; }
+.ovg-workflow li strong, .ovg-workflow li small { display: block; }
+.ovg-workflow li small { margin-top: 4px; color: var(--ovg-text-muted); font-size: 12.5px; }
+
+/* Login Page */
+.ovg-login-page {
+  min-height: 100dvh;
+  background: linear-gradient(135deg, #07131f 0%, #0d2a3d 55%, #0f6b63 100%);
+  color: #f8fafc;
+  font-family: var(--ovg-font-sans);
+  display: flex;
+  flex-direction: column;
+}
+.ovg-login-page-header {
+  height: 70px;
+  max-width: 1160px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 0 28px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.ovg-login-page-header .ovg-brand { color: #ffffff; }
+.ovg-login-page-header .ovg-brand small { color: #94a3b8; }
+.ovg-back-link { color: #cbd5e1; text-decoration: none; font-size: 13.5px; font-weight: 600; }
+.ovg-back-link:hover { color: #5eead4; }
+.ovg-login-page-main {
+  flex: 1;
+  max-width: 1160px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 36px 28px 64px;
+  display: grid;
+  grid-template-columns: 1.05fr 430px;
+  gap: 64px;
+  align-items: center;
+}
+.ovg-login-intro h1 { font-size: clamp(1.7rem, 1.3rem + 1.4vw, 2.5rem); line-height: 1.15; margin: 12px 0 14px; color: #ffffff; }
+.ovg-login-intro p { color: #cbd5e1; line-height: 1.7; max-width: 540px; }
+.ovg-login-intro ul { padding-left: 18px; color: #e2e8f0; line-height: 2; }
+.ovg-login-card {
+  background: var(--ovg-surface);
+  color: var(--ovg-text);
+  border: 1px solid var(--ovg-border);
+  border-radius: 20px;
+  padding: 30px;
+  box-shadow: var(--ovg-shadow-lg);
+}
+.ovg-login-logo {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #2dd4bf 0%, #0f766e 100%);
+  color: #ffffff;
+  font-weight: 800;
+  margin-bottom: 18px;
+}
+.ovg-login-card h2 { font-size: 22px; margin: 0 0 6px; font-weight: 800; }
+.ovg-login-card > p { color: var(--ovg-text-muted); margin: 0 0 22px; font-size: 13.5px; }
+.ovg-provider-list { display: grid; gap: 10px; }
+.ovg-provider-button {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 13px 16px;
+  border-radius: 11px;
+  background: var(--ovg-primary);
+  color: var(--ovg-primary-fg);
+  font-weight: 700;
+  text-decoration: none;
+  transition: opacity 0.15s ease;
+}
+.ovg-provider-button:hover { opacity: 0.92; }
+.ovg-provider-icon { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; background: rgba(255, 255, 255, 0.2); }
+.ovg-login-note { display: block; margin-top: 18px; color: var(--ovg-text-muted); font-size: 12px; line-height: 1.5; }
+.ovg-login-state { padding: 12px; border-radius: 10px; background: var(--ovg-surface-muted); color: var(--ovg-text-muted); margin-bottom: 12px; }
+.ovg-login-error { padding: 12px; border-radius: 10px; background: var(--ovg-danger-soft); color: var(--ovg-danger); margin-bottom: 12px; }
+
+@media (max-width: 960px) {
+  .ovg-hero, .ovg-workflow, .ovg-login-page-main { grid-template-columns: 1fr; gap: 32px; }
+  .ovg-feature-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 640px) {
+  .ovg-feature-grid, .ovg-workflow ol, .ovg-proof-row { grid-template-columns: 1fr; }
 }
