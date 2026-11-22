@@ -130,22 +130,57 @@ def test_r011_r012_r013_collaboration_cad_and_field_offline(migrated_database: N
         assert dwg_res.json()["code"] == "DWG_ADAPTER_REQUIRED"
 
         dxf_bytes = _make_sample_dxf()
-        dxf_res = client.post(
-            f"{base}/cad/import",
-            files={"file": ("site.dxf", dxf_bytes, "application/dxf")},
-            data={"layer_name": "VN2000 CAD Parcels", "units": "meter", "crs_code": "5899"},
+        files = {"file": ("site.dxf", dxf_bytes, "application/dxf")}
+        form = {
+            "layer_name": "VN2000 CAD Parcels",
+            "units": "meter",
+            "crs_code": "5899",
+            "curve_tolerance_m": "0.01",
+        }
+        inspection = client.post(f"{base}/cad/inspect", files=files, data=form)
+        assert inspection.status_code == 200, inspection.text
+        inspected = inspection.json()
+        assert inspected["published"] is False and inspected["geometry_valid"] is True
+        assert inspected["loss_report"]["requires_acknowledgement"] is True
+        unacknowledged = client.post(f"{base}/cad/import", files=files, data=form)
+        assert unacknowledged.status_code == 422
+        assert unacknowledged.json()["code"] == "CAD_LOSS_ACK_REQUIRED"
+        confirmed = form | {
+            "acknowledge_loss": "true",
+            "expected_sha256": inspected["sha256"],
+            "expected_inspection_fingerprint": inspected["inspection_fingerprint"],
+        }
+        stale = client.post(
+            f"{base}/cad/import", files=files, data=confirmed | {"curve_tolerance_m": "0.02"}
         )
+        assert stale.status_code == 409 and stale.json()["code"] == "CAD_INSPECTION_STALE"
+        dxf_res = client.post(f"{base}/cad/import", files=files, data=confirmed)
         assert dxf_res.status_code == 201, dxf_res.text
         dxf_data = dxf_res.json()
         assert dxf_data["status"] == "succeeded"
         assert dxf_data["entity_summary"]["published_feature_count"] == 2
         assert dxf_data["loss_report"]["unsupported_entities"]["3DFACE"] == 1
-        assert "CIRCLE_TESSELLATED_32_SEGMENTS" in dxf_data["loss_report"]["curve_approximations"]
+        assert "CIRCLE_TESSELLATED_BOUNDED" in dxf_data["loss_report"]["curve_approximations"]
+        assert dxf_data["loss_report"]["curve_details"][0]["max_chord_deviation_grid_m"] <= 0.01
+        assert dxf_data["loss_report"]["acknowledged"] is True
 
         # Export back to DXF and parse independently with ezdxf
-        dxf_exp = client.post(
+        export_body = {
+            "layer_id": dxf_data["layer_id"],
+            "units": "meter",
+            "expected_content_revision": dxf_data["content_revision"],
+        }
+        unacknowledged_export = client.post(f"{base}/cad/export", json=export_body)
+        assert unacknowledged_export.status_code == 422
+        assert unacknowledged_export.json()["code"] == "CAD_LOSS_ACK_REQUIRED"
+        stale_export = client.post(
             f"{base}/cad/export",
-            json={"layer_id": dxf_data["layer_id"], "units": "meter"},
+            json=export_body
+            | {"expected_content_revision": "0" * 64, "acknowledge_attribute_loss": True},
+        )
+        assert stale_export.status_code == 409
+        dxf_exp = client.post(
+            f"{base}/cad/export", json=export_body | {"acknowledge_attribute_loss": True}
         )
         assert dxf_exp.status_code == 200, dxf_exp.text
         exported_doc = ezdxf.read(io.StringIO(dxf_exp.content.decode("utf-8")))

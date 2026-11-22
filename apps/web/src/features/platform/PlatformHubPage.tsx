@@ -23,6 +23,7 @@ import {
 } from "./platform-release-state";
 import { ExternalSourcePreview } from "./ExternalSourcePreview";
 import { CollaborationWorkbenchPanel } from "./CollaborationWorkbenchPanel";
+import { CadImportPanel } from "./CadImportPanel";
 
 type HubTab = "external" | "collab" | "cad" | "field" | "extensions" | "ops";
 
@@ -310,6 +311,7 @@ export function PlatformHubPage() {
         {tab === "cad" && (
           <section className="ovg-card">
             <h2>Trao đổi CAD 2D DXF & Tính thử COGO mặt phẳng</h2>
+            <CadImportPanel key={`${organizationId}/${projectId}`} organizationId={organizationId} projectId={projectId} onImported={() => { void cadQ.refetch(); }} />
             <p>Kết quả tính thử theo đơn vị tọa độ đã nhập, chưa gắn CRS, không phải tọa độ khảo sát và không xuất bản bản đồ.</p>
             <div className="ovg-form-row">
               <label>

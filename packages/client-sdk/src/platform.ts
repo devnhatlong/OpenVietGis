@@ -643,6 +643,69 @@ export function decideChangeReview(
 }
 
 // R012 CAD & COGO
+export interface CadDxfInput {
+  file: File;
+  units: "meter" | "centimeter" | "millimeter";
+  crsCode: 3857 | 5899;
+  curveToleranceM?: number;
+}
+
+export interface CadDxfInspection {
+  sha256: string;
+  inspection_fingerprint: string;
+  published: false;
+  geometry_valid: boolean;
+  entity_summary: {
+    entity_counts: Record<string, number>;
+    layer_counts: Record<string, number>;
+    published_family: string;
+    published_feature_count: number;
+    declared_insunits: number;
+    crs_code: number;
+    spatial_mapping: string;
+  };
+  loss_report: {
+    unsupported_entities: Record<string, number>;
+    dropped_secondary_families: Record<string, number>;
+    curve_approximations: string[];
+    curve_tolerance_grid_m: number | null;
+    curve_details: Array<{ handle: string; entity: string; max_chord_deviation_grid_m: number }>;
+    requires_acknowledgement: boolean;
+    survey_grade: false;
+  };
+}
+
+function cadForm(input: CadDxfInput): FormData {
+  const form = new FormData();
+  form.append("file", input.file);
+  form.append("units", input.units);
+  form.append("crs_code", String(input.crsCode));
+  if (input.curveToleranceM !== undefined) form.append("curve_tolerance_m", String(input.curveToleranceM));
+  return form;
+}
+
+export function inspectDxf(
+  client: ApiClient, orgId: string, projectId: string, input: CadDxfInput, csrf: string
+): Promise<CadDxfInspection> {
+  return client.request<CadDxfInspection>(`${projBase(orgId, projectId)}/cad/inspect`, {
+    method: "POST", body: cadForm(input), headers: csrfHeaders(csrf)
+  });
+}
+
+export function importInspectedDxf(
+  client: ApiClient, orgId: string, projectId: string,
+  input: CadDxfInput, inspection: CadDxfInspection, layerName: string, acknowledgeLoss: boolean, csrf: string
+): Promise<CadConversion> {
+  const form = cadForm(input);
+  form.append("layer_name", layerName);
+  form.append("expected_sha256", inspection.sha256);
+  form.append("expected_inspection_fingerprint", inspection.inspection_fingerprint);
+  form.append("acknowledge_loss", String(acknowledgeLoss));
+  return client.request<CadConversion>(`${projBase(orgId, projectId)}/cad/import`, {
+    method: "POST", body: form, headers: csrfHeaders(csrf)
+  });
+}
+
 export function listCadConversions(
   client: ApiClient,
   orgId: string,

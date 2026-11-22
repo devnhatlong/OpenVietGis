@@ -6,6 +6,7 @@ import hashlib
 import json
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 from uuid import UUID, uuid4
 
 from sqlalchemy import text
@@ -60,10 +61,72 @@ def _conv_from_row(row: RowMapping) -> CadConversionRecord:
     )
 
 
+def _inspection_fingerprint(
+    digest: str, units: CadUnit, crs_code: int, tolerance: float | None
+) -> str:
+    profile = ["dxf-2d-bounded-v1", digest, units.value, crs_code, tolerance]
+    return hashlib.sha256(json.dumps(profile, allow_nan=False).encode()).hexdigest()
+
+
 class SqlCadRepository:
     def __init__(self, session: Session, storage_root: Path) -> None:
         self._session = session
         self._store = LocalObjectStore(storage_root)
+
+    def inspect_dxf(
+        self,
+        *,
+        context: AuthorizationContext,
+        filename: str,
+        payload: bytes,
+        units: CadUnit,
+        crs_code: int,
+        curve_tolerance_m: float | None,
+    ) -> dict[str, Any]:
+        prepare_project_scope(self._session, context, permission=Permission.PROJECT_EDIT)
+        if not filename.lower().endswith(".dxf"):
+            raise PlatformValidationError(
+                "only 2D DXF can be inspected; DWG adapter unavailable",
+                code="CAD_FORMAT_UNSUPPORTED",
+            )
+        if crs_code not in (3857, 5899):
+            raise PlatformValidationError(
+                "explicit projected CRS required", code="UNGEOREFERENCED_CAD_REJECTED"
+            )
+        if not payload or len(payload) > 25 * 1024 * 1024:
+            raise PlatformValidationError("CAD upload size unsupported", code="CAD_FILE_LIMIT")
+        family, features, summary, report = parse_dxf_2d(
+            payload, units=units, curve_tolerance_m=curve_tolerance_m
+        )
+        for feat in features:
+            validate_geometry_payload(feat["geometry"], GeometryFamily(family))
+        # The same PostGIS geometry predicate as the eventual publication, without
+        # inserting a source, layer, geometry, conversion or artifact.
+        invalid = self._session.execute(
+            text("""
+                SELECT count(*) FROM jsonb_array_elements_text(CAST(:wkts AS jsonb)) AS a(wkt)
+                WHERE NOT ST_IsValid(ST_GeomFromText(a.wkt)) OR ST_IsEmpty(ST_GeomFromText(a.wkt))
+            """),
+            {"wkts": json.dumps([geometry_to_wkt(feat["geometry"]) for feat in features])},
+        ).scalar_one()
+        if invalid:
+            raise PlatformValidationError(
+                "invalid DXF geometry; publication rejected", code="INVALID_GEOMETRY"
+            )
+        digest = hashlib.sha256(payload).hexdigest()
+        summary["drawing_sha256"] = digest
+        summary["crs_code"] = crs_code
+        summary["spatial_mapping"] = "caller_asserted_projected_grid_xy_scaled_to_meters"
+        return {
+            "sha256": digest,
+            "inspection_fingerprint": _inspection_fingerprint(
+                digest, units, crs_code, curve_tolerance_m
+            ),
+            "published": False,
+            "geometry_valid": True,
+            "entity_summary": summary,
+            "loss_report": report,
+        }
 
     def import_cad(
         self,
@@ -74,6 +137,10 @@ class SqlCadRepository:
         layer_name: str,
         units: CadUnit,
         crs_code: int,
+        curve_tolerance_m: float | None = None,
+        acknowledge_loss: bool = False,
+        expected_sha256: str | None = None,
+        expected_inspection_fingerprint: str | None = None,
     ) -> CadConversionRecord:
         prepare_project_scope(self._session, context, permission=Permission.PROJECT_EDIT)
         assert context.organization_id is not None and context.project_id is not None
@@ -91,10 +158,14 @@ class SqlCadRepository:
 
         conv_id = uuid4()
         lower = filename.lower()
+        if not lower.endswith((".dwg", ".dxf")):
+            raise PlatformValidationError("only .dxf is supported", code="CAD_FORMAT_UNSUPPORTED")
         fmt = "dwg" if lower.endswith(".dwg") else "dxf"
         skey = f"cad/{org_id}/{project_id}/{conv_id}.{fmt}"
         sha256_hex, byte_size = hashlib.sha256(payload).hexdigest(), len(payload)
         now = datetime.now(UTC)
+        if expected_sha256 is not None and expected_sha256 != sha256_hex:
+            raise PlatformConflictError("DXF changed after inspection", code="CAD_INSPECTION_STALE")
 
         if fmt == "dwg":
             # Preserve original evidence and reject DWG without licensed adapter.
@@ -145,9 +216,39 @@ class SqlCadRepository:
                 details={"conversion_id": str(row["id"]), "sha256": sha256_hex},
             )
 
-        family, features, entity_summary, loss_report = parse_dxf_2d(payload, units=units)
+        family, features, entity_summary, loss_report = parse_dxf_2d(
+            payload, units=units, curve_tolerance_m=curve_tolerance_m
+        )
         for feature in features:
             validate_geometry_payload(feature["geometry"], GeometryFamily(family))
+        inspection_fingerprint = _inspection_fingerprint(
+            sha256_hex, units, crs_code, curve_tolerance_m
+        )
+        if (
+            expected_inspection_fingerprint is not None
+            and expected_inspection_fingerprint != inspection_fingerprint
+        ):
+            raise PlatformConflictError(
+                "DXF inspection profile or drawing changed", code="CAD_INSPECTION_STALE"
+            )
+        if loss_report["requires_acknowledgement"] and (
+            not acknowledge_loss or expected_inspection_fingerprint is None
+        ):
+            raise PlatformValidationError(
+                "Inspect the drawing and explicitly acknowledge CAD mapping loss before import",
+                code="CAD_LOSS_ACK_REQUIRED",
+                details={
+                    "sha256": sha256_hex,
+                    "inspection_fingerprint": inspection_fingerprint,
+                    "entity_summary": entity_summary,
+                    "loss_report": loss_report,
+                },
+            )
+        entity_summary["drawing_sha256"] = sha256_hex
+        entity_summary["inspection_fingerprint"] = inspection_fingerprint
+        entity_summary["crs_code"] = crs_code
+        entity_summary["spatial_mapping"] = "caller_asserted_projected_grid_xy_scaled_to_meters"
+        loss_report["acknowledged"] = acknowledge_loss
 
         # Publish as a new project-owned spatial source & layer (kind='derived_processing')
         out_source_id = uuid4()
@@ -386,8 +487,9 @@ class SqlCadRepository:
         *,
         context: AuthorizationContext,
         layer_id: UUID,
-        units: CadUnit = CadUnit.METER,
-        expected_content_revision: str | None = None,
+        units: CadUnit,
+        expected_content_revision: str,
+        acknowledge_attribute_loss: bool,
     ) -> tuple[CadConversionRecord, bytes]:
         prepare_project_scope(self._session, context, permission=Permission.PROJECT_READ)
         assert context.organization_id is not None and context.project_id is not None
@@ -398,7 +500,7 @@ class SqlCadRepository:
             self._session.execute(
                 text("""
                 SELECT l.id AS layer_id, l.name AS layer_name,
-                       s.id AS source_id, s.stored_crs, s.content_revision
+                       s.id AS source_id, s.stored_crs, s.content_revision, s.dimensions
                 FROM spatial.layers l
                 JOIN spatial.data_sources s
                   ON s.organization_id = l.organization_id
@@ -407,6 +509,7 @@ class SqlCadRepository:
                 WHERE l.organization_id = :org AND l.project_id = :proj AND l.id = :lid
                   AND l.lifecycle = 'active' AND s.lifecycle = 'active'
                   AND s.validation_state = 'ready'
+                FOR SHARE OF s, l
             """),
                 {"org": org_id, "proj": project_id, "lid": layer_id},
             )
@@ -421,18 +524,26 @@ class SqlCadRepository:
                 "no implicit degree-to-meter conversion",
                 code="CAD_PROJECTED_CRS_REQUIRED",
             )
-        if (
-            expected_content_revision is not None
-            and expected_content_revision != meta["content_revision"]
-        ):
+        if expected_content_revision != meta["content_revision"]:
             raise PlatformConflictError(
                 "requested CAD source revision changed", code="STALE_CAD_REVISION"
+            )
+
+        if str(meta["dimensions"]) != GeometryDimensions.XY.value:
+            raise PlatformValidationError(
+                "DXF export requires XY geometry", code="CAD_3D_UNSUPPORTED"
+            )
+        if not acknowledge_attribute_loss:
+            raise PlatformValidationError(
+                "DXF export omits source attributes and original curve semantics; "
+                "explicit acknowledgement required",
+                code="CAD_LOSS_ACK_REQUIRED",
             )
 
         frows = (
             self._session.execute(
                 text("""
-                SELECT feature_id, ST_AsGeoJSON(geometry)::jsonb AS geom
+                SELECT feature_id, ST_AsGeoJSON(geometry, 15, 0)::jsonb AS geom
                 FROM spatial.reference_features
                 WHERE organization_id = :org AND project_id = :proj AND source_id = :src
                 ORDER BY feature_id ASC LIMIT 10001
@@ -488,6 +599,8 @@ class SqlCadRepository:
                     "loss": json.dumps(
                         {
                             "attributes_omitted_in_dxf_geometry": True,
+                            "original_curve_semantics_not_preserved": True,
+                            "acknowledged": True,
                             "silent_loss": False,
                         }
                     ),

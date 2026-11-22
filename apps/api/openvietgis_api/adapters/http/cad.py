@@ -7,7 +7,7 @@ from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Form, Response, UploadFile
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
 from openvietgis_api.adapters.http.authorization import context_for
@@ -62,8 +62,9 @@ def _conv_wire(c: CadConversionRecord) -> dict[str, Any]:
 class ExportDxfRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     layer_id: UUID
-    units: CadUnit = CadUnit.METER
-    expected_content_revision: str | None = None
+    units: CadUnit
+    expected_content_revision: str = Field(pattern=r"^[0-9a-f]{64}$")
+    acknowledge_attribute_loss: bool = False
 
 
 class CogoTraverseRequest(BaseModel):
@@ -92,6 +93,29 @@ class CogoSnapRequest(BaseModel):
     tolerance: float
 
 
+@router.post(f"{_BASE}/cad/inspect")
+def inspect_cad_file(
+    organization_id: UUID,
+    project_id: UUID,
+    file: Annotated[UploadFile, File()],
+    units: Annotated[CadUnit, Form()],
+    crs_code: Annotated[int, Form()],
+    curve_tolerance_m: Annotated[float | None, Form()] = None,
+    auth: Annotated[AuthenticatedRequest, Depends(require_csrf)] = ...,  # type: ignore[assignment]
+    session: Annotated[Session, Depends(get_db_session, scope="function")] = ...,  # type: ignore[assignment]
+) -> dict[str, Any]:
+    ctx = context_for(auth, organization_id=organization_id, project_id=project_id)
+    payload = file.file.read(25 * 1024 * 1024 + 1)
+    return _repo(session).inspect_dxf(
+        context=ctx,
+        filename=file.filename or "drawing.dxf",
+        payload=payload,
+        units=units,
+        crs_code=crs_code,
+        curve_tolerance_m=curve_tolerance_m,
+    )
+
+
 @router.post(f"{_BASE}/cad/import", status_code=201)
 def import_cad_file(
     organization_id: UUID,
@@ -100,6 +124,10 @@ def import_cad_file(
     units: Annotated[CadUnit, Form()],
     crs_code: Annotated[int, Form()],
     layer_name: Annotated[str, Form()] = "CAD Import",
+    curve_tolerance_m: Annotated[float | None, Form()] = None,
+    acknowledge_loss: Annotated[bool, Form()] = False,
+    expected_sha256: Annotated[str | None, Form()] = None,
+    expected_inspection_fingerprint: Annotated[str | None, Form()] = None,
     auth: Annotated[AuthenticatedRequest, Depends(require_csrf)] = ...,  # type: ignore[assignment]
     session: Annotated[Session, Depends(get_db_session, scope="function")] = ...,  # type: ignore[assignment]
 ) -> dict[str, Any]:
@@ -115,6 +143,10 @@ def import_cad_file(
         layer_name=layer_name,
         units=units,
         crs_code=crs_code,
+        curve_tolerance_m=curve_tolerance_m,
+        acknowledge_loss=acknowledge_loss,
+        expected_sha256=expected_sha256,
+        expected_inspection_fingerprint=expected_inspection_fingerprint,
     )
     return _conv_wire(rec)
 
@@ -133,6 +165,7 @@ def export_cad_dxf(
         layer_id=body.layer_id,
         units=body.units,
         expected_content_revision=body.expected_content_revision,
+        acknowledge_attribute_loss=body.acknowledge_attribute_loss,
     )
     return Response(
         content=data,

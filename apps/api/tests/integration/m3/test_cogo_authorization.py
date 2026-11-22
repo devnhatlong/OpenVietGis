@@ -55,3 +55,35 @@ def test_dxf_requires_explicit_units_and_crs_and_leaves_no_rejected_artifact(mig
         assert invalid.json()["code"] == "INVALID_DXF"
         assert not root.exists() or not any(path.is_file() for path in root.rglob("*"))
         assert owner.get(f"{base}/cad/conversions").json()["items"] == []
+
+
+def test_dxf_inspection_requires_edit_scope_and_does_not_publish(migrated_database):
+    import io
+
+    import ezdxf
+
+    world = seed_access_world()
+    other = seed_access_world()
+    base = f"/api/v1/organizations/{world.organization_id}/projects/{world.project_id}"
+    doc = ezdxf.new("R2010")
+    doc.modelspace().add_arc((500000, 2300000), 20, 0, 90)
+    buf = io.StringIO()
+    doc.write(buf)
+    files = {"file": ("arc.dxf", buf.getvalue().encode("utf-8"), "application/dxf")}
+    form = {"units": "meter", "crs_code": "5899", "curve_tolerance_m": "0.01"}
+    with (
+        _client(world.owner_user_id) as owner,
+        _client(world.member_user_id) as ungranted,
+        _client(other.owner_user_id) as outsider,
+    ):
+        for denied in (ungranted, outsider):
+            result = denied.post(f"{base}/cad/inspect", files=files, data=form)
+            assert result.status_code in (403, 404), result.text
+        inspection = owner.post(f"{base}/cad/inspect", files=files, data=form)
+        assert inspection.status_code == 200, inspection.text
+        assert inspection.json()["published"] is False
+        assert owner.get(f"{base}/cad/conversions").json()["items"] == []
+        refused = owner.post(f"{base}/cad/import", files=files, data=form)
+        assert refused.status_code == 422
+        assert refused.json()["code"] == "CAD_LOSS_ACK_REQUIRED"
+        assert owner.get(f"{base}/cad/conversions").json()["items"] == []
