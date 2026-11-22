@@ -6,7 +6,7 @@ from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy.orm import Session
 
 from openvietgis_api.adapters.http.authorization import context_for
@@ -77,17 +77,26 @@ class EditOperationRequest(BaseModel):
     properties: dict[str, Any] | None = None
 
 
-class CommitChangesetRequest(BaseModel):
+class PublicChangesetOperation(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    base_content_revision: str
     operation_id: str
+
+    @field_validator("operation_id")
+    @classmethod
+    def reject_internal_operation_id(cls, value: str) -> str:
+        # Field-sync's durable Core recovery IDs belong only to the internal repository.
+        if value.startswith("field-sync-"):
+            raise ValueError("reserved internal changeset operation ID")
+        return value
+
+
+class CommitChangesetRequest(PublicChangesetOperation):
+    base_content_revision: str
     summary: str = Field(default="Feature edit", max_length=500)
     operations: list[EditOperationRequest]
 
 
-class RevertChangesetRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    operation_id: str
+class RevertChangesetRequest(PublicChangesetOperation):
     summary: str | None = None
 
 

@@ -5,7 +5,7 @@ import { ApiError, createOfflinePackage, getCurrentUser, getSpatialFeature, getS
 import { Link, useParams } from "react-router-dom";
 import { apiClient } from "../../app/api";
 import { OfflineMap } from "./OfflineMap";
-import { activeOfflineActor, installRecord, listLocalPackages, lockOfflineActor, makeRecord,
+import { activeOfflineActor, installRecord, listLocalPackages, lockLocalScope, lockOfflineActor, makeRecord,
   normalizeField, observeOnlineActor, queueDraft, removeRecord, saveRecord,
   unlockOfflineActor, verifyRecord, wireDrafts,
   type Draft, type PackageRecord, type Snapshot, type Bounds, type Value } from "./offline-store";
@@ -156,16 +156,18 @@ export function OfflineFieldPage() {
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
     window.addEventListener("online", status); window.addEventListener("offline", status);
     window.addEventListener("storage", status);
+    const onFocus = () => {if (navigator.onLine) setRefresh(n => n + 1);};
+    window.addEventListener("focus", onFocus);
     const checkShell = () => setShellReady(Boolean(navigator.serviceWorker?.controller));
     navigator.serviceWorker?.addEventListener("controllerchange", checkShell);
-    return () => {clearInterval(timer);window.removeEventListener("online", status);window.removeEventListener("offline", status);window.removeEventListener("storage", status);navigator.serviceWorker?.removeEventListener("controllerchange", checkShell);};
+    return () => {clearInterval(timer);window.removeEventListener("online", status);window.removeEventListener("offline", status);window.removeEventListener("storage", status);window.removeEventListener("focus", onFocus);navigator.serviceWorker?.removeEventListener("controllerchange", checkShell);};
   }, []);
   useEffect(() => {
     let live = true;
     setActor(null); setSnapshot(null); setRecords([]); setServer([]); setLayers([]);
     async function load() {
+      let actorId: string | null = activeOfflineActor();
       try {
-        let actorId: string | null;
         let packages: OfflinePackage[] = [];
         let layerRows: SpatialLayer[] = [];
         if (online) {
@@ -192,8 +194,14 @@ export function OfflineFieldPage() {
         setError("");
       } catch (err) {
         if (!live) return;
-        if (err instanceof ApiError && [401,403,404].includes(err.status)) lockOfflineActor();
-        setError(errorText(err));
+        if (err instanceof ApiError && [401,403,404].includes(err.status)) {
+          lockOfflineActor();
+          if (actorId && [403,404].includes(err.status)) {
+            try { await lockLocalScope(actorId, org, prj); }
+            catch (lockErr) { if (live) setError(errorText(lockErr)); return; }
+          }
+        }
+        if (live) setError(errorText(err));
       }
     }
     void load();
@@ -280,8 +288,8 @@ export function OfflineFieldPage() {
         setNotice("Đã lưu kết quả máy chủ; bản nháp được giữ để đối chiếu.");
       } catch (err) {
         if (err instanceof ApiError && [401,403,404].includes(err.status)) {
-          await persist({...pending,locked:true});
-          lockOfflineActor();
+          lockOfflineActor(); setActor(null); setSnapshot(null); setRecords([]); setServer([]); setLayers([]);
+          if ([403,404].includes(err.status)) await lockLocalScope(pending.actorId, org, prj);
         } else if (err instanceof ApiError && [409,422].includes(err.status)) {
           await persist({...pending,batch:{...pending.batch, receipt:{id:"",status:"rejected",applied_changeset_ids:[],conflicts:["Máy chủ từ chối; hãy kiểm tra lại phạm vi và phiên bản."]}}});
         }
@@ -294,7 +302,7 @@ export function OfflineFieldPage() {
     <h1>R013 Hiện trường ngoại tuyến</h1>
     <p>Trạng thái: <strong data-testid="offline-connectivity">{online ? "Trực tuyến" : "Mất kết nối"}</strong> · {actor ? "Tài khoản đã xác minh/mở khóa" : "Đang khóa dữ liệu"} · Shell ngoại tuyến: <strong data-testid="offline-shell">{shellReady ? "đã sẵn sàng" : "chưa sẵn sàng"}</strong></p>
     <p>Gói chỉ dành cho dữ liệu được phép lưu cục bộ trên thiết bị tin cậy. Không có mã hóa bổ sung hoặc xóa từ xa; hạn dùng dựa vào đồng hồ thiết bị. Thu hồi trên máy chủ được kiểm tra khi kết nối lại.</p>
-    {online && <p><Link to={`/organizations/${org}/projects/${prj}/platform-hub`}>Về dự án</Link> · <button onClick={() => setRefresh(n => n+1)}>Kiểm tra lại quyền và gói</button></p>}
+    {online && <p><Link to={`/app/organizations/${org}/projects/${prj}/platform-hub`}>Về dự án</Link> · <button onClick={() => setRefresh(n => n+1)}>Kiểm tra lại quyền và gói</button></p>}
     {error && <p role="alert">{error}</p>}{notice && <p role="status">{notice}</p>}
     {online && actor && <section className="offline-form">
       <h2>Chuẩn bị gói</h2>

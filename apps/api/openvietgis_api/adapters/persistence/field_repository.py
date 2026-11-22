@@ -322,7 +322,8 @@ class SqlFieldRepository:
     def download_package(
         self, *, context: AuthorizationContext, package_id: UUID
     ) -> tuple[OfflinePackageRecord, bytes]:
-        prepare_project_scope(self._session, context, permission=Permission.PROJECT_READ)
+        # The only issued profile is writable; a downgraded viewer cannot re-fetch it.
+        prepare_project_scope(self._session, context, permission=Permission.PROJECT_EDIT)
         assert context.organization_id is not None and context.project_id is not None
         row = (
             self._session.execute(
@@ -408,7 +409,8 @@ class SqlFieldRepository:
         return _pkg_from_row(row)
 
     def list_packages(self, *, context: AuthorizationContext) -> list[OfflinePackageRecord]:
-        prepare_project_scope(self._session, context, permission=Permission.PROJECT_READ)
+        # This endpoint is also the online revalidation gate for local writable packs.
+        prepare_project_scope(self._session, context, permission=Permission.PROJECT_EDIT)
         assert context.organization_id is not None and context.project_id is not None
         rows = (
             self._session.execute(

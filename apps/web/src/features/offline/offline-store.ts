@@ -117,6 +117,31 @@ export async function listLocalPackages(actor: string, org: string, project: str
   return (await readAll()).filter(r => r.actorId === actor && r.organizationId === org && r.projectId === project);
 }
 
+// A known authorization denial must survive a later device unlock for another
+// project. Increment revisions in the same transaction so stale tabs cannot
+// overwrite the lock while retaining their own draft copy.
+export async function lockLocalScope(actor: string, org: string, project: string): Promise<void> {
+  const db = await openStore();
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction("packages", "readwrite", { durability: "strict" });
+      const cursor = tx.objectStore("packages").openCursor();
+      cursor.onsuccess = () => {
+        const row = cursor.result;
+        if (!row) return;
+        const r = row.value as PackageRecord;
+        if (!r.locked && r.actorId === actor && r.organizationId === org && r.projectId === project) {
+          row.update({...r, locked:true, revision:r.revision+1});
+        }
+        row.continue();
+      };
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error ?? new Error("Không thể lưu khóa gói."));
+      tx.onabort = () => reject(tx.error ?? new Error("Không thể lưu khóa gói."));
+    });
+  } finally { db.close(); }
+}
+
 // Compare local revision inside the same IDB transaction to avoid overwriting
 // another tab's drafts. Resolve only after the transaction commits durably.
 async function writeRecord(record: PackageRecord, expected: number | null, remove = false): Promise<PackageRecord> {
