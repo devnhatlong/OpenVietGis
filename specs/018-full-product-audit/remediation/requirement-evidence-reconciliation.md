@@ -1,5 +1,7 @@
 # 656 requirement evidence crosswalk — 2026-11-22
 
+Follow-up: [complete row-level engineering audit (656 original + 87 supplemental)](row-audit-index.md). The counts below preserve this earlier checkpoint; the follow-up adds row-specific oracles, tests and remaining gaps without granting acceptance.
+
 This is a **reconciliation index, not requirement acceptance**. Immutable starting
 register: [requirements inventory](../evidence/requirements.md). Source commit,
 full requirement wording, scope approval and original line numbers remain
