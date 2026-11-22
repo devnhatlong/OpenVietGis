@@ -3,18 +3,7 @@ import type {
   SpatialLayer
 } from "@openvietgis/client-sdk";
 
-import { formatFeatureValue } from "../spatial/feature-inspector";
-
-function geometryStateLabel(value: string): string {
-  return {
-    available: "Khả dụng",
-    present: "Có hình học",
-    empty: "Không có hình học",
-    unavailable: "Không khả dụng",
-    invalid: "Không hợp lệ",
-    omitted: "Không tải hình học"
-  }[value] ?? value;
-}
+import { geometryStateLabel, mapFeatureValue } from "./feature-presentation";
 
 function crsLabel(code: number | null | undefined): string {
   return code ? "EPSG:" + code : "Chưa xác định";
@@ -80,6 +69,16 @@ export function FeatureInspector({
             <dd>{geometryStateLabel(activeDetail.feature.geometry_state)}</dd>
           </dl>
 
+          <details className="map-muted" data-testid="inspector-observed-revision">
+            <summary>Phiên bản dữ liệu đã đọc</summary>
+            <dl>
+              <dt>Phiên bản nội dung</dt>
+              <dd>{activeDetail.context.content_revision}</dd>
+              <dt>Phiên bản lược đồ</dt>
+              <dd>{activeDetail.context.schema_revision}</dd>
+            </dl>
+          </details>
+
           <table>
             <thead>
               <tr>
@@ -98,7 +97,7 @@ export function FeatureInspector({
                   </th>
                   <td>
                     <code>
-                      {formatFeatureValue(
+                      {mapFeatureValue(
                         activeDetail.feature.attributes[field.field_id]
                       )}
                     </code>

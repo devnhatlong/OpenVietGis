@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyCurrentFrameSet, boundsOfGeometry, combineBounds, defaultStyle, mapResponseMatches, previewMove, selectionKey, toggleSelection, viewportMatches } from "./workspace";
+import { applyCurrentFrameSet, blockedMapGateStatus, boundsOfGeometry, combineBounds, defaultStyle, mapResponseMatches, previewMove, selectionKey, toggleSelection, viewportMatches } from "./workspace";
 import type { RenderLayer } from "./engine";
 
 describe("map workspace invariants", () => {
@@ -19,6 +19,13 @@ describe("map workspace invariants", () => {
     expect(rendered).toEqual([current]);
     applyCurrentFrameSet(engine,[],false);
     expect(rendered).toEqual([]);
+  });
+  it("distinguishes settled invalid outer map scope from active loading and denial", () => {
+    const idle = { error: null, fetchStatus: "idle" } as const;
+    expect(blockedMapGateStatus([idle, idle, idle])).toBe("invalid");
+    expect(blockedMapGateStatus([idle, { ...idle, fetchStatus: "paused" }])).toBe("invalid");
+    expect(blockedMapGateStatus([idle, { ...idle, fetchStatus: "fetching" }])).toBe("loading");
+    expect(blockedMapGateStatus([idle, { ...idle, error: new Error("denied") }])).toBe("error");
   });
   it("binds selections to actor, tenant, logical layer, source and independent pins", () => {
     const keys = ["accountId","organizationId","projectId","layerId","sourceId","contentRevision","schemaRevision"] as const;

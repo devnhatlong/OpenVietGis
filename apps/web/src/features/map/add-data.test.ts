@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { ApiError } from "@openvietgis/client-sdk";
 import type {
   MapLayerReference,
   SpatialLayer,
@@ -7,7 +8,7 @@ import type {
 } from "@openvietgis/client-sdk";
 import { QueryClient, QueryObserver } from "@tanstack/react-query";
 import { protectedQueryOptions } from "../../app/protected-query";
-import { buildAddDataCandidates, currentAddDataCatalog, layerScopeMatches } from "./add-data";
+import { buildAddDataCandidates, currentAddDataCatalog, currentLayerMetadata, layerScopeMatches } from "./add-data";
 
 function layer(
   id: string,
@@ -105,6 +106,21 @@ describe("current scoped catalog and metadata", () => {
     }
     expect(currentAddDataCatalog(true, { ...valid, error: new Error("denied") }, "org-1", "project-1"))
       .toEqual({ status: "unavailable", page: undefined });
+  });
+
+  it("fails closed on missing, wrong and denied settled metadata without perpetual loading", () => {
+    const a = layer("a");
+    const success = { data: a, fetchStatus: "idle", isSuccess: true, error: null } as const;
+    const read = (result: Parameters<typeof currentLayerMetadata>[0]) => currentLayerMetadata(result, "org-1", "project-1", "a");
+    expect(read(success)).toEqual({ status: "ready", layer: a });
+    expect(read({ ...success, fetchStatus: "fetching" })).toEqual({ status: "loading", layer: undefined });
+    for (const data of [undefined, layer("foreign"), { ...a, source: { ...a.source, project_id: "other" } }]) {
+      expect(read({ ...success, data })).toEqual({ status: "unavailable", layer: undefined });
+    }
+    expect(read({ ...success, fetchStatus: "paused" })).toEqual({ status: "unavailable", layer: undefined });
+    expect(read({ ...success, error: new ApiError(403, new Response()) })).toEqual({ status: "permission", layer: undefined });
+    expect(read({ ...success, error: new ApiError(404, new Response()) })).toEqual({ status: "unavailable", layer: undefined });
+    expect(read(success)).toEqual({ status: "ready", layer: a });
   });
 
   it("requires matching outer scope, nested source ownership and exact requested layer ID", () => {

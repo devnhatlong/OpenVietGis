@@ -1,3 +1,4 @@
+import { ApiError } from "@openvietgis/client-sdk";
 import type {
   MapLayerReference,
   SpatialLayer,
@@ -12,8 +13,30 @@ export function layerScopeMatches(
 ): boolean {
   return layer.id === layerId &&
     layer.organization_id === organizationId && layer.project_id === projectId &&
-    layer.source.organization_id === organizationId && layer.source.project_id === projectId &&
+    layer.source != null && layer.source.organization_id === organizationId && layer.source.project_id === projectId &&
     layer.source_id === layer.source.id;
+}
+
+export type LayerMetadataRead =
+  | { status: "loading" | "permission" | "unavailable"; layer: undefined }
+  | { status: "ready"; layer: SpatialLayer };
+
+/** Only idle successful, exact scoped metadata can supply a layer. A settled
+ * mismatch/missing payload is unavailable, not an endless loading spinner. */
+export function currentLayerMetadata(
+  result: Parameters<typeof currentProtectedData<SpatialLayer>>[0],
+  organizationId: string, projectId: string, layerId: string
+): LayerMetadataRead {
+  if (result.error !== null) {
+    const denied = result.error instanceof ApiError && [401, 403].includes(result.error.status);
+    return { status: denied ? "permission" : "unavailable", layer: undefined };
+  }
+  if (result.fetchStatus === "fetching") return { status: "loading", layer: undefined };
+  const layer = currentProtectedData(result);
+  if (!layer || !layerScopeMatches(layer, organizationId, projectId, layerId)) {
+    return { status: "unavailable", layer: undefined };
+  }
+  return { status: "ready", layer };
 }
 
 export type CatalogReadState =

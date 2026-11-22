@@ -6,7 +6,8 @@ import {
 } from "@openvietgis/client-sdk";
 import { useQueries,useQuery,useQueryClient } from "@tanstack/react-query";
 import { useEffect,useLayoutEffect,useRef,useState } from "react";
-import { Link,useParams } from "react-router-dom";
+import { Link,useNavigate,useParams } from "react-router-dom";
+import { canonicalOrganizationPath,canonicalProjectPath } from "../../app/route-contract";
 import { apiClient } from "../../app/api";
 import { currentProtectedData,protectedQueryOptions } from "../../app/protected-query";
 import { FreshAccount } from "../auth/FreshAccount";
@@ -22,10 +23,10 @@ import { SaveStateIndicator } from "./SaveStateIndicator";
 import { TechnicalDetailsDrawer } from "./TechnicalDetailsDrawer";
 import { LayerTree } from "./LayerTree";
 import { WorkspaceLayout } from "./WorkspaceLayout";
-import { buildAddDataCandidates,currentAddDataCatalog,layerScopeMatches } from "./add-data";
+import { buildAddDataCandidates,currentAddDataCatalog,currentLayerMetadata } from "./add-data";
 import { sameCamera,sameViewportBounds } from "./map-initialization";
 import { buildLayerPanelItemView } from "./layer-view";
-import { createCommands,invokeCommand,type MapCommandId } from "./commands";
+import { createCommands,invokeCommand,isCanvasCommand,type MapCommandId } from "./commands";
 import { BASEMAP_OPTIONS,isBasemapAvailable,LOCAL_BASEMAP,ONLINE_BASEMAP_UNAVAILABLE,type BasemapId,type MapEngine,type RenderLayer } from "./engine";
 import { loadMapEngine,type MapEngineFactory } from "./map-engine-loader";
 import { createViewportFramePreparer } from "./render-frame";
@@ -33,7 +34,7 @@ import { beginSave,markUnresolved,receiptMatches,saveErrorState,type PendingSave
 import { buildSaveIndicatorView } from "./save-indicator";
 import { buildTechnicalDetailsView } from "./technical-details";
 import { useUnsavedNavigationProtection } from "./unsaved-navigation";
-import { applyCurrentFrameSet,boundsOfGeometry,capability,combineBounds,defaultStyle,mapResponseMatches,positionCount,selectionKey,toggleSelection,viewportMatches,type Bounds,type SelectionScope } from "./workspace";
+import { applyCurrentFrameSet,blockedMapGateStatus,boundsOfGeometry,capability,combineBounds,defaultStyle,mapResponseMatches,positionCount,selectionKey,toggleSelection,viewportMatches,type Bounds,type SelectionScope } from "./workspace";
 import {
  loadWorkspaceLayoutPreference,normalizeWorkspaceLayoutPreference,saveWorkspaceLayoutPreference,
  type WorkspaceLayoutPreference
@@ -73,7 +74,9 @@ function mapStateLabel(state:string):string {
  }[state]??"Đang kiểm tra";
 }
 
-function Workspace({organizationId,projectId,accountId,project,initial,canEdit,createEngine}:{organizationId:string;projectId:string;accountId:string;project:Project;initial:ProjectMap;canEdit:boolean;createEngine:MapEngineFactory}) {
+function Workspace({organizationId,projectId,accountId,project,initial,canEdit,canManageAccess,createEngine}:{organizationId:string;projectId:string;accountId:string;project:Project;initial:ProjectMap;canEdit:boolean;canManageAccess:boolean;createEngine:MapEngineFactory}) {
+ const navigate=useNavigate();
+ const organizationPath=canonicalOrganizationPath(organizationId),projectPath=canonicalProjectPath(organizationId,projectId);
  const queryClient=useQueryClient(),canvas=useRef<HTMLDivElement>(null),engine=useRef<MapEngine|null>(null),alive=useRef(true);
  const [saved,setSaved]=useState(initial),[configuration,setConfiguration]=useState<MapConfiguration>(initial.configuration);
  const [active,setActive]=useState<string|null>(initial.configuration.layers[0]?.layer_id??null);
@@ -99,7 +102,8 @@ function Workspace({organizationId,projectId,accountId,project,initial,canEdit,c
  const catalogState=currentAddDataCatalog(addDataOpen,catalogQuery,organizationId,projectId);
  const catalog=catalogState.page;
  const metadataQueries=useQueries({queries:configuration.layers.map(ref=>({queryKey:[...scopePrefix,"layer",ref.layer_id],queryFn:()=>getSpatialLayer(apiClient,organizationId,projectId,ref.layer_id),...protectedQueryOptions}))});
- const metadata=metadataQueries.map((result,index)=>{const layer=currentProtectedData(result);return layer&&layerScopeMatches(layer,organizationId,projectId,configuration.layers[index]!.layer_id)?layer:undefined;});
+ const metadataReads=metadataQueries.map((result,index)=>currentLayerMetadata(result,organizationId,projectId,configuration.layers[index]!.layer_id));
+ const metadata=metadataReads.map(read=>read.layer);
  const activeIndex=configuration.layers.findIndex(ref=>ref.layer_id===active);
  const activeLayer=activeIndex>=0?metadata[activeIndex]:undefined;
  const activeScope:SelectionScope|null=activeLayer?{accountId,organizationId,projectId,layerId:activeLayer.id,sourceId:activeLayer.source_id,contentRevision:activeLayer.source.content_revision,schemaRevision:activeLayer.source.schema_revision}:null;
@@ -150,13 +154,13 @@ function Workspace({organizationId,projectId,accountId,project,initial,canEdit,c
  const states=configuration.layers.map((ref,index)=>{
   const layer=metadata[index],result=viewportQueries[index];
   if(!ref.visible)return "hidden";
-  if(!layer)return metadataQueries[index]?.error?"unavailable":"loading";
+  if(!layer)return metadataReads[index]!.status;
   const key=selectionKey({accountId,organizationId,projectId,layerId:layer.id,sourceId:layer.source_id,contentRevision:layer.source.content_revision,schemaRevision:layer.source.schema_revision});
   if(key===blocked||(key===activeKey&&activeBlocked))return "stale — revalidation required";
   if(!capability(layer,"render"))return "unsupported or unavailable";
   if(result?.error)return (result.error instanceof MapApiError&&result.error.code==="STALE_READ_PIN")?"stale":"unavailable";
   const value=result&&currentProtectedData(result);
-  if(!value)return "loading";
+  if(!value)return !bbox||result?.fetchStatus==="fetching"?"loading":"unavailable";
   const scope={accountId,organizationId,projectId,layerId:layer.id,sourceId:layer.source_id,contentRevision:layer.source.content_revision,schemaRevision:layer.source.schema_revision};
   const prepared=prepareViewportFrame(scope,value,result.dataUpdatedAt);
   if(prepared.status==="invalid-context")return "unavailable — response context mismatch";
@@ -170,7 +174,7 @@ function Workspace({organizationId,projectId,accountId,project,initial,canEdit,c
  useLayoutEffect(()=>{applyCurrentFrameSet(engine.current,frames,busyData);},[frameKey]);
  useLayoutEffect(()=>{engine.current?.setActiveLayer(configuration.layers.some(ref=>ref.layer_id===active&&ref.visible)&&!activeBlocked?active:null);engine.current?.setSelection(activeBlocked?null:active,selected);},[active,activeBlocked,selected.join(","),configuration.layers.map(ref=>ref.layer_id+ref.visible).join(",")]);
  const hasGeometry=frames.some(frame=>frame.features.length>0);
- const state:AccessibleMapState=engineError?"unavailable":busyData?"loading":states.some(s=>s.startsWith("stale"))?"stale":states.some(s=>s.startsWith("partial"))?"partial":hasGeometry?"usable":states.some(s=>s.startsWith("unsupported")||s.startsWith("unavailable"))?"unavailable":"empty";
+ const state:AccessibleMapState=engineError?"unavailable":busyData?"loading":states.some(s=>s.startsWith("stale"))?"stale":states.some(s=>s.startsWith("partial"))?"partial":hasGeometry?"usable":states.some(s=>s==="permission"||s.startsWith("unsupported")||s.startsWith("unavailable"))?"unavailable":"empty";
  const accessibleSummary=buildAccessibleMapSummary({
   projectName:project.name,
   references:configuration.layers,
@@ -198,12 +202,12 @@ function Workspace({organizationId,projectId,accountId,project,initial,canEdit,c
     }));for(const value of batch)if(value)values.push(value);
    }
    if(!alive.current||generation!==fitGeneration.current)return;
-   const bounds=combineBounds(values);if(bounds){engine.current?.fitBounds(bounds);setNotice("");}else setNotice("No valid nonempty display extent is available.");
+   const bounds=combineBounds(values);if(bounds){engine.current?.fitBounds(bounds);setNotice("");}else setNotice("Không có phạm vi hiển thị hợp lệ và khác rỗng.");
   }catch(error){if(alive.current&&generation===fitGeneration.current)setNotice(errorMessage(error));}
  }
  async function fitSelection():Promise<void> {
   if(!activeScope||!selected.length)return;
-  const token=liveScope.current,generation=++fitGeneration.current,ids=[...selected];setNotice("Resolving selected geometry…");
+  const token=liveScope.current,generation=++fitGeneration.current,ids=[...selected];setNotice("Đang kiểm tra hình học của các đối tượng đã chọn…");
   try {
    let positions=0,bytes=0;const bounds:(Bounds|null)[]=[];
    for(let start=0;start<ids.length;start+=4){
@@ -216,8 +220,8 @@ function Workspace({organizationId,projectId,accountId,project,initial,canEdit,c
     }
    }
    if(!alive.current||token!==liveScope.current||generation!==fitGeneration.current)return;
-   const value=combineBounds(bounds);if(value){engine.current?.fitBounds(value);setNotice("");}else setNotice("The selection has no available nonempty display geometry.");
-  }catch(error){if(alive.current&&token===liveScope.current){setNotice(error instanceof ApiError?errorMessage(error):"Selection extent is unavailable or exceeds its bounded geometry budget.");if(requiresRevalidation(error))setBlocked(activeKey);}}
+   const value=combineBounds(bounds);if(value){engine.current?.fitBounds(value);setNotice("");}else setNotice("Vùng chọn không có hình học hiển thị hợp lệ và khác rỗng.");
+  }catch(error){if(alive.current&&token===liveScope.current){setNotice(error instanceof ApiError?errorMessage(error):"Phạm vi vùng chọn không khả dụng hoặc vượt giới hạn hình học cho phép.");if(requiresRevalidation(error))setBlocked(activeKey);}}
  }
  useEffect(()=>{
   if(initialFit.current||!engine.current||configuration.default_viewpoint||!configuration.layers.length)return;
@@ -249,7 +253,7 @@ function Workspace({organizationId,projectId,accountId,project,initial,canEdit,c
   finally{if(alive.current)setWorking(false);}
  }
  async function reloadShared():Promise<void>{
-  if(pending?.status==="unresolved"){setNotice("Reconcile the pending save before replacing its local intent.");return;}
+  if(pending?.status==="unresolved"){setNotice("Hãy đối chiếu kết quả lưu đang chờ trước khi thay thế cấu hình cục bộ.");return;}
   setWorking(true);
   try{const current=await getMap(apiClient,organizationId,projectId);if(!mapResponseMatches(organizationId,projectId,current))throw new Error("Phạm vi dữ liệu không khớp");setSaved(current);setConfiguration(current.configuration);setViewpointIntent({mode:"preserve"});setPending(null);setSelection(null);setActive(current.configuration.layers[0]?.layer_id??null);setNotice("Đã tải phiên bản bản đồ "+current.configuration_revision+".");}
   catch(error){setNotice(errorMessage(error));}finally{setWorking(false);}
@@ -264,11 +268,19 @@ function Workspace({organizationId,projectId,accountId,project,initial,canEdit,c
   if(id==="map.save")void submitSave();
   if(id==="map.set-default-viewpoint"){const current=engine.current?.getCamera()??camera;setViewpointIntent({mode:"set",value:current});setNotice("Đã đánh dấu góc nhìn hiện tại. Bấm Lưu bản đồ để ghi nhận.");}
   if(id==="map.zoom-in")engine.current?.zoom(1);if(id==="map.zoom-out")engine.current?.zoom(-1);
+  if(id==="map.open-projects")void navigate(organizationPath+"/projects");
+  if(id==="map.open-catalog")void navigate(projectPath+"/spatial");
+  if(id==="map.open-transfers")void navigate(projectPath+"/transfers");
+  if(id==="map.open-access"&&canManageAccess)void navigate(organizationPath+"/membership");
+  if(id.startsWith("map.open-layer:")){
+   const layerId=id.slice("map.open-layer:".length);
+   if(metadata.some(layer=>layer?.id===layerId))choose(layerId);
+  }
  }
- const visibleMetadataPending=configuration.layers.some((ref,index)=>ref.visible&&!metadata[index]&&!metadataQueries[index]?.error);
+ const visibleMetadataPending=configuration.layers.some((ref,index)=>ref.visible&&metadataReads[index]?.status==="loading");
  const visibleRenderableIds=configuration.layers.filter((ref,index)=>ref.visible&&capability(metadata[index],"render")).map(ref=>ref.layer_id);
  const activeLayerView=activeIndex>=0?buildLayerPanelItemView(configuration.layers[activeIndex]!,activeLayer,states[activeIndex]??"loading",active,activeIndex,configuration.layers.length):undefined;
- const commands=createCommands({hasActive:activeLayerView?.canZoom??false,hasVisible:!visibleMetadataPending&&visibleRenderableIds.length>0,hasSelection:selected.length>0&&capability(activeLayer,"render")&&!activeBlocked,canSave:writable,canAddData:configuration.layers.length<32,busy:locked},execute);
+ const commands=createCommands({hasActive:activeLayerView?.canZoom??false,hasVisible:!visibleMetadataPending&&visibleRenderableIds.length>0,hasSelection:selected.length>0&&capability(activeLayer,"render")&&!activeBlocked,canSave:writable,canAddData:configuration.layers.length<32,busy:locked,navigation:{canManageAccess,layers:metadata.flatMap(layer=>layer?[{id:layer.id,name:layer.name}]:[])}},execute);
  const addDataCommand=commands.find(command=>command.id==="map.add-data");
  const commandRef=useRef(commands);commandRef.current=commands;
  useEffect(()=>{
@@ -276,8 +288,10 @@ function Workspace({organizationId,projectId,accountId,project,initial,canEdit,c
    let id:string|null=null;if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==="s")id="map.save";if(event.key.toLowerCase()==="f")id="map.fit-layer";if(event.key==="Escape")id="map.clear-selection";if(event.key==="+")id="map.zoom-in";if(event.key==="-")id="map.zoom-out";if(id){event.preventDefault();invokeCommand(commandRef.current,id,"shortcut");}};
   window.addEventListener("keydown",key);return()=>window.removeEventListener("keydown",key);
  },[]);
- const readError=activeBlocked?"Lớp hoặc đối tượng đang chọn cần xác thực lại quyền truy cập hiện hành.":pageQuery.error?errorMessage(pageQuery.error):null;
- const detailError=activeBlocked?readError:detailQuery.error?errorMessage(detailQuery.error):null;
+ const invalidPage=Boolean(activeScope&&capability(activeLayer,"feature_read")&&pageQuery.fetchStatus==="idle"&&pageQuery.isSuccess&&!page);
+ const invalidDetail=Boolean(activeScope&&focus&&detailQuery.fetchStatus==="idle"&&detailQuery.isSuccess&&!detail);
+ const readError=activeBlocked?"Lớp hoặc đối tượng đang chọn cần xác thực lại quyền truy cập hiện hành.":pageQuery.error?errorMessage(pageQuery.error):invalidPage?"Không thể xác nhận dữ liệu bảng thuộc tính thuộc lớp và phiên bản hiện tại.":null;
+ const detailError=activeBlocked?readError:detailQuery.error?errorMessage(detailQuery.error):invalidDetail?"Không thể xác nhận chi tiết đối tượng thuộc lớp và phiên bản hiện tại.":null;
  const dirty=JSON.stringify(configuration.layers)!==JSON.stringify(saved.configuration.layers)||viewpointIntent.mode!=="preserve"||saved.configuration_revision===0;
  const saveIndicatorView=buildSaveIndicatorView({
   dirty,
@@ -329,7 +343,7 @@ function Workspace({organizationId,projectId,accountId,project,initial,canEdit,c
     <div className="map-stage-status" role="status"><strong data-testid="map-status" data-state={state}>{mapStateLabel(state)}</strong><span>Lưới cục bộ · Hiển thị EPSG:3857 · Tọa độ địa lý đầu vào EPSG:4326 X/Y</span></div>
     {state==="empty"?<div className="map-blank-message"><h2>Bản đồ dự án</h2><p>{configuration.layers.length?"Không có hình học có thể đọc trong khung nhìn này.":"Hãy thêm một lớp dữ liệu từ bảng bên trái để bắt đầu."}</p></div>:null}
     {state==="partial"?<div className="map-partial" role="status">Khung nhìn đang hiển thị một phần dữ liệu. Hãy phóng to để xem chi tiết hơn. Bảng thuộc tính đọc độc lập các bản ghi đúng phiên bản.</div>:null}
-    {contextMenu?<div className="map-context-menu" role="menu">{commands.map(c=><button role="menuitem" key={c.id} disabled={!c.enabled} title={c.reason??c.label} onClick={()=>invokeCommand(commands,c.id,"context")}>{c.label}</button>)}</div>:null}
+    {contextMenu?<div className="map-context-menu" role="menu">{commands.filter(isCanvasCommand).map(c=><button role="menuitem" key={c.id} disabled={!c.enabled} title={c.reason??c.label} onClick={()=>invokeCommand(commands,c.id,"context")}>{c.label}</button>)}</div>:null}
    </section>}
    right={<FeatureInspector layer={activeLayer} detail={detail} focus={focus} count={selected.length} error={detailError}/>}
    bottom={<AttributeTable layer={capability(activeLayer,"feature_read")?activeLayer:undefined} page={page} selected={selected} focus={focus} select={select} pageNumber={pages.length+1} error={readError}
@@ -392,12 +406,12 @@ function ProtectedMap({organizationId,projectId,accountId}:{organizationId:strin
   return ()=>{disposed=true;};
  },[]);
  const project=currentProtectedData(projectQuery),permissions=currentProtectedData(permissionQuery),map=currentProtectedData(mapQuery);
- if(!project||!permissions||!map||project.id!==projectId||project.organization_id!==organizationId||project.status==="deleted"||!mapResponseMatches(organizationId,projectId,map)||!permissions.permissions.includes("project.read")){
-  const error=projectQuery.error||permissionQuery.error||mapQuery.error;
-  return <main className="map-access"><Link to={"/app/organizations/"+organizationId+"/projects"}>← Dự án</Link><h1>Không gian Bản đồ</h1><p role={error?"alert":"status"}>{error?"Không có quyền truy cập bản đồ dự án này.":"Đang kiểm tra quyền truy cập bản đồ dự án…"}</p></main>;
+ if(!project||!permissions||!map||project.id!==projectId||project.organization_id!==organizationId||project.status==="deleted"||!mapResponseMatches(organizationId,projectId,map)||!Array.isArray(map.configuration?.layers)||!Array.isArray(permissions.permissions)||!permissions.permissions.includes("project.read")){
+  const gate=blockedMapGateStatus([projectQuery,permissionQuery,mapQuery]);
+  return <main className="map-access"><Link to={"/app/organizations/"+organizationId+"/projects"}>← Dự án</Link><h1>Không gian Bản đồ</h1><p role={gate==="loading"?"status":"alert"}>{gate==="error"?"Không có quyền truy cập bản đồ dự án này.":gate==="loading"?"Đang kiểm tra quyền truy cập bản đồ dự án…":"Không thể xác nhận phạm vi dữ liệu và quyền truy cập bản đồ dự án này."}</p></main>;
  }
  if(!adapter)return <main className="map-access"><Link to={"/app/organizations/"+organizationId+"/projects"}>← Dự án</Link><h1>Không gian Bản đồ</h1><p role={adapterError?"alert":"status"}>{adapterError?"Không thể khởi tạo công cụ bản đồ. Hãy tải lại trang.":"Đang khởi tạo công cụ bản đồ…"}</p></main>;
- return <Workspace key={accountId+":"+organizationId+":"+projectId} organizationId={organizationId} projectId={projectId} accountId={accountId} project={project} initial={map} canEdit={permissions.permissions.includes("project.edit")} createEngine={adapter.createMapLibreEngine}/>;
+ return <Workspace key={accountId+":"+organizationId+":"+projectId} organizationId={organizationId} projectId={projectId} accountId={accountId} project={project} initial={map} canEdit={permissions.permissions.includes("project.edit")} canManageAccess={permissions.permissions.some(permission=>["organization.manage_members","authorization.manage_grants","invitation.manage"].includes(permission))} createEngine={adapter.createMapLibreEngine}/>;
 }
 export function MapWorkspace() {
  const {organizationId,projectId}=useParams();
