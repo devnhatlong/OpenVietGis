@@ -152,12 +152,12 @@ function MemberAdministration({ organizationId, userId, permissions }: {
   return (
     <>
       {canManageMembers ? (
-        <section>
-          <h2>Thành viên</h2>
+        <section className="rounded-2xl border border-line bg-surface p-5 shadow-xs space-y-4">
+          <h2 className="text-base font-bold text-ink">Thành viên</h2>
           {members.fetchStatus !== "idle" || members.isPending ? <p>Đang tải thành viên…</p> : !currentMembers ? <p role="alert">Không thể tải danh sách thành viên.</p> : null}
-          <ul data-testid="member-list">
+          <ul data-testid="member-list" className="grid grid-cols-1 gap-2.5 list-none p-0 m-0">
             {availableMembers.map((member) => (
-              <li key={member.id} data-testid={"member-" + member.id}>
+              <li key={member.id} data-testid={"member-" + member.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-line bg-surface-muted px-4 py-3 text-sm">
                 {member.user_id}{member.user_id === userId ? " (bạn)" : ""} — {membershipRoleLabel(member.role)} — {membershipStatusLabel(member.status)}{" "}
                 {member.status === "active" ? (
                   <button type="button" disabled={changeMember.isPending} onClick={() => changeMember.mutate({ id: member.id, change: { status: "suspended" } })}>Tạm khóa</button>
@@ -177,9 +177,9 @@ function MemberAdministration({ organizationId, userId, permissions }: {
       ) : null}
 
       {canManageGrants ? (
-        <section>
-          <h2>Phân quyền tài nguyên</h2>
-          <form onSubmit={submitGrant}>
+        <section className="rounded-2xl border border-line bg-surface p-5 shadow-xs space-y-4">
+          <h2 className="text-base font-bold text-ink">Phân quyền tài nguyên</h2>
+          <form onSubmit={submitGrant} className="flex flex-wrap items-end gap-4 rounded-xl border border-line bg-surface-muted p-4">
             <label>Thành viên
               <select required value={availableMembers.some((member) => member.id === membershipId && member.status === "active") ? membershipId : ""} onChange={(event) => setMembershipId(event.target.value)}>
                 <option value="">Chọn thành viên</option>
@@ -193,9 +193,9 @@ function MemberAdministration({ organizationId, userId, permissions }: {
           </form>
           {grants.fetchStatus !== "idle" || grants.isPending ? <p>Đang tải phân quyền…</p> : null}
           {grants.error || members.error || workspaces.error || projects.error ? <p role="alert">Không thể tải tài nguyên phân quyền.</p> : null}
-          <ul data-testid="resource-grant-list">
+          <ul data-testid="resource-grant-list" className="grid grid-cols-1 gap-2.5 list-none p-0 m-0">
             {currentGrants?.map((grant) => (
-              <li key={grant.id}>
+              <li key={grant.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-line bg-surface-muted px-4 py-3 text-sm">
                 {grant.subject_id} — {membershipRoleLabel(grant.role)} — {grantScopeLabel(grant.scope_kind)} {grant.workspace_id ?? grant.project_id ?? ""} — {grant.revoked_at ? "Đã thu hồi" : "Đang hoạt động"}{" "}
                 {!grant.revoked_at ? (
                   <button type="button" disabled={revokeAccess.isPending} onClick={() => revokeAccess.mutate(grant.id)}>Thu hồi quyền</button>
@@ -227,7 +227,7 @@ function OrganizationMembership({ organizationId, userId }: { organizationId: st
   const current = currentProtectedData(effective);
 
   return (
-    <main style={{ maxWidth: 960, margin: "40px auto", fontFamily: "system-ui, sans-serif" }}>
+    <main className="w-full p-5 space-y-5">
       <Link to={"/app/organizations/" + encodeURIComponent(organizationId)}>← Tổ chức</Link>
       <h1>Thành viên & Phân quyền</h1>
       {effective.fetchStatus !== "idle" || effective.isPending ? <p>Đang kiểm tra quyền của tổ chức…</p> : !current ? (

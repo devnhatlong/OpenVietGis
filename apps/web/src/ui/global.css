@@ -129,37 +129,6 @@ button, a, input, select, textarea, summary { outline-color: var(--ovg-focus); }
   border-radius: 5px;
 }
 
-/* Studio card defaults for organization/workspace/membership/spatial admin pages */
-.ovg-app-content > main:not(.dashboard-page):not(.transfers-page):not(.ovg-suite):not(.hn-shell):not(.gis-workspace) {
-  background: var(--ovg-surface);
-  border: 1px solid var(--ovg-border);
-  border-radius: var(--ovg-radius-lg);
-  padding: 28px 32px !important;
-  box-shadow: var(--ovg-shadow-sm);
-  margin: 24px auto !important;
-  color: var(--ovg-text);
-}
-.ovg-app-content > main:not(.dashboard-page):not(.transfers-page):not(.ovg-suite):not(.hn-shell):not(.gis-workspace) h1 {
-  margin-top: 0;
-  font-size: clamp(1.3rem, 1.05rem + 0.8vw, 1.75rem);
-  font-weight: 800;
-  letter-spacing: -0.02em;
-}
-.ovg-app-content > main:not(.dashboard-page):not(.transfers-page):not(.ovg-suite):not(.hn-shell):not(.gis-workspace) button {
-  padding: 8px 14px;
-  border-radius: var(--ovg-radius-sm);
-  border: 1px solid var(--ovg-primary);
-  background: var(--ovg-primary);
-  color: var(--ovg-primary-fg);
-  font-weight: 600;
-  cursor: pointer;
-}
-.ovg-app-content > main:not(.dashboard-page):not(.transfers-page):not(.ovg-suite):not(.hn-shell):not(.gis-workspace) section {
-  border-color: var(--ovg-border) !important;
-  border-radius: var(--ovg-radius-md) !important;
-  background: var(--ovg-surface-muted);
-}
-
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     scroll-behavior: auto !important;

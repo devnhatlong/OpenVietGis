@@ -15,6 +15,7 @@ interface MapRibbonProps {
   dirty: boolean;
   saveState: string;
   saveLabel: string;
+  needsRecovery: boolean;
   commands: MapCommand[];
   activeTool: MapDockToolId | null;
   activeModules: ActiveModuleSummary[];
@@ -26,6 +27,7 @@ interface MapRibbonProps {
   onToggleTable: () => void;
   onSelectTool: (tool: MapDockToolId | null) => void;
   onOpenTechnical: () => void;
+  onReloadShared: () => void;
 }
 
 export function MapRibbon({
@@ -35,12 +37,14 @@ export function MapRibbon({
   dirty,
   saveState,
   saveLabel,
+  needsRecovery,
   commands,
   rightOpen,
   tableOpen,
   onToggleRight,
   onToggleTable,
-  onOpenTechnical
+  onOpenTechnical,
+  onReloadShared
 }: MapRibbonProps) {
   const [search, setSearch] = useState("");
   const searchMenu = useRef<HTMLDetailsElement>(null);
@@ -80,6 +84,15 @@ export function MapRibbon({
         >
           {saveLabel}
         </span>
+        {needsRecovery ? (
+          <button
+            type="button"
+            className="gis-recovery-btn"
+            onClick={onReloadShared}
+          >
+            ↻ Tải lại bản đồ chung
+          </button>
+        ) : null}
       </div>
 
       <div className="gis-header-meta">
@@ -132,38 +145,58 @@ export function MapRibbon({
           Chi tiết
         </button>
 
-        <details ref={searchMenu} className="map-command-search">
-          <summary title="Tất cả lệnh bản đồ">⋯</summary>
-          <label>
-            Tìm lệnh bản đồ
-            <input
-              aria-label="Tìm lệnh bản đồ"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-          </label>
-          <ul>
-            {commands
-              .filter((c) => c.label.toLowerCase().includes(search.toLowerCase()))
-              .map((c) => (
-                <li key={c.id}>
-                  <button
-                    type="button"
-                    disabled={!c.enabled}
-                    title={c.reason ?? c.label}
-                    onClick={() => executeSearch(c.id)}
-                  >
-                    {c.label}
-                  </button>
-                  {!c.enabled ? <small>{c.reason}</small> : null}
-                </li>
-              ))}
-            <li>
-              <button type="button" onClick={onOpenTechnical}>
-                Thông tin kỹ thuật & CRS
-              </button>
-            </li>
-          </ul>
+        <details ref={searchMenu} className="gis-cmd-dropdown">
+          <summary title="Tất cả lệnh bản đồ" aria-label="Menu lệnh bản đồ">⋯</summary>
+          <div className="gis-cmd-popover">
+            <label className="gis-cmd-search-label">
+              <span>Tìm lệnh bản đồ</span>
+              <input
+                aria-label="Tìm lệnh bản đồ"
+                placeholder="Gõ tên lệnh…"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            </label>
+            <ul className="gis-cmd-list">
+              {commands
+                .filter((c) => c.label.toLowerCase().includes(search.toLowerCase()))
+                .map((c) => (
+                  <li key={c.id}>
+                    <button
+                      type="button"
+                      disabled={!c.enabled}
+                      title={c.reason ?? c.label}
+                      onClick={() => executeSearch(c.id)}
+                    >
+                      {c.label}
+                    </button>
+                    {!c.enabled && c.reason ? <small>{c.reason}</small> : null}
+                  </li>
+                ))}
+              <li>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (searchMenu.current) searchMenu.current.open = false;
+                    onOpenTechnical();
+                  }}
+                >
+                  Thông tin kỹ thuật & CRS
+                </button>
+              </li>
+              <li>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (searchMenu.current) searchMenu.current.open = false;
+                    onReloadShared();
+                  }}
+                >
+                  Tải lại bản đồ chung
+                </button>
+              </li>
+            </ul>
+          </div>
         </details>
 
         <ThemeToggle />

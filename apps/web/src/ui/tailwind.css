@@ -1,0 +1,27 @@
+@import "tailwindcss";
+
+@theme {
+  --color-brand: var(--ovg-primary);
+  --color-brand-strong: var(--ovg-primary-strong);
+  --color-brand-fg: var(--ovg-primary-fg);
+  --color-brand-soft: var(--ovg-primary-soft);
+  --color-bg: var(--ovg-bg);
+  --color-surface: var(--ovg-surface);
+  --color-surface-muted: var(--ovg-surface-muted);
+  --color-ink: var(--ovg-text);
+  --color-ink-secondary: var(--ovg-text-secondary);
+  --color-ink-muted: var(--ovg-text-muted);
+  --color-line: var(--ovg-border);
+  --color-line-strong: var(--ovg-border-strong);
+  --color-danger: var(--ovg-danger);
+  --color-danger-soft: var(--ovg-danger-soft);
+  --font-sans: var(--ovg-font-sans);
+  --font-mono: var(--ovg-font-mono);
+}
+
+@layer base {
+  html, body {
+    max-width: 100%;
+    overflow-x: clip;
+  }
+}

@@ -401,7 +401,7 @@ function CatalogView({ organizationId, projectId, accountId }: {
   const writable = project?.status === "active" && !command.isPending;
 
   return (
-    <main style={{ maxWidth: 1100, margin: "32px auto", padding: "0 16px", fontFamily: "system-ui, sans-serif" }}>
+    <main className="w-full p-5 space-y-5">
       <p><Link to={"/app/organizations/" + encodeURIComponent(organizationId) + "/projects"}>← Danh sách Dự án</Link></p>
       <h1>Danh mục nguồn dữ liệu không gian</h1>
       <p>Đăng ký và kiểm tra các nguồn tham chiếu tin cậy.</p>

@@ -355,7 +355,9 @@ function Workspace({organizationId,projectId,accountId,project,initial,canEdit,c
    onToggleRight={()=>updateLayoutPreference({...layoutPreference,rightPanelCollapsed:!layoutPreference.rightPanelCollapsed})}
    onToggleTable={()=>updateLayoutPreference({...layoutPreference,attributeTableCollapsed:!layoutPreference.attributeTableCollapsed})}
    onSelectTool={setActiveTool}
+   needsRecovery={pending?.status==="unresolved"||pending?.status==="conflict"}
    onOpenTechnical={()=>setTechnicalDetailsOpen(true)}
+   onReloadShared={()=>void reloadShared()}
   />
   <div className="gis-workstation-stage">
    <MapActivityRail

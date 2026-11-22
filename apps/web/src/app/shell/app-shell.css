@@ -241,3 +241,29 @@
 .ovg-app-shell.is-map-workstation .ovg-app-topbar {
   display: none !important;
 }
+
+/* Prevent horizontal clipping on all viewports */
+.ovg-app-shell {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: clip;
+}
+.ovg-app-stage {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: clip;
+}
+.ovg-app-topbar {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+.ovg-app-topbar-actions {
+  flex-shrink: 0;
+}
+.ovg-app-content {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}

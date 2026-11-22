@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 
 import { App } from "./app/App";
 import "./ui/tokens.css";
+import "./ui/tailwind.css";
 import "./ui/global.css";
 
 const root = document.getElementById("root");

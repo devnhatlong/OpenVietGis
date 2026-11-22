@@ -260,13 +260,13 @@ function ExtensionWorkspace({ organizationId, projectId, accountId }: Scope & {a
               void run(async()=>{await transitionExtension(apiClient,organizationId,projectId,activation.id,activation.manifest_id,candidate.id,await loadCsrfToken(apiClient));
                 setRecordId("");return "Đã chuyển phiên bản manifest.";});}}>Kiểm tra và chuyển phiên bản</button>}
       </div>
-      <p>Trạng thái: {activation ? (activation.status === "active" ? "Hoạt động" : "Vô hiệu") + " · " + (activeManifest?.version ?? "không rõ") : "Chưa kích hoạt"}</p>
+      <div className="mt-3 flex items-center gap-2 text-xs"><span className="font-semibold text-ink-muted">Trạng thái:</span><span className="ovg-badge">{activation ? (activation.status === "active" ? "Đang hoạt động" : "Vô hiệu") + " · v" + (activeManifest?.version ?? "?") : "Chưa kích hoạt"}</span></div>
       {candidate && <details><summary>Thông tin manifest (không phải quyền đã cấp)</summary>
         <p>{candidate.description} · API {candidate.api_compatibility}</p>
         <pre>{JSON.stringify({permissions:candidate.permissions,commands:candidate.commands,capabilities:candidate.capabilities,entity_schemas:candidate.entity_schemas},null,2)}</pre>
       </details>}
     </>}
-    {activation && <>
+    {activation && <details className="mt-4 rounded-xl border border-line bg-surface-muted p-3.5"><summary className="cursor-pointer text-xs font-bold text-ink-secondary">Công cụ kỹ thuật nâng cao (Nhập/Xuất JSON & Dữ liệu bản ghi thô)</summary><div className="mt-3 space-y-3">
       <div className="ovg-form-row">
         <button type="button" className="ovg-btn" disabled={busy} onClick={download}>Xuất dữ liệu & lịch sử JSON</button>
         <label>Chọn gói JSON để sao chép vào dự án
@@ -298,7 +298,7 @@ function ExtensionWorkspace({ organizationId, projectId, accountId }: Scope & {a
         {(currentProtectedData(historyQuery)?.items ?? []).map(item=><div key={item.revision}><p>rev {item.revision} · {item.event} · {item.occurred_at} · {item.actor_id}</p><pre>{JSON.stringify(item.payload,null,2)}</pre></div>)}
       </details>}
       <details><summary>Lịch sử kích hoạt/phiên bản</summary><pre>{JSON.stringify(currentProtectedData(lifecycle)?.items ?? [],null,2)}</pre></details>
-    </>}
+    </div></details>}
   </section>;
 }
 

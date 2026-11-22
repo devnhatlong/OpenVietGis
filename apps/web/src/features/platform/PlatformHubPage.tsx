@@ -176,6 +176,7 @@ export function PlatformHubPage({ embeddedTab }: { embeddedTab?: HubTab } = {}) 
         title="Trung tâm Nền tảng GIS & Vận hành"
       />
       <main className="ovg-suite-body">
+        {!embeddedTab && (
         <div className="ovg-tabs" role="tablist">
           {(
             [
@@ -199,6 +200,7 @@ export function PlatformHubPage({ embeddedTab }: { embeddedTab?: HubTab } = {}) 
             </button>
           ))}
         </div>
+        )}
 
         {notice && <div className="ovg-notice">{notice}</div>}
         {error && <div className="ovg-error">{error}</div>}

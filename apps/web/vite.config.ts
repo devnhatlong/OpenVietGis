@@ -1,3 +1,4 @@
+import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { loadEnv } from "vite";
 import { defineConfig } from "vitest/config";
@@ -12,7 +13,7 @@ export default defineConfig(({ mode }) => {
   }
   const apiTarget = environment.OPENVIETGIS_VITE_API_TARGET ?? `http://127.0.0.1:${Number(rawApiPort)}`;
   return {
-    plugins: [react()],
+    plugins: [tailwindcss(), react()],
     server: { proxy: { "/api": { target: apiTarget, changeOrigin: false } } },
     preview: { proxy: { "/api": { target: apiTarget, changeOrigin: false } } },
     test: { environment: "node" }

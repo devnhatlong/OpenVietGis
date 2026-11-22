@@ -323,3 +323,35 @@
   color: var(--ovg-text);
 }
 .gis-tool-dock-body .ovg-toolbar-compact { display: none !important; }
+
+/* Universal form label spacing guard */
+.ovg-card label,
+.ovg-suite label,
+.gis-tool-dock-body label {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ovg-text-secondary);
+}
+.ovg-card label:has(> input[type="checkbox"]),
+.ovg-card label:has(> input[type="radio"]),
+.gis-tool-dock-body label:has(> input[type="checkbox"]),
+.gis-tool-dock-body label:has(> input[type="radio"]) {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+.ovg-card form,
+.gis-tool-dock-body form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-end;
+}
+.gis-tool-dock-body fieldset {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
