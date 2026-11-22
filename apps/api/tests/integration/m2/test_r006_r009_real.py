@@ -264,6 +264,122 @@ def test_r006_editing_changesets_conflicts_validation_and_revert(migrated_databa
         assert ro_err.status_code == 403
 
 
+def test_r006_noop_and_snap_require_current_edit_authority(migrated_database: None) -> None:
+    from tests.integration.spatial.test_authorization import _grant, _org
+
+    world = seed_access_world()
+    base = f"/api/v1/organizations/{world.organization_id}/projects/{world.project_id}"
+    snap_body = {"target": [1, 1], "vertices": [[1, 1]], "tolerance": 0.1}
+    with _client(world.owner_user_id) as owner, _client(world.member_user_id) as member:
+        imp = _import_geojson(
+            owner,
+            world,
+            "noop.geojson",
+            [
+                {
+                    "type": "Feature",
+                    "id": "p1",
+                    "properties": {"label": "same"},
+                    "geometry": {"type": "Point", "coordinates": [105, 21]},
+                }
+            ],
+            "No-op fixture",
+            "noop-import",
+        )
+        source_id = imp["target_source_id"]
+        root = f"{base}/sources/{source_id}/changesets"
+        before = owner.get(f"{base}/spatial/sources/{source_id}").json()
+        history_before = owner.get(root).json()
+        result = owner.post(
+            root,
+            json={
+                "base_content_revision": imp["source_content_revision"],
+                "operation_id": "noop-test",
+                "operations": [
+                    {
+                        "op_type": "update",
+                        "feature_id": "p1",
+                        "properties": {"label": "same"},
+                        "geometry": {"type": "Point", "coordinates": [105, 21]},
+                    }
+                ],
+            },
+        )
+        assert result.status_code == 409, result.text
+        assert result.json()["code"] == "NO_MATERIAL_CHANGE"
+        assert owner.get(root).json() == history_before
+        assert owner.get(f"{base}/spatial/sources/{source_id}").json() == before
+
+        snap_url = f"{base}/editing/snap"
+        assert owner.post(snap_url, json=snap_body).status_code == 200
+        assert member.post(snap_url, json=snap_body).status_code == 403
+        grant = _grant(owner, world, "membership", str(world.member_membership_id), "viewer")
+        assert member.post(snap_url, json=snap_body).status_code == 403
+        assert owner.post(f"{_org(world)}/grants/{grant}/revoke").status_code == 204
+        grant = _grant(owner, world, "membership", str(world.member_membership_id), "editor")
+        assert member.post(snap_url, json=snap_body).status_code == 200
+        assert owner.post(f"{_org(world)}/grants/{grant}/revoke").status_code == 204
+        assert member.post(snap_url, json=snap_body).status_code == 403
+
+
+def test_r006_concurrent_identical_save_returns_one_receipt(migrated_database: None) -> None:
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier
+
+    world = seed_access_world()
+    base = f"/api/v1/organizations/{world.organization_id}/projects/{world.project_id}"
+    with _client(world.owner_user_id) as owner:
+        imp = _import_geojson(
+            owner,
+            world,
+            "retry.geojson",
+            [
+                {
+                    "type": "Feature",
+                    "id": "p1",
+                    "properties": {"label": "old"},
+                    "geometry": {"type": "Point", "coordinates": [105, 21]},
+                }
+            ],
+            "Retry fixture",
+            "retry-import",
+        )
+    root = f"{base}/sources/{imp['target_source_id']}/changesets"
+    payload = {
+        "base_content_revision": imp["source_content_revision"],
+        "operation_id": "identical-concurrent",
+        "operations": [
+            {
+                "op_type": "create",
+                "feature_id": "p2",
+                "properties": {"label": "new"},
+                "geometry": {"type": "Point", "coordinates": [106, 21]},
+            }
+        ],
+    }
+    gate = Barrier(2)
+
+    def submit() -> Any:
+        with _client(world.owner_user_id) as client:
+            gate.wait(timeout=15)
+            return client.post(root, json=payload)
+
+    with ThreadPoolExecutor(max_workers=2) as workers:
+        futures = [workers.submit(submit) for _ in range(2)]
+        first, second = [future.result(timeout=30) for future in futures]
+    assert first.status_code == second.status_code == 201, (first.text, second.text)
+    assert first.json() == second.json()
+    with _client(world.owner_user_id) as owner:
+        history = owner.get(root).json()["items"]
+        assert len(history) == 1
+        assert history[0]["id"] == first.json()["id"]
+        actual = owner.post(
+            f"{base}/layers/{imp['target_layer_id']}/query", json={"limit": 10, "offset": 0}
+        )
+        assert actual.status_code == 200
+        assert {feature["feature_id"] for feature in actual.json()["items"]} == {"p1", "p2"}
+
+
 def test_r007_r008_r009_query_processing_and_cartography(migrated_database: None) -> None:
     world = seed_access_world()
     base = f"/api/v1/organizations/{world.organization_id}/projects/{world.project_id}"

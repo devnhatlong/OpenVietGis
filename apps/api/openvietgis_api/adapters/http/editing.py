@@ -17,6 +17,8 @@ from openvietgis_api.adapters.http.security import (
     require_csrf,
 )
 from openvietgis_api.adapters.persistence.editing_repository import SqlEditingRepository
+from openvietgis_api.adapters.persistence.scope_helper import prepare_project_scope
+from openvietgis_api.domains.authorization.permissions import Permission
 from openvietgis_api.domains.editing.domain import (
     ChangesetOperationRecord,
     ChangesetRecord,
@@ -193,8 +195,10 @@ def compute_snap(
     project_id: UUID,
     body: SnapRequest,
     auth: Annotated[AuthenticatedRequest, Depends(require_csrf)],
+    session: Annotated[Session, Depends(get_db_session, scope="function")],
 ) -> dict[str, Any]:
-    _ = context_for(auth, organization_id=organization_id, project_id=project_id)
+    ctx = context_for(auth, organization_id=organization_id, project_id=project_id)
+    prepare_project_scope(session, ctx, permission=Permission.PROJECT_EDIT)
     return snap_point_to_candidates(
         target=body.target,
         vertices=body.vertices,
