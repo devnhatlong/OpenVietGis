@@ -101,13 +101,21 @@ def destructive_migration_database(
                 clear_runtime_caches()
                 try:
                     assert get_settings().migration_db_url == database_url
-                    with get_admin_engine().connect() as connection:
+                    with get_admin_engine().begin() as connection:
                         assert connection.execute(
                             text("SELECT current_database(), session_user")
                         ).one() == ("openvietgis_test", "openvietgis")
                         assert connection.execute(
                             text("SELECT to_regclass('alembic_version') IS NULL")
                         ).scalar_one()
+                        # Testcontainers does not mount the development role-init
+                        # SQL. Initialize the same restricted login in this fresh,
+                        # verified disposable cluster only, including its test password.
+                        connection.exec_driver_sql(
+                            (
+                                ROOT / "infra" / "dev" / "postgres" / "001-runtime-role.sql"
+                            ).read_text(encoding="utf-8")
+                        )
                     config = Config(str(ROOT / "apps" / "api" / "alembic.ini"))
                     command.upgrade(config, "head")
                     yield
