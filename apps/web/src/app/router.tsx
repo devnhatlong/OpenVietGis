@@ -12,25 +12,10 @@ import {
 } from "./route-contract";
 import { SessionBoundary } from "./session/SessionBoundary";
 import { AppShell } from "./shell/AppShell";
-import { IdentityPage } from "../features/auth/IdentityPage";
-import { LoginPage } from "../features/auth/LoginPage";
-import { AppDashboard } from "../features/dashboard/AppDashboard";
-import { InvitationAcceptPage } from "../features/invitations/InvitationAcceptPage";
-import { LandingPage } from "../features/landing/LandingPage";
+// Keep direct map navigation free of an import waterfall; other feature screens
+// load only when their route is matched. The offline shell precaches every emitted
+// static chunk so lazy loading does not require network access after installation.
 import { MapWorkspace } from "../features/map/MapWorkspace";
-import { MembershipPage } from "../features/membership/MembershipPage";
-import { OfflineFieldPage } from "../features/offline/OfflineFieldPage";
-import { OrganizationHome } from "../features/organizations/OrganizationHome";
-import { CartographyWorkbenchPage } from "../features/platform/CartographyWorkbenchPage";
-import { EditingWorkbenchPage } from "../features/platform/EditingWorkbenchPage";
-import { PlatformHubPage } from "../features/platform/PlatformHubPage";
-import { ProcessingWorkbenchPage } from "../features/platform/ProcessingWorkbenchPage";
-import { QueryWorkbenchPage } from "../features/platform/QueryWorkbenchPage";
-import { FrontendPreviewPage } from "../features/preview/FrontendPreviewPage";
-import { ProjectPage } from "../features/projects/ProjectPage";
-import { SpatialCatalogPage } from "../features/spatial/SpatialCatalogPage";
-import { ImportExportPage } from "../features/transfers/ImportExportPage";
-import { WorkspacePage } from "../features/workspaces/WorkspacePage";
 
 const routerBasename =
   window.location.pathname === "/dev" ||
@@ -78,36 +63,38 @@ export const router = createBrowserRouter(
   [
     {
       path: "/",
-      element: uxPreviewMode ? <FrontendPreviewPage /> : <LandingPage />
+      lazy: async () => uxPreviewMode
+        ? { Component: (await import("../features/preview/FrontendPreviewPage")).FrontendPreviewPage }
+        : { Component: (await import("../features/landing/LandingPage")).LandingPage }
     },
-    { path: "/landing", element: <LandingPage /> },
-    { path: "/login", element: <LoginPage /> },
-    { path: "/offline-field/:organizationId/:projectId", element: <OfflineFieldPage /> },
+    { path: "/landing", lazy: async () => ({ Component: (await import("../features/landing/LandingPage")).LandingPage }) },
+    { path: "/login", lazy: async () => ({ Component: (await import("../features/auth/LoginPage")).LoginPage }) },
+    { path: "/offline-field/:organizationId/:projectId", lazy: async () => ({ Component: (await import("../features/offline/OfflineFieldPage")).OfflineFieldPage }) },
 
     {
       path: "/app",
       element: <AuthenticatedLayout />,
       children: [
-        { index: true, element: <AppDashboard /> },
+        { index: true, lazy: async () => ({ Component: (await import("../features/dashboard/AppDashboard")).AppDashboard }) },
         {
           path: "organizations",
-          element: <OrganizationHome />
+          lazy: async () => ({ Component: (await import("../features/organizations/OrganizationHome")).OrganizationHome })
         },
         {
           path: "organizations/:organizationId",
-          element: <OrganizationHome />
+          lazy: async () => ({ Component: (await import("../features/organizations/OrganizationHome")).OrganizationHome })
         },
         {
           path: "organizations/:organizationId/workspaces",
-          element: <WorkspacePage />
+          lazy: async () => ({ Component: (await import("../features/workspaces/WorkspacePage")).WorkspacePage })
         },
         {
           path: "organizations/:organizationId/projects",
-          element: <ProjectPage />
+          lazy: async () => ({ Component: (await import("../features/projects/ProjectPage")).ProjectPage })
         },
         {
           path: "organizations/:organizationId/projects/:projectId/spatial",
-          element: <SpatialCatalogPage />
+          lazy: async () => ({ Component: (await import("../features/spatial/SpatialCatalogPage")).SpatialCatalogPage })
         },
         {
           path: "organizations/:organizationId/projects/:projectId/map",
@@ -115,36 +102,36 @@ export const router = createBrowserRouter(
         },
         {
           path: "organizations/:organizationId/projects/:projectId/transfers",
-          element: <ImportExportPage />
+          lazy: async () => ({ Component: (await import("../features/transfers/ImportExportPage")).ImportExportPage })
         },
         {
           path: "organizations/:organizationId/projects/:projectId/editing",
-          element: <EditingWorkbenchPage />
+          lazy: async () => ({ Component: (await import("../features/platform/EditingWorkbenchPage")).EditingWorkbenchPage })
         },
         {
           path: "organizations/:organizationId/projects/:projectId/queries",
-          element: <QueryWorkbenchPage />
+          lazy: async () => ({ Component: (await import("../features/platform/QueryWorkbenchPage")).QueryWorkbenchPage })
         },
         {
           path: "organizations/:organizationId/projects/:projectId/processing",
-          element: <ProcessingWorkbenchPage />
+          lazy: async () => ({ Component: (await import("../features/platform/ProcessingWorkbenchPage")).ProcessingWorkbenchPage })
         },
         {
           path: "organizations/:organizationId/projects/:projectId/cartography",
-          element: <CartographyWorkbenchPage />
+          lazy: async () => ({ Component: (await import("../features/platform/CartographyWorkbenchPage")).CartographyWorkbenchPage })
         },
         {
           path: "organizations/:organizationId/projects/:projectId/platform-hub",
-          element: <PlatformHubPage />
+          lazy: async () => ({ Component: (await import("../features/platform/PlatformHubPage")).PlatformHubPage })
         },
         {
           path: "organizations/:organizationId/membership",
-          element: <MembershipPage />
+          lazy: async () => ({ Component: (await import("../features/membership/MembershipPage")).MembershipPage })
         },
-        { path: "account", element: <IdentityPage /> },
+        { path: "account", lazy: async () => ({ Component: (await import("../features/auth/IdentityPage")).IdentityPage }) },
         {
           path: "invitations/accept",
-          element: <InvitationAcceptPage />
+          lazy: async () => ({ Component: (await import("../features/invitations/InvitationAcceptPage")).InvitationAcceptPage })
         }
       ]
     },
