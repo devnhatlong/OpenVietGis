@@ -15,6 +15,10 @@ from sqlalchemy.orm import Session
 
 from openvietgis_api.adapters.persistence.scope_helper import prepare_project_scope
 from openvietgis_api.adapters.persistence.spatial_repository import SqlSpatialRepository
+from openvietgis_api.adapters.persistence.web_transform_guard import (
+    require_web_domain,
+    web_transform_sql,
+)
 from openvietgis_api.adapters.rendering.map_renderer import render_print_map
 from openvietgis_api.adapters.storage.local_object_store import LocalObjectStore
 from openvietgis_api.domains.authorization.context import AuthorizationContext
@@ -382,6 +386,7 @@ class SqlCartographyRepository:
                     WHERE l.organization_id = :org AND l.project_id = :proj AND l.id = :lid
                       AND l.lifecycle = 'active' AND s.lifecycle = 'active'
                       AND s.validation_state = 'ready'
+                    FOR SHARE OF l, s
                 """),
                     {"org": org_id, "proj": project_id, "lid": lid},
                 )
@@ -405,11 +410,21 @@ class SqlCartographyRepository:
             )
             style_dict = dict(style_row) if style_row is not None else None
 
-            geom_expr = (
-                "rf.geometry"
-                if int(meta["stored_crs"]) == layout.crs_code
-                else f"ST_Transform(rf.geometry, {int(layout.crs_code)})"
-            )
+            source_srid = int(meta["stored_crs"])
+            geom_expr = "rf.geometry"
+            transform_params: dict[str, Any] = {}
+            transform_operation = None
+            if source_srid != layout.crs_code:
+                geom_expr, transform_params, transform_operation = web_transform_sql(
+                    "rf.geometry", source_srid, layout.crs_code, "print"
+                )
+                require_web_domain(
+                    self._session,
+                    organization_id=org_id,
+                    project_id=project_id,
+                    source_id=meta["source_id"],
+                    native_srid=source_srid,
+                )
             frows = (
                 self._session.execute(
                     text(f"""
@@ -423,7 +438,12 @@ class SqlCartographyRepository:
                     ORDER BY rf.feature_id
                     LIMIT 2501
                 """),
-                    {"org": org_id, "proj": project_id, "src": meta["source_id"]},
+                    {
+                        "org": org_id,
+                        "proj": project_id,
+                        "src": meta["source_id"],
+                        **transform_params,
+                    },
                 )
                 .mappings()
                 .all()
@@ -464,6 +484,8 @@ class SqlCartographyRepository:
                     "source_id": str(meta["source_id"]),
                     "content_revision": str(meta["content_revision"]),
                     "schema_revision": str(meta["schema_revision"]),
+                    "source_crs": source_srid,
+                    "transformation_operation": transform_operation,
                     "style_revision": int(style_row["revision"]) if style_row else 0,
                 }
             )

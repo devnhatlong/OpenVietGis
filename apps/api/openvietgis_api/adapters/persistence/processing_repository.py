@@ -21,6 +21,10 @@ from openvietgis_api.adapters.persistence.spatial_repository import (
     _read_native_wkb,
     _source_from_row,
 )
+from openvietgis_api.adapters.persistence.web_transform_guard import (
+    require_web_domain,
+    web_transform_sql,
+)
 from openvietgis_api.domains.authorization.context import AuthorizationContext
 from openvietgis_api.domains.authorization.permissions import Permission
 from openvietgis_api.domains.editing.domain import validate_operation_id
@@ -457,7 +461,7 @@ class SqlProcessingRepository:
         # Compute derived geometries via PostGIS without mutating input sources
         derived_rows: list[tuple[str, dict[str, Any], bytes, NativeGeometry]] = []
         output_family = input_source.geometry_family
-        bound_params = {
+        bound_params: dict[str, Any] = {
             "max_features": MAX_PROCESSING_FEATURES,
             "max_positions": MAX_PROCESSING_POSITIONS,
             "max_rows": MAX_PROCESSING_FEATURES + 1,
@@ -467,12 +471,41 @@ class SqlProcessingRepository:
         if job.algorithm_id == AlgorithmId.BUFFER:
             dist = float(job.parameters["distance_meters"])
             quad_segs = int(job.parameters.get("quad_segs", 8))
-            # Buffer in metric EPSG:3857 when geographic 4326/4756, or directly in projected CRS
+            # Only approved analytic WGS84/Web Mercator pipeline is usable on
+            # arbitrary geographic sources. Native metric inputs need no transform.
             if input_srid in (4326, 4756):
-                buf_expr = (
-                    "ST_Transform(ST_Buffer(ST_Transform(rf.geometry, 3857), :dist, "
-                    "format('quad_segs=%s', :qsegs)), :srid)"
+                projected, forward_params, _ = web_transform_sql(
+                    "geometry", input_srid, 3857, "buffer_forward"
                 )
+                require_web_domain(
+                    self._session,
+                    organization_id=org_id,
+                    project_id=project_id,
+                    source_id=input_src_id,
+                    native_srid=input_srid,
+                )
+                require_web_domain(
+                    self._session,
+                    organization_id=org_id,
+                    project_id=project_id,
+                    source_id=input_src_id,
+                    native_srid=input_srid,
+                    expression=projected,
+                    expression_params=forward_params,
+                    expression_srid=3857,
+                    margin=dist,
+                )
+                projected, _, _ = web_transform_sql(
+                    "rf.geometry", input_srid, 3857, "buffer_forward"
+                )
+                buf_expr, inverse_params, _ = web_transform_sql(
+                    f"ST_Buffer({projected}, :dist, format('quad_segs=%s', :qsegs))",
+                    3857,
+                    input_srid,
+                    "buffer_inverse",
+                )
+                bound_params.update(forward_params)
+                bound_params.update(inverse_params)
             else:
                 buf_expr = "ST_Buffer(rf.geometry, :dist, format('quad_segs=%s', :qsegs))"
 
@@ -525,11 +558,21 @@ class SqlProcessingRepository:
         elif job.algorithm_id == AlgorithmId.CLIP:
             overlay_src_id = UUID(str(job.input_refs["overlay_source_id"]))
             overlay_srid = int(job.input_refs["overlay_stored_crs"])
-            mask_expr = (
-                "ST_Union(ov.geometry)"
-                if overlay_srid == input_srid
-                else "ST_Transform(ST_Union(ov.geometry), :srid)"
-            )
+            if overlay_srid == input_srid:
+                mask_expr = "ST_Union(ov.geometry)"
+            else:
+                transformed, transform_params, _ = web_transform_sql(
+                    "ov.geometry", overlay_srid, input_srid, "clip"
+                )
+                require_web_domain(
+                    self._session,
+                    organization_id=org_id,
+                    project_id=project_id,
+                    source_id=overlay_src_id,
+                    native_srid=overlay_srid,
+                )
+                bound_params.update(transform_params)
+                mask_expr = f"ST_Union({transformed})"
             qrows = (
                 self._session.execute(
                     text(f"""
