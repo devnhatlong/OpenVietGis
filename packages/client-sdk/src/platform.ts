@@ -583,6 +583,51 @@ export function listChangeReviews(
   );
 }
 
+export interface ReviewComment {
+  id: string;
+  review_id: string;
+  changeset_id: string;
+  content_revision: string;
+  feature_id: string | null;
+  body: string;
+  author_actor_id: string;
+  author_display: string;
+  created_at: string;
+}
+
+export function getChangeset(
+  client: ApiClient, orgId: string, projectId: string, changesetId: string
+): Promise<Changeset> {
+  return client.request<Changeset>(`${projBase(orgId, projectId)}/changesets/${encodeURIComponent(changesetId)}`);
+}
+
+export function createChangeReview(
+  client: ApiClient, orgId: string, projectId: string,
+  body: { changeset_id: string; assignee_user_id: string }, csrf: string
+): Promise<ChangeReview> {
+  return client.request<ChangeReview>(`${projBase(orgId, projectId)}/collaboration/reviews`, {
+    method: "POST", body: JSON.stringify(body), headers: csrfHeaders(csrf)
+  });
+}
+
+export function listReviewComments(
+  client: ApiClient, orgId: string, projectId: string, reviewId: string
+): Promise<{ items: ReviewComment[] }> {
+  return client.request<{ items: ReviewComment[] }>(
+    `${projBase(orgId, projectId)}/collaboration/reviews/${encodeURIComponent(reviewId)}/comments`
+  );
+}
+
+export function addReviewComment(
+  client: ApiClient, orgId: string, projectId: string, reviewId: string,
+  body: { body: string; feature_id: string | null }, csrf: string
+): Promise<ReviewComment> {
+  return client.request<ReviewComment>(
+    `${projBase(orgId, projectId)}/collaboration/reviews/${encodeURIComponent(reviewId)}/comments`,
+    { method: "POST", body: JSON.stringify(body), headers: csrfHeaders(csrf) }
+  );
+}
+
 export function decideChangeReview(
   client: ApiClient,
   orgId: string,

@@ -1,16 +1,13 @@
 import {
   cogoTraverse,
   createExternalConnection,
-  decideChangeReview,
   getOpsHealthReady,
   getOpsReleaseCapabilities,
   getOrgEntitlement,
   listAllowlistedHosts,
   listCadConversions,
-  listChangeReviews,
   listExtensionManifests,
   listExternalConnections,
-  listProjectActivities,
   loadCsrfToken,
   registerAllowlistedHost
 } from "@openvietgis/client-sdk";
@@ -25,6 +22,7 @@ import {
   releaseStatusLabel
 } from "./platform-release-state";
 import { ExternalSourcePreview } from "./ExternalSourcePreview";
+import { CollaborationWorkbenchPanel } from "./CollaborationWorkbenchPanel";
 
 type HubTab = "external" | "collab" | "cad" | "field" | "extensions" | "ops";
 
@@ -68,17 +66,6 @@ function releaseCapabilityLabel(id: string, fallback: string): string {
   return labels[id] ?? fallback;
 }
 
-function eventKindLabel(kind: string): string {
-  const labels: Record<string, string> = {
-    changeset_created: "Tạo bộ thay đổi",
-    changeset_committed: "Ghi nhận bộ thay đổi",
-    review_requested: "Yêu cầu duyệt",
-    review_decided: "Đã duyệt thay đổi",
-    comment_added: "Thêm bình luận"
-  };
-  return labels[kind] ?? kind;
-}
-
 function cadDirectionLabel(direction: string): string {
   const labels: Record<string, string> = {
     import: "Nhập",
@@ -119,16 +106,6 @@ export function PlatformHubPage() {
   const extConnsQ = useQuery({
     queryKey: ["hub", organizationId, projectId, "ext"],
     queryFn: () => listExternalConnections(apiClient, organizationId, projectId),
-    enabled: Boolean(organizationId && projectId)
-  });
-  const reviewsQ = useQuery({
-    queryKey: ["hub", organizationId, projectId, "reviews"],
-    queryFn: () => listChangeReviews(apiClient, organizationId, projectId),
-    enabled: Boolean(organizationId && projectId)
-  });
-  const actsQ = useQuery({
-    queryKey: ["hub", organizationId, projectId, "acts"],
-    queryFn: () => listProjectActivities(apiClient, organizationId, projectId),
     enabled: Boolean(organizationId && projectId)
   });
   const cadQ = useQuery({
@@ -328,47 +305,7 @@ export function PlatformHubPage() {
           </section>
         )}
 
-        {tab === "collab" && (
-          <section className="ovg-card">
-            <h2>Cộng tác nhóm & Duyệt thay đổi sau ghi nhận</h2>
-            <h3>Yêu cầu duyệt thay đổi ({reviewsQ.data?.items.length ?? 0})</h3>
-            <ul>
-              {(reviewsQ.data?.items ?? []).map((r) => (
-                <li key={r.id}>
-                  Bộ thay đổi <code>{r.changeset_id.slice(0, 8)}</code> — <strong>{platformStatusLabel(r.status)}</strong>{" "}
-                  {r.status === "pending" && (
-                    <button
-                      type="button"
-                      className="ovg-btn ovg-btn-secondary"
-                      onClick={async () => {
-                        const csrf = await loadCsrfToken(apiClient);
-                        await decideChangeReview(
-                          apiClient,
-                          organizationId,
-                          projectId,
-                          r.id,
-                          { status: "approved", decision_note: "Đã phê duyệt trên giao diện" },
-                          csrf
-                        );
-                        await qc.invalidateQueries({ queryKey: ["hub", organizationId, projectId] });
-                      }}
-                    >
-                      Phê duyệt
-                    </button>
-                  )}
-                </li>
-              ))}
-            </ul>
-            <h3>Dòng hoạt động dự án</h3>
-            <ul>
-              {(actsQ.data?.items ?? []).map((a) => (
-                <li key={a.id}>
-                  [{eventKindLabel(a.event_kind)}] {a.actor_display}: {a.summary}
-                </li>
-              ))}
-            </ul>
-          </section>
-        )}
+        {tab === "collab" && <CollaborationWorkbenchPanel organizationId={organizationId} projectId={projectId} />}
 
         {tab === "cad" && (
           <section className="ovg-card">

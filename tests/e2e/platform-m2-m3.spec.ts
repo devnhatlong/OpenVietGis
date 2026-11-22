@@ -133,6 +133,27 @@ test("M2+M3 end-to-end: R006 Editing, R007 Query, R008 Processing, R009 Cartogra
   await expect(opsPanel.getByText(/Hồ sơ phát hành:\s*Chưa nghiệm thu/i)).toBeVisible();
   await expect(opsPanel.getByRole("cell", { name: "Chưa nghiệm thu", exact: true })).toHaveCount(15);
 
+  // R011 genuine post-commit review; comments anchored to immutable evidence.
+  await page.getByRole("tab", {name:"Cộng tác nhóm", exact:true}).click();
+  const collaboration = page.getByTestId("collaboration-workbench");
+  await expect(collaboration).toBeVisible();
+  const importedLayer = layers.items.find(layer => layer.source.kind === "imported_file");
+  expect(importedLayer).toBeDefined();
+  await collaboration.getByLabel("Nguồn dữ liệu", {exact:true}).selectOption(importedLayer!.source_id);
+  const changed = collaboration.getByLabel("Bộ thay đổi", {exact:true});
+  await expect(changed.getByRole("option")).toHaveCount(2);
+  await changed.selectOption({index:1});
+  await collaboration.getByRole("button", {name:"Chọn tài khoản của tôi"}).click();
+  await collaboration.getByRole("button", {name:"Gửi yêu cầu duyệt"}).click();
+  await expect(collaboration.getByRole("region", {name:"Chi tiết yêu cầu duyệt"})).toBeVisible();
+  await collaboration.getByLabel("Đối tượng đã thay đổi").selectOption("feat_new_1");
+  await collaboration.getByLabel("Nội dung bình luận").fill("Đã kiểm tra điểm mới");
+  await collaboration.getByRole("button", {name:"Gửi bình luận"}).click();
+  await expect(collaboration.getByText(/Đã kiểm tra điểm mới/)).toBeVisible();
+  await collaboration.getByLabel("Ý kiến", {exact:true}).fill("Đã đối chiếu");
+  await collaboration.getByRole("button", {name:"Phê duyệt", exact:true}).click();
+  await expect(collaboration.getByText("Ý kiến quyết định: Đã đối chiếu")).toBeVisible();
+
   await page.getByRole("tab", { name: "CAD 2D & COGO", exact: true }).click();
   await expect(page.getByText(/chưa gắn CRS, không phải tọa độ khảo sát/i)).toBeVisible();
   await page.getByRole("button", { name: "Tính tọa độ điểm cuối" }).click();
