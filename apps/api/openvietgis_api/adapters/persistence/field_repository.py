@@ -130,6 +130,7 @@ class SqlFieldRepository:
                 WHERE l.organization_id = :org AND l.project_id = :proj AND l.id = :lid
                   AND l.lifecycle = 'active' AND s.lifecycle = 'active'
                   AND s.validation_state = 'ready' AND s.kind <> 'reference_fixture'
+                FOR SHARE OF s, l
             """),
                 {"org": org_id, "proj": project_id, "lid": layer_id},
             )
@@ -152,7 +153,7 @@ class SqlFieldRepository:
         fdefs = (
             self._session.execute(
                 text("""
-                SELECT field_id, name, type, nullable FROM spatial.source_fields
+                SELECT field_id, name, type, nullable, schema_revision FROM spatial.source_fields
                 WHERE organization_id = :org AND project_id = :proj AND source_id = :src
                 ORDER BY ordinal ASC
             """),
@@ -161,6 +162,10 @@ class SqlFieldRepository:
             .mappings()
             .all()
         )
+        if any(fd["schema_revision"] != meta["schema_revision"] for fd in fdefs):
+            raise PlatformConflictError(
+                "source schema changed while packaging", code="STALE_READ_PIN"
+            )
         # Stable GPKG table-reserved names must not collide with attribute columns.
         used = {"geom", "fid", "ovg_feature_id"}
         mappings: list[ExportFieldMapping] = []
@@ -178,7 +183,8 @@ class SqlFieldRepository:
         frows = (
             self._session.execute(
                 text("""
-                SELECT feature_id, attributes, ST_AsGeoJSON(geometry, 15)::jsonb AS geom
+                SELECT feature_id, attributes, ST_AsGeoJSON(geometry, 15)::jsonb AS geom,
+                       content_revision, schema_revision
                 FROM spatial.reference_features
                 WHERE organization_id = :org AND project_id = :proj AND source_id = :src
                   AND ST_CoveredBy(
@@ -206,6 +212,18 @@ class SqlFieldRepository:
 
         if len(frows) > MAX_OFFLINE_PACKAGE_FEATURES:
             raise PlatformValidationError("offline feature limit exceeded; narrow AOI")
+
+        # The source/layer share locks serialize ordinary Core publication and
+        # retirement with this snapshot. Verify row pins too, rather than silently
+        # omitting mismatched rows or certifying them under an older baseline.
+        if any(
+            fr["content_revision"] != meta["content_revision"]
+            or fr["schema_revision"] != meta["schema_revision"]
+            for fr in frows
+        ):
+            raise PlatformConflictError(
+                "source content changed while packaging", code="STALE_READ_PIN"
+            )
 
         gpkg_rows: list[tuple[str, dict[str, Any], NativeGeometry]] = []
         for fr in frows:
@@ -247,7 +265,9 @@ class SqlFieldRepository:
             "aoi_bbox": aoi_bbox,
             "created_at": now.isoformat(),
             "expires_at": expires_at.isoformat(),
-            "fields": [dict(fd) for fd in fdefs],
+            "fields": [
+                {key: fd[key] for key in ("field_id", "name", "type", "nullable")} for fd in fdefs
+            ],
             "features": [
                 {
                     "feature_id": fid,
