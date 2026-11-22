@@ -6,6 +6,7 @@ import pytest
 from sqlalchemy import text
 
 from openvietgis_api.adapters.persistence.db import get_engine
+from tests.fixtures.db_admin import get_admin_engine
 from tests.fixtures.identity_tenancy import seed_access_world
 from tests.integration.spatial.test_features import _setup
 from tests.integration.spatial.test_sources import _client
@@ -173,3 +174,90 @@ def test_runtime_has_no_unscoped_geometry_access(migrated_database):
             connection.execute(text("SELECT count(*) FROM spatial.reference_features")).scalar_one()
             == 0
         )
+
+
+def test_single_scan_rejects_invalid_offscreen_geometry_and_count_mismatch(migrated_database):
+    """A materialized viewport must still prove the full pinned source, not its hits."""
+    world = seed_access_world()
+    box = {"west": 107.15, "south": 20.70, "east": 107.18, "north": 20.73}
+    with _client(world.owner_user_id) as client:
+        _, source, layer, pins = _setup(client, world, "reference_points_4326_hvs")
+        path = root(world, layer)
+        baseline = client.get(path + "/viewport", params={**pins, **box})
+        assert baseline.status_code == 200 and len(baseline.json()["items"]) == 4
+        scope = {"org": world.organization_id, "proj": world.project_id, "src": source["id"]}
+        with get_admin_engine().begin() as connection:
+            # Test-only corruption outside the viewport, retaining the same pins.
+            # The other three source geometries remain intersecting and valid.
+            geometry = connection.execute(
+                text("""
+                SELECT ST_AsEWKB(geometry) FROM spatial.reference_features
+                WHERE organization_id=:org AND project_id=:proj AND source_id=:src
+                  AND feature_id='HVS-QN4'
+                """),
+                scope,
+            ).scalar_one()
+            changed = connection.execute(
+                text("""
+                UPDATE spatial.reference_features SET geometry=ST_SetSRID(ST_MakePoint(0,86),4326)
+                WHERE organization_id=:org AND project_id=:proj AND source_id=:src
+                  AND feature_id='HVS-QN4'
+                """),
+                scope,
+            )
+            assert changed.rowcount == 1
+        try:
+            for suffix, params in (("/viewport", {**box, **pins}), ("/display-extent", pins)):
+                invalid = client.get(path + suffix, params=params)
+                assert invalid.status_code == 422, invalid.text
+                assert invalid.json()["code"] == "TRANSFORMATION_OUT_OF_AREA"
+                assert "items" not in invalid.json() and "bounds" not in invalid.json()
+        finally:
+            with get_admin_engine().begin() as connection:
+                connection.execute(
+                    text("""
+                    UPDATE spatial.reference_features SET geometry=ST_GeomFromEWKB(:geometry)
+                    WHERE organization_id=:org AND project_id=:proj AND source_id=:src
+                      AND feature_id='HVS-QN4'
+                    """),
+                    scope | {"geometry": geometry},
+                )
+        with get_admin_engine().begin() as connection:
+            connection.execute(
+                text("""
+                UPDATE spatial.data_sources SET feature_count=feature_count+1
+                WHERE organization_id=:org AND project_id=:proj AND id=:src
+                """),
+                scope,
+            )
+        try:
+            for suffix, params in (("/viewport", {**box, **pins}), ("/display-extent", pins)):
+                mismatch = client.get(path + suffix, params=params)
+                assert mismatch.status_code == 503, mismatch.text
+                assert mismatch.json()["code"] == "MAP_READ_UNAVAILABLE"
+                assert "items" not in mismatch.json() and "bounds" not in mismatch.json()
+        finally:
+            with get_admin_engine().begin() as connection:
+                connection.execute(
+                    text("""
+                    UPDATE spatial.data_sources SET feature_count=feature_count-1
+                    WHERE organization_id=:org AND project_id=:proj AND id=:src
+                    """),
+                    scope,
+                )
+        recovered = client.get(path + "/viewport", params={**pins, **box})
+        assert recovered.status_code == 200, recovered.text
+        assert recovered.json() == baseline.json()
+
+
+def test_empty_source_summary_remains_complete_without_phantom_feature(migrated_database):
+    world = seed_access_world()
+    with _client(world.owner_user_id) as client:
+        _, _, layer, pins = _setup(client, world, "reference_empty_4326")
+        path = root(world, layer)
+        response = client.get(path + "/viewport", params={**pins, **BBOX})
+        assert response.status_code == 200, response.text
+        assert response.json()["items"] == [] and response.json()["complete"] is True
+        extent = client.get(path + "/display-extent", params=pins)
+        assert extent.status_code == 200, extent.text
+        assert extent.json()["state"] == "empty" and extent.json()["bounds"] is None

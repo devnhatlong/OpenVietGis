@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
+from itertools import chain
 from uuid import UUID
 
 from sqlalchemy import text
@@ -36,7 +37,6 @@ from openvietgis_api.domains.spatial.domain import (
     DataSource,
     GeometryDimensions,
     SourceKind,
-    SpatialValidationError,
 )
 from openvietgis_api.domains.spatial.ports import (
     SpatialTransformationOutOfAreaError,
@@ -104,10 +104,17 @@ def _display_ctes(source: DataSource) -> tuple[str, dict[str, object]]:
         """)
         previous = name
         current_code = step.target_code
-    display_check = (
-        "valid AND geometry IS NOT NULL AND ST_SRID(geometry)=4326"
-        " AND ST_Zmflag(geometry)=0 AND ST_NPoints(geometry) BETWEEN 1 AND 4096"
-        " AND NOT ST_IsEmpty(geometry) AND ST_IsValid(geometry)"
+    # For a native 4326 source the geometry hasn't changed. The native check
+    # already enforces the exact SRID, XY, cardinality, nonempty and validity
+    # predicates; repeat them only after a transformation.
+    display_check = "valid"
+    if profile is not None:
+        display_check += (
+            " AND geometry IS NOT NULL AND ST_SRID(geometry)=4326"
+            " AND ST_Zmflag(geometry)=0 AND ST_NPoints(geometry) BETWEEN 1 AND 4096"
+            " AND NOT ST_IsEmpty(geometry) AND ST_IsValid(geometry)"
+        )
+    display_check += (
         " AND ST_CoveredBy(geometry,ST_MakeEnvelope(-180,:display_south,180,:display_north,4326))"
     )
     params |= {
@@ -127,7 +134,7 @@ def _display_ctes(source: DataSource) -> tuple[str, dict[str, object]]:
             ":area_west,:area_south,:area_east,:area_north,4326))"
         )
     ctes.append(f"""
-        display AS NOT MATERIALIZED (
+        display AS MATERIALIZED (
             SELECT feature_id,geometry,{display_check} AS valid FROM {previous}
         )
     """)
@@ -186,29 +193,19 @@ class SqlMapViewportRepository(SqlSpatialRepository):
             "schema": schema_revision,
             "native_srid": source.stored_crs,
             "geometry_type": "ST_" + source.geometry_family.value,
+            "expected_count": source.feature_count,
         }
-        # A bounded trusted source is checked in full, including geometry outside
-        # this viewport, before returning any apparently authoritative subset.
-        checked = (
-            self._session.execute(
-                text(
-                    ctes + " SELECT count(*) AS count,"
-                    "COALESCE(bool_and(valid IS TRUE),true) AS valid"
-                    " FROM display"
-                ),
-                params,
-            )
-            .mappings()
-            .one()
-        )
-        if (
-            checked["count"] != source.feature_count
-            or checked["count"] > MAX_RENDER_SOURCE_FEATURES
-        ):
-            raise SpatialValidationError("render snapshot count disagrees")
-        if not checked["valid"]:
-            raise SpatialTransformationOutOfAreaError("source is outside approved display evidence")
         return source, wire, ctes, params
+
+    @staticmethod
+    def _validate_summary(expected_count: int | None, count: int, valid: bool) -> None:
+        # Both viewport and extent validate all source rows, including those
+        # outside the current view. The summary and payload share a statement
+        # snapshot under the original per-request authorization/pin locks.
+        if count != expected_count or count > MAX_RENDER_SOURCE_FEATURES:
+            raise MapReadUnavailableError("render snapshot count disagrees")
+        if not valid:
+            raise SpatialTransformationOutOfAreaError("source is outside approved display evidence")
 
     def viewport(
         self,
@@ -221,34 +218,43 @@ class SqlMapViewportRepository(SqlSpatialRepository):
         limit: int = 500,
     ) -> ViewportWire:
         try:
-            _, wire, ctes, params = self._snapshot(
+            source, wire, ctes, params = self._snapshot(
                 context=context,
                 layer_id=layer_id,
                 content_revision=content_revision,
                 schema_revision=schema_revision,
             )
-            # LIMIT first bounds candidate cardinality. Window only counts
-            # positions; WKB is encoded only for the <=20000-position prefix,
-            # plus a metadata-only first over-budget marker. No all-row WKB.
+            # A bounded full-source materialized display is reused by summary
+            # and candidate, avoiding repeated transforms and validation. The
+            # candidate holds at most limit+1 geometries; only the <=20000-position
+            # prefix is encoded as WKB plus a metadata-only over-budget marker.
+            # The summary gates intersection work and is always returned, even
+            # on empty/invalid sources. No all-row WKB or cross-request cache.
             query = (
                 ctes
                 + """
-                ,candidate AS MATERIALIZED (
-                    SELECT feature_id,ST_NPoints(geometry) AS positions
+                ,summary AS MATERIALIZED (
+                    SELECT count(*) AS snapshot_count,
+                        COALESCE(bool_and(valid IS TRUE),true) AS snapshot_valid
                     FROM display
-                    WHERE valid AND ST_Intersects(geometry,
-                        ST_MakeEnvelope(:west,:south,:east,:north,4326))
+                ),candidate AS MATERIALIZED (
+                    SELECT feature_id,geometry,ST_NPoints(geometry) AS positions
+                    FROM display CROSS JOIN summary
+                    WHERE CASE WHEN snapshot_count=:expected_count
+                        AND snapshot_valid AND valid THEN
+                        ST_Intersects(geometry,ST_MakeEnvelope(:west,:south,:east,:north,4326))
+                        ELSE false END
                     ORDER BY feature_id COLLATE "C" LIMIT :lookahead
                 ),prefix AS MATERIALIZED (
                     SELECT *,SUM(positions) OVER (
                         ORDER BY feature_id COLLATE "C" ROWS UNBOUNDED PRECEDING
                     ) AS total_positions FROM candidate
                 )
-                SELECT prefix.feature_id,positions,
+                SELECT summary.snapshot_count,summary.snapshot_valid,
+                    prefix.feature_id,positions,
                     CASE WHEN total_positions<=:position_budget
-                        THEN ST_AsBinary(display.geometry,'NDR') END AS wkb
-                FROM prefix JOIN display ON display.feature_id=prefix.feature_id
-                WHERE total_positions-positions<=:position_budget
+                        THEN ST_AsBinary(prefix.geometry,'NDR') END AS wkb
+                FROM summary LEFT JOIN prefix ON total_positions-positions<=:position_budget
                 ORDER BY prefix.feature_id COLLATE "C"
             """
             )
@@ -265,8 +271,20 @@ class SqlMapViewportRepository(SqlSpatialRepository):
                 },
             ).mappings()
 
+            iterator = iter(rows)
+            first = next(iterator, None)
+            if first is None:
+                raise MapReadUnavailableError("missing render snapshot summary")
+            self._validate_summary(
+                source.feature_count, first["snapshot_count"], first["snapshot_valid"]
+            )
+
             def features() -> Iterator[RenderFeature]:
-                for row in rows:
+                for row in chain((first,), iterator):
+                    # LEFT JOIN summary marker is not a feature; a genuine
+                    # empty viewport remains complete only after validation.
+                    if row["feature_id"] is None:
+                        continue
                     wkb = row["wkb"]
                     yield RenderFeature(
                         row["feature_id"],
@@ -288,7 +306,7 @@ class SqlMapViewportRepository(SqlSpatialRepository):
         schema_revision: str,
     ) -> DisplayExtentWire:
         try:
-            _, wire, ctes, params = self._snapshot(
+            source, wire, ctes, params = self._snapshot(
                 context=context,
                 layer_id=layer_id,
                 content_revision=content_revision,
@@ -299,15 +317,24 @@ class SqlMapViewportRepository(SqlSpatialRepository):
                     text(
                         ctes
                         + """
-                    SELECT ST_XMin(extent) AS west,ST_YMin(extent) AS south,
+                    SELECT snapshot_count,snapshot_valid,
+                        ST_XMin(extent) AS west,ST_YMin(extent) AS south,
                         ST_XMax(extent) AS east,ST_YMax(extent) AS north
-                    FROM (SELECT ST_Extent(geometry) AS extent FROM display) AS actual
+                    FROM (
+                        SELECT count(*) AS snapshot_count,
+                            COALESCE(bool_and(valid IS TRUE),true) AS snapshot_valid,
+                            ST_Extent(geometry) FILTER (WHERE valid IS TRUE) AS extent
+                        FROM display
+                    ) AS actual
                 """
                     ),
                     params,
                 )
                 .mappings()
                 .one()
+            )
+            self._validate_summary(
+                source.feature_count, row["snapshot_count"], row["snapshot_valid"]
             )
             if row["west"] is None:
                 return {"context": wire, "state": "empty", "bounds": None}

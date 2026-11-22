@@ -5,6 +5,7 @@ from uuid import uuid4
 
 import pytest
 
+from openvietgis_api.adapters.persistence.map_viewport import SqlMapViewportRepository
 from openvietgis_api.domains.maps.viewport import (
     MapReadUnavailableError,
     RenderFeature,
@@ -17,6 +18,7 @@ from openvietgis_api.domains.spatial.domain import (
     NativeGeometry,
     SpatialValidationError,
 )
+from openvietgis_api.domains.spatial.ports import SpatialTransformationOutOfAreaError
 
 
 def context():
@@ -114,3 +116,16 @@ def test_unordered_or_wrong_crs_output_cannot_look_usable():
     with pytest.raises(SpatialValidationError):
         build_viewport_response(context(), iter([wrong]), limit=10)
     assert issubclass(MapReadUnavailableError, RuntimeError)
+
+
+@pytest.mark.parametrize("expected,count", [(4, 3), (4, 5), (10001, 10001)])
+def test_render_snapshot_summary_fails_closed_on_missing_or_overlimit_count(expected, count):
+    with pytest.raises(MapReadUnavailableError):
+        SqlMapViewportRepository._validate_summary(expected, count, True)
+
+
+def test_render_snapshot_summary_requires_all_source_rows_valid():
+    with pytest.raises(SpatialTransformationOutOfAreaError):
+        SqlMapViewportRepository._validate_summary(4, 4, False)
+    SqlMapViewportRepository._validate_summary(4, 4, True)
+    SqlMapViewportRepository._validate_summary(0, 0, True)
