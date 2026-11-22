@@ -59,15 +59,21 @@ test("opens a real empty grid and arranges, renders, selects and saves catalog L
     .getByRole("button", { name: "Đóng hộp Thêm dữ liệu" })
     .click();
   const fittedLayers = new Set<string>();
+  const fittedCounts = new Map<string,number>();
+  const fittedStarted = performance.now();
+  let allResponsesAt: number|undefined;
   const fittedViewport = async (response: import("@playwright/test").Response) => {
     const url = new URL(response.url());
     if (!url.pathname.endsWith("/viewport") || response.request().method() !== "GET" || response.status() !== 200) return;
     const body = await response.json() as {
       complete: boolean;
+      items: unknown[];
       context: { layer_id: string };
     };
     if (!body.complete && fixture.layers.some(layer => layer.id === body.context.layer_id)) {
       fittedLayers.add(body.context.layer_id);
+      fittedCounts.set(body.context.layer_id,body.items.length);
+      if(fittedLayers.size===fixture.layers.length && allResponsesAt===undefined)allResponsesAt=performance.now();
     }
   };
   page.on("response", fittedViewport);
@@ -77,7 +83,17 @@ test("opens a real empty grid and arranges, renders, selects and saves catalog L
   } finally {
     page.off("response", fittedViewport);
   }
-  await expect(page.getByTestId("map-engine-ready")).toHaveAttribute("data-ready", "true");
+  expect([...fittedCounts.values()].sort((a,b)=>a-b)).toEqual([500,500,500]);
+  const readyStarted=performance.now();
+  try {
+    await expect(page.getByTestId("map-engine-ready")).toHaveAttribute("data-ready", "true");
+  } finally {
+    console.log("[R004 fitted view]",JSON.stringify({partialLayers:fittedLayers.size,features:[...fittedCounts.values()],
+      responsesMs:Math.round((allResponsesAt??readyStarted)-fittedStarted),
+      rendererWaitMs:Math.round(performance.now()-readyStarted),
+      totalSinceAllResponsesMs:Math.round(performance.now()-(allResponsesAt??readyStarted)),
+      ready:await page.getByTestId("map-engine-ready").getAttribute("data-ready")}));
+  }
   await expect(page.getByTestId("map-status")).toHaveAttribute("data-state", "partial", {
     timeout: 15_000
   });

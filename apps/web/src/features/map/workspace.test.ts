@@ -5,8 +5,8 @@ import type { RenderLayer } from "./engine";
 describe("map workspace invariants", () => {
   const scope = { accountId:"a",organizationId:"o",projectId:"p",layerId:"l",sourceId:"s",contentRevision:"c",schemaRevision:"r" };
   it("clears previously authorized render buffers while any protected viewport is loading", () => {
-    const prior:RenderLayer={id:"revoked",style:defaultStyle,features:[{feature_id:"private",geometry:{type:"Point",coordinates:[105,10]}}]};
-    const current:RenderLayer={id:"current",style:defaultStyle,features:[{feature_id:"public",geometry:{type:"Point",coordinates:[106,11]}}]};
+    const prior:RenderLayer={id:"revoked",scopeKey:"revoked-pin",style:defaultStyle,features:[{feature_id:"private",geometry:{type:"Point",coordinates:[105,10]}}]};
+    const current:RenderLayer={id:"current",scopeKey:"current-pin",style:defaultStyle,features:[{feature_id:"public",geometry:{type:"Point",coordinates:[106,11]}}]};
     let rendered:RenderLayer[]=[];
     const engine={setLayers:(layers:RenderLayer[])=>{rendered=layers;}};
     applyCurrentFrameSet(engine,[prior,current],false);

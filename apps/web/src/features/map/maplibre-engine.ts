@@ -8,8 +8,8 @@ import {
 } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?url";
-import type { MapViewpoint } from "@openvietgis/client-sdk";
-import type { BasemapId, MapEngine, MapEngineEvents, RenderLayer } from "./engine";
+import type { MapStyle, MapViewpoint } from "@openvietgis/client-sdk";
+import type { BasemapId, MapEngine, MapEngineEvents, RenderGeometry, RenderLayer } from "./engine";
 import { boundsOfGeometry, type Bounds } from "./workspace";
 
 setWorkerUrl(workerUrl);
@@ -194,7 +194,15 @@ export function createMapLibreEngine(container: HTMLElement, events: MapEngineEv
   let currentBasemap: BasemapId = "grid";
   let loaded = false;
   let destroyed = false;
-  let handles: { layer: string; source: string; logical: string }[] = [];
+  // Native source IDs are never reused during this MapLibre instance: removing
+  // a GeoJSON source sends an asynchronous worker request keyed by source ID.
+  // Reusing a just-removed ID can interfere with its successor generation.
+  let serial = 0;
+  type Handle = {
+    layer: string; source: string; logical: string; family: RenderGeometry["type"];
+    signature: string; style: MapStyle;
+  };
+  let handles: Handle[] = [];
   let basemapHandles: string[] = [];
 
   function camera(): MapViewpoint {
@@ -261,75 +269,113 @@ export function createMapLibreEngine(container: HTMLElement, events: MapEngineEv
     map.triggerRepaint();
   }
 
+  const sameStyle = (a:MapStyle,b:MapStyle) =>
+    a.color===b.color&&a.opacity===b.opacity&&a.width===b.width&&a.radius===b.radius;
+
+  function colorProperty(family:RenderGeometry["type"]):"circle-color"|"line-color"|"fill-color" {
+    return family==="Point"?"circle-color":family==="LineString"?"line-color":"fill-color";
+  }
+
+  function removeHandle(handle:Handle):void {
+    if(map.getLayer(handle.layer))map.removeLayer(handle.layer);
+    if(map.getSource(handle.source))map.removeSource(handle.source);
+  }
+
+  function updatePaint(handle:Handle, style:MapStyle):void {
+    if(handle.style.color!==style.color)
+      map.setPaintProperty(handle.layer,colorProperty(handle.family),selectedColor(handle.logical,style.color) as string);
+    if(handle.family==="Point"){
+      if(handle.style.radius!==style.radius)map.setPaintProperty(handle.layer,"circle-radius",style.radius);
+      if(handle.style.opacity!==style.opacity)map.setPaintProperty(handle.layer,"circle-opacity",style.opacity);
+    }else if(handle.family==="LineString"){
+      if(handle.style.width!==style.width)map.setPaintProperty(handle.layer,"line-width",style.width);
+      if(handle.style.opacity!==style.opacity)map.setPaintProperty(handle.layer,"line-opacity",style.opacity);
+    }else if(handle.style.opacity!==style.opacity){
+      map.setPaintProperty(handle.layer,"fill-opacity",style.opacity);
+    }
+    handle.style={...style};
+  }
+
+  function createHandle(layer:RenderLayer,family:RenderGeometry["type"],signature:string):Handle {
+    const generation=++serial,source="project-data-"+generation,id="project-layer-"+generation;
+    const features=layer.features.map(item=>({
+      type:"Feature",id:item.feature_id,properties:{feature_id:item.feature_id},geometry:item.geometry
+    }));
+    const handle:Handle={layer:id,source,logical:layer.id,family,signature,style:{...layer.style}};
+    // Register before mutation so the fail-closed cleanup also covers partial creation.
+    handles.push(handle);
+    map.addSource(source,{type:"geojson",data:{type:"FeatureCollection",features} as GeoJSONSourceSpecification["data"]});
+    const color=selectedColor(layer.id,layer.style.color) as string;
+    if(family==="Point"){
+      map.addLayer({id,source,type:"circle",paint:{
+        "circle-color":color,"circle-radius":layer.style.radius,"circle-opacity":layer.style.opacity,
+        "circle-stroke-color":"#ffffff","circle-stroke-width":2
+      }});
+    }else if(family==="LineString"){
+      map.addLayer({id,source,type:"line",paint:{
+        "line-color":color,"line-width":layer.style.width,"line-opacity":layer.style.opacity
+      }});
+    }else{
+      map.addLayer({id,source,type:"fill",paint:{
+        "fill-color":color,"fill-opacity":layer.style.opacity,"fill-outline-color":"#1e293b"
+      }});
+    }
+    return handle;
+  }
+
   function apply(): void {
     if (!loaded || destroyed) return;
-    if (!layers.length && !handles.length) return;
-    events.ready(false);
-    for (const h of handles) {
-      if (map.getLayer(h.layer)) map.removeLayer(h.layer);
-      if (map.getSource(h.source)) map.removeSource(h.source);
-    }
-    handles = [];
-    // Arrangement is top-to-bottom in the tree; MapLibre adds topmost last.
-    [...layers].reverse().forEach((layer, index) => {
-      const source = "project-data-" + index;
-      const features = layer.features.map((item) => {
-        boundsOfGeometry(item.geometry);
-        return {
-          type: "Feature",
-          id: item.feature_id,
-          properties: { feature_id: item.feature_id },
-          geometry: item.geometry
-        };
+    try {
+      // The tree is top-to-bottom; the native style stack is bottom-to-top.
+      // Only exact, currently authorized geometry + pins may keep a handle.
+      const seen=new Set<string>();
+      const desired=[...layers].reverse().flatMap(layer=>{
+        if(seen.has(layer.id)||!layer.scopeKey)throw new Error("Invalid render scope");
+        seen.add(layer.id);
+        const family=layer.features[0]?.geometry.type;
+        if(!family)return [];
+        for(const item of layer.features){
+          if(item.geometry.type!==family||!boundsOfGeometry(item.geometry))
+            throw new Error("Invalid render geometry");
+        }
+        return [{layer,family,signature:JSON.stringify([layer.scopeKey,layer.features])}];
       });
-      map.addSource(source, {
-        type: "geojson",
-        data: { type: "FeatureCollection", features } as GeoJSONSourceSpecification["data"]
+      const prior=new Map(handles.map(h=>[h.logical,h]));
+      const desiredById=new Map(desired.map(frame=>[frame.layer.id,frame]));
+      const remove=handles.filter(h=>desiredById.get(h.logical)?.signature!==h.signature);
+      const changedOrder=handles.map(h=>h.logical).join("\u0000")!==desired.map(f=>f.layer.id).join("\u0000");
+      const changedSource=desired.some(f=>prior.get(f.layer.id)?.signature!==f.signature);
+      const changedPaint=desired.some(f=>{
+        const h=prior.get(f.layer.id);return h&&!sameStyle(h.style,f.layer.style);
       });
-      const family = layer.features[0]?.geometry.type;
-      const handle = "project-layer-" + index;
-      if (family === "Point") {
-        map.addLayer({
-          id: handle,
-          source,
-          type: "circle",
-          paint: {
-            "circle-color": selectedColor(layer.id, layer.style.color) as string,
-            "circle-radius": layer.style.radius,
-            "circle-opacity": layer.style.opacity,
-            "circle-stroke-color": "#ffffff",
-            "circle-stroke-width": 2
-          }
-        });
-      } else if (family === "LineString") {
-        map.addLayer({
-          id: handle,
-          source,
-          type: "line",
-          paint: {
-            "line-color": selectedColor(layer.id, layer.style.color) as string,
-            "line-width": layer.style.width,
-            "line-opacity": layer.style.opacity
-          }
-        });
-      } else if (family === "Polygon") {
-        map.addLayer({
-          id: handle,
-          source,
-          type: "fill",
-          paint: {
-            "fill-color": selectedColor(layer.id, layer.style.color) as string,
-            "fill-opacity": layer.style.opacity,
-            "fill-outline-color": "#1e293b"
-          }
-        });
-      } else {
-        map.removeSource(source);
-        return;
+      // Identical current frames do not invalidate idle or schedule worker work.
+      if(!remove.length&&!changedOrder&&!changedSource&&!changedPaint)return;
+      events.ready(false);
+      for(const handle of remove){removeHandle(handle);prior.delete(handle.logical);}
+      handles=handles.filter(handle=>prior.has(handle.logical));
+      const next:Handle[]=[];
+      for(const f of desired){
+        const existing=prior.get(f.layer.id);
+        if(existing){
+          updatePaint(existing,f.layer.style);
+          next.push(existing);
+        }else{
+          next.push(createHandle(f.layer,f.family,f.signature));
+        }
       }
-      handles.push({ layer: handle, source, logical: layer.id });
-    });
-    map.triggerRepaint();
+      // A newly created replacement is added at the top; restore exact logical
+      // draw order when an arrangement or generation actually changed.
+      if(changedOrder||changedSource){
+        for(const handle of next)map.moveLayer(handle.layer);
+      }
+      handles=next;
+      map.triggerRepaint();
+    }catch{
+      events.ready(false);
+      for(const handle of handles)removeHandle(handle);
+      handles=[];
+      events.error();
+    }
   }
 
   function pick(event: MapMouseEvent): void {
@@ -387,11 +433,21 @@ export function createMapLibreEngine(container: HTMLElement, events: MapEngineEv
       active = value;
     },
     setSelection(layerId, ids) {
-      const hadSelection = selected.length > 0;
       if (selectedLayer === layerId && selected.join("\u0000") === ids.join("\u0000")) return;
-      selectedLayer = layerId;
-      selected = ids;
-      if (hadSelection || ids.length > 0) apply();
+      const affectedLayers=new Set([
+        ...(selected.length&&selectedLayer?[selectedLayer]:[]),
+        ...(ids.length&&layerId?[layerId]:[])
+      ]);
+      selectedLayer=layerId;
+      selected=[...ids];
+      if(!loaded||destroyed)return;
+      const affected=[...affectedLayers].flatMap(id=>handles.filter(h=>h.logical===id));
+      if(!affected.length)return;
+      events.ready(false);
+      // Highlight changes alter paint only, not any GeoJSON source or tile index.
+      for(const handle of affected)
+        map.setPaintProperty(handle.layer,colorProperty(handle.family),selectedColor(handle.logical,handle.style.color) as string);
+      map.triggerRepaint();
     },
     setCamera(value) {
       map.jumpTo({

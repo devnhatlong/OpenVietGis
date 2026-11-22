@@ -154,12 +154,12 @@ function Workspace({organizationId,projectId,accountId,project,initial,canEdit}:
     boundsOfGeometry(item.geometry);
     return {feature_id:item.feature_id,geometry:{type:item.geometry.type as "Point"|"LineString"|"Polygon",coordinates:item.geometry.coordinates}};
    });
-   frames.push({id:layer.id,style:ref.style,features});
+   frames.push({id:layer.id,scopeKey:key,style:ref.style,features});
   }catch{return "unavailable — invalid display geometry";}
   return !value.complete?"partial — "+value.limitation:value.items.length?"usable":"empty";
  });
  const busyData=states.some(s=>s==="loading");
- const frameKey=JSON.stringify([configuration.layers,metadataQueries.map(q=>[q.dataUpdatedAt,Boolean(q.error)]),viewportQueries.map(q=>[q.dataUpdatedAt,Boolean(q.error)]),blocked,activeBlocked,busyData]);
+ const frameKey=JSON.stringify([configuration.layers,bbox,frames.map(f=>f.scopeKey),metadataQueries.map(q=>[q.dataUpdatedAt,Boolean(q.error)]),viewportQueries.map(q=>[q.dataUpdatedAt,Boolean(q.error)]),blocked,activeBlocked,busyData]);
  useLayoutEffect(()=>{applyCurrentFrameSet(engine.current,frames,busyData);},[frameKey]);
  useLayoutEffect(()=>{engine.current?.setActiveLayer(configuration.layers.some(ref=>ref.layer_id===active&&ref.visible)&&!activeBlocked?active:null);engine.current?.setSelection(activeBlocked?null:active,selected);},[active,activeBlocked,selected.join(","),configuration.layers.map(ref=>ref.layer_id+ref.visible).join(",")]);
  const hasGeometry=frames.some(frame=>frame.features.length>0);

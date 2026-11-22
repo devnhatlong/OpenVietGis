@@ -29,6 +29,8 @@ export interface RenderFeature {
 }
 export interface RenderLayer {
   id: string;
+  /** Current actor/tenant/layer/source/revision pin, retained only in the adapter. */
+  scopeKey: string;
   style: MapStyle;
   features: RenderFeature[];
 }
