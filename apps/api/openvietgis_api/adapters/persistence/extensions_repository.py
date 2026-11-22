@@ -25,11 +25,19 @@ from openvietgis_api.domains.authorization.context import AuthorizationContext
 from openvietgis_api.domains.authorization.permissions import Permission
 from openvietgis_api.domains.authorization.roles import ORGANIZATION_ROLE_PERMISSIONS
 from openvietgis_api.domains.extensions.domain import (
+    MAX_BUNDLE_BYTES,
+    MAX_RECORDS,
+    MAX_REVISIONS,
+    PORTABLE_FORMAT,
     ExtensionDataRecord,
     ExtensionManifestRecord,
     ProjectActivationRecord,
+    bundle_digest,
+    canonical_bytes,
+    manifest_contract,
     validate_manifest_contract,
     validate_record_against_schema,
+    verify_transition,
 )
 from openvietgis_api.domains.platform_errors import (
     PlatformConflictError,
@@ -86,6 +94,9 @@ def _rec_from_row(row: RowMapping) -> ExtensionDataRecord:
         created_by_actor_id=row["created_by_actor_id"],
         created_at=row["created_at"],
         updated_at=row["updated_at"],
+        manifest_id=row["manifest_id"],
+        revision=row["revision"],
+        link_context=dict(row["link_context"]) if row["link_context"] is not None else None,
     )
 
 
@@ -151,7 +162,11 @@ class SqlExtensionsRepository:
             api_compatibility=api_compatibility,
             permissions=permissions,
             entity_schemas=entity_schemas,
+            commands=commands,
+            capabilities=capabilities,
         )
+        if not display_name.strip() or len(display_name) > 200 or len(description) > 500:
+            raise PlatformValidationError("invalid manifest display name or description")
         exists = self._session.execute(
             text("""
                 SELECT id FROM extensions.manifests
@@ -229,6 +244,7 @@ class SqlExtensionsRepository:
                 text("""
                 SELECT id, extension_key FROM extensions.manifests
                 WHERE organization_id = :org AND id = :mid AND enabled = true
+                  AND api_compatibility = '1.x'
             """),
                 {"org": context.organization_id, "mid": manifest_id},
             )
@@ -296,6 +312,7 @@ class SqlExtensionsRepository:
             metadata={"manifest_id": str(manifest_id), "extension_key": row["extension_key"]},
             created_at=now,
         )
+        self._append_activation_event(context, row, "activate", existing)
         self._session.commit()
         return _act_from_row(row)
 
@@ -338,6 +355,7 @@ class SqlExtensionsRepository:
             },
             created_at=now,
         )
+        self._append_activation_event(context, row, "deactivate", row["manifest_id"])
         self._session.commit()
         return _act_from_row(row)
 
@@ -358,6 +376,374 @@ class SqlExtensionsRepository:
         )
         return [_act_from_row(r) for r in rows]
 
+    @staticmethod
+    def _params(context: AuthorizationContext) -> dict[str, Any]:
+        assert context.organization_id is not None and context.project_id is not None
+        return {"org": context.organization_id, "proj": context.project_id}
+
+    def _manifest(
+        self, context: AuthorizationContext, manifest_id: UUID
+    ) -> ExtensionManifestRecord:
+        row = (
+            self._session.execute(
+                text("SELECT * FROM extensions.manifests WHERE organization_id=:org AND id=:mid"),
+                {"org": context.organization_id, "mid": manifest_id},
+            )
+            .mappings()
+            .one_or_none()
+        )
+        if row is None:
+            raise PlatformNotFoundError("extension manifest not found")
+        return _manifest_from_row(row)
+
+    def _activation_row(self, context: AuthorizationContext, extension_key: str) -> RowMapping:
+        row = (
+            self._session.execute(
+                text("""
+                SELECT * FROM extensions.project_activations
+                WHERE organization_id=:org AND project_id=:proj AND extension_key=:key
+            """),
+                {**self._params(context), "key": extension_key},
+            )
+            .mappings()
+            .one_or_none()
+        )
+        if row is None:
+            raise PlatformNotFoundError("extension activation not found")
+        return row
+
+    def _active_manifest(
+        self, context: AuthorizationContext, extension_key: str
+    ) -> ExtensionManifestRecord:
+        row = self._activation_row(context, extension_key)
+        manifest = self._manifest(context, row["manifest_id"])
+        if row["status"] != "active" or not manifest.enabled or manifest.api_compatibility != "1.x":
+            raise PlatformNotFoundError("extension is not active and compatible in this project")
+        return manifest
+
+    def _append_activation_event(
+        self,
+        context: AuthorizationContext,
+        row: RowMapping,
+        event: str,
+        previous_manifest_id: UUID | None,
+    ) -> None:
+        self._session.execute(
+            text("""
+            INSERT INTO extensions.activation_events (
+              id, organization_id, project_id, activation_id, event, previous_manifest_id,
+              manifest_id, status, actor_id, occurred_at
+            ) VALUES (
+              :id, :org, :proj, :aid, :event, :previous, :manifest, :status, :actor, :now
+            )
+        """),
+            {
+                **self._params(context),
+                "id": uuid4(),
+                "aid": row["id"],
+                "event": event,
+                "previous": previous_manifest_id,
+                "manifest": row["manifest_id"],
+                "status": row["status"],
+                "actor": context.actor.actor_id,
+                "now": row["updated_at"],
+            },
+        )
+
+    def transition_version(
+        self,
+        *,
+        context: AuthorizationContext,
+        activation_id: UUID,
+        expected_manifest_id: UUID,
+        target_manifest_id: UUID,
+    ) -> ProjectActivationRecord:
+        prepare_project_scope(self._session, context, permission=Permission.PROJECT_MANAGE)
+        params = self._params(context)
+        current = (
+            self._session.execute(
+                text("""
+            SELECT * FROM extensions.project_activations
+            WHERE organization_id=:org AND project_id=:proj AND id=:aid FOR UPDATE
+        """),
+                {**params, "aid": activation_id},
+            )
+            .mappings()
+            .one_or_none()
+        )
+        if current is None:
+            raise PlatformNotFoundError("extension activation not found")
+        if current["manifest_id"] != expected_manifest_id:
+            raise PlatformConflictError(
+                "activation version changed", code="STALE_EXTENSION_VERSION"
+            )
+        old = self._manifest(context, expected_manifest_id)
+        target = self._manifest(context, target_manifest_id)
+        verify_transition(old, target)
+        now = datetime.now(UTC)
+        row = (
+            self._session.execute(
+                text("""
+            UPDATE extensions.project_activations
+            SET manifest_id=:target, updated_at=:now
+            WHERE organization_id=:org AND project_id=:proj AND id=:aid
+              AND manifest_id=:expected
+            RETURNING *
+        """),
+                {
+                    **params,
+                    "aid": activation_id,
+                    "expected": expected_manifest_id,
+                    "target": target_manifest_id,
+                    "now": now,
+                },
+            )
+            .mappings()
+            .one()
+        )
+        self._append_activation_event(context, row, "transition", expected_manifest_id)
+        append_project_audit(
+            self._session,
+            context,
+            audit_id=uuid4(),
+            action="extension.transition",
+            resource_type="extension_activation",
+            resource_id=activation_id,
+            metadata={
+                "previous_manifest_id": str(expected_manifest_id),
+                "manifest_id": str(target_manifest_id),
+                "mode": "metadata_only",
+            },
+            created_at=now,
+        )
+        self._session.commit()
+        return _act_from_row(row)
+
+    def _activation_history(
+        self,
+        context: AuthorizationContext,
+        activation_id: UUID,
+    ) -> list[dict[str, Any]]:
+        rows = (
+            self._session.execute(
+                text("""
+            SELECT * FROM extensions.activation_events
+            WHERE organization_id=:org AND project_id=:proj AND activation_id=:aid
+            ORDER BY occurred_at, id LIMIT :limit
+        """),
+                {**self._params(context), "aid": activation_id, "limit": MAX_REVISIONS + 1},
+            )
+            .mappings()
+            .all()
+        )
+        if len(rows) > MAX_REVISIONS:
+            raise PlatformValidationError(
+                "activation history exceeds portable limit", code="EXTENSION_TRANSFER_LIMIT"
+            )
+        return [
+            {
+                "id": str(r["id"]),
+                "event": r["event"],
+                "previous_manifest_id": str(r["previous_manifest_id"])
+                if r["previous_manifest_id"]
+                else None,
+                "manifest_id": str(r["manifest_id"]),
+                "status": r["status"],
+                "actor_id": str(r["actor_id"]),
+                "occurred_at": r["occurred_at"].isoformat(),
+            }
+            for r in rows
+        ]
+
+    def activation_history(
+        self,
+        *,
+        context: AuthorizationContext,
+        activation_id: UUID,
+    ) -> list[dict[str, Any]]:
+        prepare_project_scope(self._session, context, permission=Permission.PROJECT_READ)
+        visible = self._session.execute(
+            text("""
+            SELECT id FROM extensions.project_activations
+            WHERE organization_id=:org AND project_id=:proj AND id=:aid
+        """),
+            {**self._params(context), "aid": activation_id},
+        ).first()
+        if visible is None:
+            raise PlatformNotFoundError("extension activation not found")
+        return self._activation_history(context, activation_id)
+
+    def _current_link(
+        self,
+        context: AuthorizationContext,
+        linked_layer_id: UUID | None,
+        linked_feature_id: str | None,
+    ) -> dict[str, Any] | None:
+        if linked_feature_id is not None and linked_layer_id is None:
+            raise PlatformValidationError("linked feature requires a layer")
+        if linked_layer_id is None:
+            return None
+        if linked_feature_id is not None and (
+            not linked_feature_id or len(linked_feature_id) > 128
+        ):
+            raise PlatformValidationError("invalid linked feature identifier")
+        params = self._params(context)
+        link = (
+            self._session.execute(
+                text("""
+            SELECT l.source_id, s.content_revision, s.schema_revision, s.stored_crs
+            FROM spatial.layers l
+            JOIN spatial.data_sources s ON s.id=l.source_id
+              AND s.organization_id=l.organization_id AND s.project_id=l.project_id
+            WHERE l.organization_id=:org AND l.project_id=:proj AND l.id=:layer
+              AND l.lifecycle='active' AND s.lifecycle='active'
+              AND s.validation_state='ready' AND s.stored_crs IS NOT NULL
+        """),
+                {**params, "layer": linked_layer_id},
+            )
+            .mappings()
+            .one_or_none()
+        )
+        if link is None:
+            raise PlatformNotFoundError("linked layer not found or unavailable")
+        if linked_feature_id is not None:
+            found = self._session.execute(
+                text("""
+                SELECT feature_id FROM spatial.reference_features
+                WHERE organization_id=:org AND project_id=:proj
+                  AND source_id=:src AND feature_id=:fid
+                  AND content_revision=:content AND schema_revision=:schema
+            """),
+                {
+                    **params,
+                    "src": link["source_id"],
+                    "fid": linked_feature_id,
+                    "content": link["content_revision"],
+                    "schema": link["schema_revision"],
+                },
+            ).scalar_one_or_none()
+            if found is None:
+                raise PlatformNotFoundError("linked feature not found")
+        return {
+            "status": "pinned",
+            "source_id": str(link["source_id"]),
+            "content_revision": link["content_revision"],
+            "schema_revision": link["schema_revision"],
+            "stored_crs": link["stored_crs"],
+        }
+
+    def _assert_link(
+        self,
+        context: AuthorizationContext,
+        linked_layer_id: UUID | None,
+        linked_feature_id: str | None,
+        expected_link_context: dict[str, Any] | None,
+    ) -> dict[str, Any] | None:
+        link = self._current_link(context, linked_layer_id, linked_feature_id)
+        if link != expected_link_context:
+            raise PlatformConflictError(
+                "linked Core revision differs or was not explicitly supplied",
+                code="STALE_EXTENSION_LINK",
+            )
+        return link
+
+    def _append_revision(
+        self,
+        context: AuthorizationContext,
+        row: RowMapping,
+        event: str,
+        import_origin: dict[str, Any] | None = None,
+    ) -> None:
+        self._session.execute(
+            text("""
+            INSERT INTO extensions.record_revisions (
+                organization_id, project_id, record_id, revision, manifest_id, entity_name,
+                payload, linked_layer_id, linked_feature_id, link_context, actor_id, event,
+                occurred_at, import_origin
+            ) VALUES (
+                :org, :proj, :id, :revision, :manifest, :entity, CAST(:payload AS jsonb),
+                :lid, :fid, CAST(:link AS jsonb), :actor, :event, :now, CAST(:origin AS jsonb)
+            )
+        """),
+            {
+                **self._params(context),
+                "id": row["id"],
+                "revision": row["revision"],
+                "manifest": row["manifest_id"],
+                "entity": row["entity_name"],
+                "payload": json.dumps(row["payload"]),
+                "lid": row["linked_layer_id"],
+                "fid": row["linked_feature_id"],
+                "link": json.dumps(row["link_context"])
+                if row["link_context"] is not None
+                else None,
+                "actor": context.actor.actor_id,
+                "event": event,
+                "now": row["updated_at"],
+                "origin": json.dumps(import_origin) if import_origin is not None else None,
+            },
+        )
+
+    def _insert_record(
+        self,
+        context: AuthorizationContext,
+        manifest: ExtensionManifestRecord,
+        entity_name: str,
+        payload: dict[str, Any],
+        linked_layer_id: UUID | None,
+        linked_feature_id: str | None,
+        link_context: dict[str, Any] | None,
+        import_origin: dict[str, Any] | None = None,
+    ) -> ExtensionDataRecord:
+        cleaned = validate_record_against_schema(
+            entity_name=entity_name,
+            payload=payload,
+            entity_schemas=manifest.entity_schemas,
+        )
+        now = datetime.now(UTC)
+        row = (
+            self._session.execute(
+                text("""
+            INSERT INTO extensions.records (
+                id, organization_id, project_id, extension_key, entity_name,
+                payload, linked_layer_id, linked_feature_id, created_by_actor_id,
+                created_at, updated_at, manifest_id, revision, link_context
+            ) VALUES (
+                :id, :org, :proj, :key, :entity, CAST(:payload AS jsonb),
+                :lid, :fid, :actor, :now, :now, :manifest, 1, CAST(:link AS jsonb)
+            ) RETURNING *
+        """),
+                {
+                    **self._params(context),
+                    "id": uuid4(),
+                    "key": manifest.extension_key,
+                    "entity": entity_name,
+                    "payload": json.dumps(cleaned),
+                    "lid": linked_layer_id,
+                    "fid": linked_feature_id,
+                    "actor": context.actor.actor_id,
+                    "now": now,
+                    "manifest": manifest.id,
+                    "link": json.dumps(link_context) if link_context is not None else None,
+                },
+            )
+            .mappings()
+            .one()
+        )
+        event = "import" if import_origin else "create"
+        self._append_revision(context, row, event, import_origin)
+        append_project_audit(
+            self._session,
+            context,
+            audit_id=uuid4(),
+            action=f"extension.record.{event}",
+            resource_type="extension_record",
+            resource_id=row["id"],
+            metadata={"manifest_id": str(manifest.id), "revision": 1},
+            created_at=now,
+        )
+        return _rec_from_row(row)
+
     def create_record(
         self,
         *,
@@ -367,104 +753,470 @@ class SqlExtensionsRepository:
         payload: dict[str, Any],
         linked_layer_id: UUID | None = None,
         linked_feature_id: str | None = None,
+        expected_link_context: dict[str, Any] | None = None,
     ) -> ExtensionDataRecord:
         prepare_project_scope(self._session, context, permission=Permission.PROJECT_EDIT)
-        assert context.organization_id is not None and context.project_id is not None
-        assert context.actor.actor_id is not None
+        manifest = self._active_manifest(context, extension_key)
+        link = self._assert_link(context, linked_layer_id, linked_feature_id, expected_link_context)
+        record = self._insert_record(
+            context,
+            manifest,
+            entity_name,
+            payload,
+            linked_layer_id,
+            linked_feature_id,
+            link,
+        )
+        self._session.commit()
+        return record
 
-        act = (
+    def _record_row(
+        self,
+        context: AuthorizationContext,
+        extension_key: str,
+        record_id: UUID,
+    ) -> RowMapping:
+        row = (
             self._session.execute(
                 text("""
-                SELECT m.entity_schemas
-                FROM extensions.project_activations a
-                JOIN extensions.manifests m ON m.id = a.manifest_id
-                WHERE a.organization_id = :org AND a.project_id = :proj
-                  AND a.extension_key = :key AND a.status = 'active'
-                  AND m.organization_id = :org AND m.enabled AND m.api_compatibility = '1.x'
-            """),
-                {"org": context.organization_id, "proj": context.project_id, "key": extension_key},
+            SELECT * FROM extensions.records
+            WHERE organization_id=:org AND project_id=:proj AND extension_key=:key AND id=:id
+        """),
+                {**self._params(context), "key": extension_key, "id": record_id},
             )
             .mappings()
-            .first()
+            .one_or_none()
         )
-        if act is None:
-            raise PlatformNotFoundError(
-                f"extension {extension_key!r} is not active in this project"
+        if row is None:
+            raise PlatformNotFoundError("extension record not found")
+        return row
+
+    def update_record(
+        self,
+        *,
+        context: AuthorizationContext,
+        extension_key: str,
+        record_id: UUID,
+        expected_revision: int,
+        expected_manifest_id: UUID,
+        payload: dict[str, Any],
+        expected_link_context: dict[str, Any] | None,
+    ) -> ExtensionDataRecord:
+        prepare_project_scope(self._session, context, permission=Permission.PROJECT_EDIT)
+        manifest = self._active_manifest(context, extension_key)
+        old = self._record_row(context, extension_key, record_id)
+        if old["revision"] != expected_revision or manifest.id != expected_manifest_id:
+            raise PlatformConflictError(
+                "record or active manifest version changed", code="STALE_EXTENSION_RECORD"
             )
-        cleaned = validate_record_against_schema(
-            entity_name=entity_name,
-            payload=payload,
-            entity_schemas=dict(act["entity_schemas"]),
+        link = self._assert_link(
+            context, old["linked_layer_id"], old["linked_feature_id"], expected_link_context
         )
-        if linked_feature_id is not None and linked_layer_id is None:
-            raise PlatformValidationError("linked feature requires a layer")
-        if linked_layer_id is not None:
-            # The current project scope and project mutation lock are already bound.
-            # Resolve links only inside the authorized project.
-            linked = self._session.execute(
-                text("""
-                    SELECT l.source_id FROM spatial.layers l
-                    JOIN spatial.data_sources s ON s.id = l.source_id
-                     AND s.organization_id = l.organization_id AND s.project_id = l.project_id
-                    WHERE l.organization_id = :org AND l.project_id = :proj
-                      AND l.id = :layer AND l.lifecycle = 'active' AND s.lifecycle = 'active'
-                """),
-                {
-                    "org": context.organization_id,
-                    "proj": context.project_id,
-                    "layer": linked_layer_id,
-                },
-            ).scalar_one_or_none()
-            if linked is None:
-                raise PlatformNotFoundError("linked layer not found")
-            if linked_feature_id is not None:
-                found = self._session.execute(
-                    text("""
-                        SELECT feature_id FROM spatial.reference_features
-                        WHERE organization_id = :org AND project_id = :proj
-                        AND source_id = :src AND feature_id = :fid
-                    """),
-                    {
-                        "org": context.organization_id,
-                        "proj": context.project_id,
-                        "src": linked,
-                        "fid": linked_feature_id,
-                    },
-                ).scalar_one_or_none()
-                if found is None:
-                    raise PlatformNotFoundError("linked feature not found")
+        cleaned = validate_record_against_schema(
+            entity_name=old["entity_name"],
+            payload=payload,
+            entity_schemas=manifest.entity_schemas,
+        )
+        if (
+            cleaned == old["payload"]
+            and old["manifest_id"] == manifest.id
+            and old["link_context"] == link
+        ):
+            return _rec_from_row(old)
         now = datetime.now(UTC)
         row = (
             self._session.execute(
                 text("""
-                INSERT INTO extensions.records (
-                    id, organization_id, project_id, extension_key, entity_name,
-                    payload, linked_layer_id, linked_feature_id,
-                    created_by_actor_id, created_at, updated_at
-                ) VALUES (
-                    :id, :org, :proj, :key, :ename,
-                    CAST(:pay AS jsonb), :lid, :fid, :actor, :now, :now
-                )
-                RETURNING *
-            """),
+            UPDATE extensions.records SET payload=CAST(:payload AS jsonb), revision=revision+1,
+              manifest_id=:manifest, link_context=CAST(:link AS jsonb), updated_at=:now
+            WHERE organization_id=:org AND project_id=:proj AND id=:id AND revision=:expected
+            RETURNING *
+        """),
                 {
-                    "id": uuid4(),
-                    "org": context.organization_id,
-                    "proj": context.project_id,
-                    "key": extension_key,
-                    "ename": entity_name,
-                    "pay": json.dumps(cleaned),
-                    "lid": linked_layer_id,
-                    "fid": linked_feature_id,
-                    "actor": context.actor.actor_id,
+                    **self._params(context),
+                    "id": record_id,
+                    "expected": expected_revision,
+                    "payload": json.dumps(cleaned),
+                    "manifest": manifest.id,
+                    "link": json.dumps(link) if link is not None else None,
                     "now": now,
                 },
             )
             .mappings()
             .one()
         )
+        self._append_revision(context, row, "update")
+        append_project_audit(
+            self._session,
+            context,
+            audit_id=uuid4(),
+            action="extension.record.update",
+            resource_type="extension_record",
+            resource_id=record_id,
+            metadata={
+                "manifest_id": str(manifest.id),
+                "revision": row["revision"],
+                "previous_revision": expected_revision,
+            },
+            created_at=now,
+        )
         self._session.commit()
         return _rec_from_row(row)
+
+    def _history(
+        self,
+        context: AuthorizationContext,
+        record_id: UUID,
+    ) -> list[dict[str, Any]]:
+        size = self._session.execute(
+            text("""
+            SELECT count(*), coalesce(sum(octet_length(payload::text)
+                + coalesce(octet_length(link_context::text), 0)
+                + coalesce(octet_length(import_origin::text), 0)), 0)
+            FROM extensions.record_revisions
+            WHERE organization_id=:org AND project_id=:proj AND record_id=:id
+        """),
+            {**self._params(context), "id": record_id},
+        ).one()
+        if size[0] > MAX_REVISIONS or size[1] > MAX_BUNDLE_BYTES:
+            raise PlatformValidationError(
+                "record history exceeds portable limit", code="EXTENSION_TRANSFER_LIMIT"
+            )
+        rows = (
+            self._session.execute(
+                text("""
+            SELECT * FROM extensions.record_revisions
+            WHERE organization_id=:org AND project_id=:proj AND record_id=:id
+            ORDER BY revision ASC LIMIT :limit
+        """),
+                {**self._params(context), "id": record_id, "limit": MAX_REVISIONS + 1},
+            )
+            .mappings()
+            .all()
+        )
+        if len(rows) > MAX_REVISIONS:
+            raise PlatformValidationError(
+                "record history exceeds portable limit", code="EXTENSION_TRANSFER_LIMIT"
+            )
+        return [
+            {
+                "revision": r["revision"],
+                "manifest_id": str(r["manifest_id"]),
+                "entity_name": r["entity_name"],
+                "payload": r["payload"],
+                "linked_layer_id": str(r["linked_layer_id"]) if r["linked_layer_id"] else None,
+                "linked_feature_id": r["linked_feature_id"],
+                "link_context": r["link_context"],
+                "actor_id": str(r["actor_id"]),
+                "occurred_at": r["occurred_at"].isoformat(),
+                "event": r["event"],
+                "import_origin": r["import_origin"],
+            }
+            for r in rows
+        ]
+
+    def record_history(
+        self,
+        *,
+        context: AuthorizationContext,
+        extension_key: str,
+        record_id: UUID,
+    ) -> list[dict[str, Any]]:
+        prepare_project_scope(self._session, context, permission=Permission.PROJECT_READ)
+        self._record_row(context, extension_key, record_id)
+        return self._history(context, record_id)
+
+    def export_bundle(
+        self,
+        *,
+        context: AuthorizationContext,
+        extension_key: str,
+    ) -> dict[str, Any]:
+        prepare_project_scope(self._session, context, permission=Permission.PROJECT_READ)
+        activation = self._activation_row(context, extension_key)
+        events = self._activation_history(context, activation["id"])
+        rows = (
+            self._session.execute(
+                text("""
+            SELECT * FROM extensions.records
+            WHERE organization_id=:org AND project_id=:proj AND extension_key=:key
+            ORDER BY id LIMIT :limit
+        """),
+                {**self._params(context), "key": extension_key, "limit": MAX_RECORDS + 1},
+            )
+            .mappings()
+            .all()
+        )
+        if len(rows) > MAX_RECORDS:
+            raise PlatformValidationError(
+                "record count exceeds portable limit", code="EXTENSION_TRANSFER_LIMIT"
+            )
+        records: list[dict[str, Any]] = []
+        manifest_ids = {str(activation["manifest_id"])}
+        manifest_ids.update(e["manifest_id"] for e in events)
+        manifest_ids.update(e["previous_manifest_id"] for e in events if e["previous_manifest_id"])
+        count = 0
+        bytes_used = len(canonical_bytes(events))
+        for row in rows:
+            history = self._history(context, row["id"])
+            count += len(history)
+            if count > MAX_REVISIONS:
+                raise PlatformValidationError(
+                    "revision count exceeds portable limit", code="EXTENSION_TRANSFER_LIMIT"
+                )
+            latest = {
+                "revision": row["revision"],
+                "manifest_id": str(row["manifest_id"]),
+                "entity_name": row["entity_name"],
+                "payload": row["payload"],
+                "linked_layer_id": str(row["linked_layer_id"]) if row["linked_layer_id"] else None,
+                "linked_feature_id": row["linked_feature_id"],
+                "link_context": row["link_context"],
+            }
+            if not history or canonical_bytes(latest) != canonical_bytes(
+                {k: history[-1][k] for k in latest}
+            ):
+                raise PlatformConflictError("record history is inconsistent")
+            bytes_used += len(canonical_bytes(history)) + len(canonical_bytes(latest))
+            if bytes_used > MAX_BUNDLE_BYTES:
+                raise PlatformValidationError(
+                    "portable bundle exceeds byte limit", code="EXTENSION_TRANSFER_LIMIT"
+                )
+            manifest_ids.update(h["manifest_id"] for h in history)
+            records.append(
+                {
+                    "record_id": str(row["id"]),
+                    "revision": row["revision"],
+                    "manifest_id": str(row["manifest_id"]),
+                    "entity_name": row["entity_name"],
+                    "payload": row["payload"],
+                    "linked_layer_id": str(row["linked_layer_id"])
+                    if row["linked_layer_id"]
+                    else None,
+                    "linked_feature_id": row["linked_feature_id"],
+                    "link_context": row["link_context"],
+                    "history": history,
+                }
+            )
+        manifests = []
+        for mid in sorted(manifest_ids):
+            record = self._manifest(context, UUID(mid))
+            bytes_used += len(canonical_bytes(manifest_contract(record)))
+            if bytes_used > MAX_BUNDLE_BYTES:
+                raise PlatformValidationError(
+                    "portable bundle exceeds byte limit", code="EXTENSION_TRANSFER_LIMIT"
+                )
+            manifests.append(
+                {
+                    "manifest_id": mid,
+                    **manifest_contract(record),
+                    "display_name": record.display_name,
+                    "description": record.description,
+                }
+            )
+        bundle = {
+            "format": PORTABLE_FORMAT,
+            "extension_key": extension_key,
+            "origin": {
+                "organization_id": str(context.organization_id),
+                "project_id": str(context.project_id),
+            },
+            "active_manifest_id": str(activation["manifest_id"]),
+            "activation_status": activation["status"],
+            "manifests": manifests,
+            "activation_history": events,
+            "records": records,
+        }
+        return {"bundle": bundle, "sha256": bundle_digest(bundle)}
+
+    def import_bundle(
+        self,
+        *,
+        context: AuthorizationContext,
+        extension_key: str,
+        expected_manifest_id: UUID,
+        bundle: dict[str, Any],
+        sha256: str,
+    ) -> dict[str, Any]:
+        prepare_project_scope(self._session, context, permission=Permission.PROJECT_EDIT)
+        manifest = self._active_manifest(context, extension_key)
+        if manifest.id != expected_manifest_id:
+            raise PlatformConflictError("active manifest changed", code="STALE_EXTENSION_VERSION")
+        if bundle_digest(bundle) != sha256:
+            raise PlatformValidationError("portable bundle digest mismatch")
+        prior = (
+            self._session.execute(
+                text("""
+            SELECT id, mappings FROM extensions.import_receipts
+            WHERE organization_id=:org AND project_id=:proj AND extension_key=:key
+              AND bundle_sha256=:digest
+        """),
+                {**self._params(context), "key": extension_key, "digest": sha256},
+            )
+            .mappings()
+            .one_or_none()
+        )
+        if prior is not None:
+            return {
+                "id": str(prior["id"]),
+                "sha256": sha256,
+                "mappings": prior["mappings"],
+                "replayed": True,
+            }
+        try:
+            if (
+                bundle.get("format") != PORTABLE_FORMAT
+                or bundle.get("extension_key") != extension_key
+                or set(bundle)
+                != {
+                    "format",
+                    "extension_key",
+                    "origin",
+                    "active_manifest_id",
+                    "activation_status",
+                    "manifests",
+                    "activation_history",
+                    "records",
+                }
+            ):
+                raise ValueError
+            origin = bundle["origin"]
+            if not isinstance(origin, dict) or set(origin) != {"organization_id", "project_id"}:
+                raise ValueError
+            source_org, source_project = UUID(origin["organization_id"]), UUID(origin["project_id"])
+            manifests = bundle["manifests"]
+            records = bundle["records"]
+            if (
+                not isinstance(manifests, list)
+                or not isinstance(records, list)
+                or not 1 <= len(records) <= MAX_RECORDS
+            ):
+                raise ValueError
+            active = [m for m in manifests if m["manifest_id"] == bundle["active_manifest_id"]]
+            if len(active) != 1 or any(
+                active[0].get(k) != v for k, v in manifest_contract(manifest).items()
+            ):
+                raise PlatformConflictError(
+                    "portable bundle requires exact destination manifest contract",
+                    code="EXTENSION_IMPORT_INCOMPATIBLE",
+                )
+            items: list[
+                tuple[
+                    UUID, int, str, dict[str, Any], UUID | None, str | None, dict[str, Any] | None
+                ]
+            ] = []
+            seen: set[UUID] = set()
+            for item in records:
+                if set(item) != {
+                    "record_id",
+                    "revision",
+                    "manifest_id",
+                    "entity_name",
+                    "payload",
+                    "linked_layer_id",
+                    "linked_feature_id",
+                    "link_context",
+                    "history",
+                }:
+                    raise ValueError
+                rid = UUID(item["record_id"])
+                revision = item["revision"]
+                if rid in seen or type(revision) is not int or revision < 1:
+                    raise ValueError
+                seen.add(rid)
+                if not isinstance(item["payload"], dict) or not isinstance(
+                    item["entity_name"], str
+                ):
+                    raise ValueError
+                # Source history is untrusted origin metadata, never inserted as
+                # destination audit/actor history or used to grant permission.
+                history = item["history"]
+                if (
+                    not isinstance(history, list)
+                    or not history
+                    or history[-1]["revision"] != revision
+                ):
+                    raise ValueError
+                if canonical_bytes(
+                    {k: item[k] for k in item if k not in ("history", "record_id")}
+                ) != canonical_bytes(
+                    {k: history[-1][k] for k in item if k not in ("history", "record_id")}
+                ):
+                    raise ValueError
+                lid = UUID(item["linked_layer_id"]) if item["linked_layer_id"] else None
+                fid = item["linked_feature_id"]
+                if fid is not None and not isinstance(fid, str):
+                    raise ValueError
+                if lid is not None and (
+                    source_org != context.organization_id or source_project != context.project_id
+                ):
+                    raise PlatformConflictError(
+                        "portable link remapping is not supported across scopes",
+                        code="EXTENSION_IMPORT_LINK_REMAP_REQUIRED",
+                    )
+                link = self._assert_link(context, lid, fid, item["link_context"])
+                payload = validate_record_against_schema(
+                    entity_name=item["entity_name"],
+                    payload=item["payload"],
+                    entity_schemas=manifest.entity_schemas,
+                )
+                items.append((rid, revision, item["entity_name"], payload, lid, fid, link))
+        except (KeyError, TypeError, ValueError, AttributeError) as exc:
+            raise PlatformValidationError("invalid portable bundle") from exc
+        mappings = []
+        for rid, revision, entity, payload, lid, fid, link in items:
+            made = self._insert_record(
+                context,
+                manifest,
+                entity,
+                payload,
+                lid,
+                fid,
+                link,
+                {
+                    "claimed_source_organization_id": str(source_org),
+                    "claimed_source_project_id": str(source_project),
+                    "claimed_source_record_id": str(rid),
+                    "claimed_source_revision": revision,
+                    "bundle_sha256": sha256,
+                    "verified_origin": False,
+                },
+            )
+            mappings.append({"source_record_id": str(rid), "record_id": str(made.id)})
+        receipt_id = uuid4()
+        now = datetime.now(UTC)
+        self._session.execute(
+            text("""
+            INSERT INTO extensions.import_receipts (
+                id, organization_id, project_id, extension_key, manifest_id,
+                bundle_sha256, mappings, actor_id, created_at
+            ) VALUES (
+                :id, :org, :proj, :key, :manifest, :digest, CAST(:mappings AS jsonb), :actor, :now
+            )
+        """),
+            {
+                **self._params(context),
+                "id": receipt_id,
+                "key": extension_key,
+                "manifest": manifest.id,
+                "digest": sha256,
+                "mappings": canonical_bytes(mappings).decode(),
+                "actor": context.actor.actor_id,
+                "now": now,
+            },
+        )
+        append_project_audit(
+            self._session,
+            context,
+            audit_id=uuid4(),
+            action="extension.import",
+            resource_type="extension_import",
+            resource_id=receipt_id,
+            metadata={"bundle_sha256": sha256, "record_count": len(mappings)},
+            created_at=now,
+        )
+        self._session.commit()
+        return {"id": str(receipt_id), "sha256": sha256, "mappings": mappings, "replayed": False}
 
     def list_records(
         self,

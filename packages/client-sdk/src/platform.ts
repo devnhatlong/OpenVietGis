@@ -202,9 +202,86 @@ export interface ExtensionManifest {
   version: string;
   display_name: string;
   description: string;
+  api_compatibility: string;
+  enabled: boolean;
   permissions: string[];
+  commands: Array<{ id: string; label: string; required_permission: string }>;
   capabilities: string[];
   entity_schemas: Record<string, { fields: Record<string, { type: string; required?: boolean }> }>;
+}
+
+export type ExtensionPayload = Record<string, string | number | boolean | null>;
+export type ExtensionLinkContext = {
+  status: "pinned";
+  source_id: string;
+  content_revision: string;
+  schema_revision: string;
+  stored_crs: number;
+};
+export interface ExtensionRecord {
+  id: string;
+  extension_key: string;
+  entity_name: string;
+  manifest_id: string;
+  revision: number;
+  payload: ExtensionPayload;
+  linked_layer_id: string | null;
+  linked_feature_id: string | null;
+  link_context: ExtensionLinkContext | { status: "legacy_unpinned" } | null;
+  created_at: string;
+  updated_at: string;
+}
+export interface ExtensionActivation {
+  id: string;
+  manifest_id: string;
+  extension_key: string;
+  status: "active" | "disabled";
+  activated_at: string;
+  updated_at: string;
+}
+export interface ExtensionRevision {
+  revision: number;
+  manifest_id: string;
+  entity_name: string;
+  payload: ExtensionPayload;
+  linked_layer_id: string | null;
+  linked_feature_id: string | null;
+  link_context: ExtensionRecord["link_context"];
+  actor_id: string;
+  occurred_at: string;
+  event: "legacy_baseline" | "create" | "update" | "import";
+  import_origin: Record<string, unknown> | null;
+}
+export interface ExtensionLifecycleEvent {
+  id: string;
+  event: "legacy_baseline" | "activate" | "deactivate" | "transition";
+  previous_manifest_id: string | null;
+  manifest_id: string;
+  status: ExtensionActivation["status"];
+  actor_id: string;
+  occurred_at: string;
+}
+export interface ExtensionPortableBundle {
+  bundle: {
+    format: "openvietgis.extension.portable.v1";
+    extension_key: string;
+    origin: { organization_id: string; project_id: string };
+    active_manifest_id: string;
+    activation_status: ExtensionActivation["status"];
+    manifests: Array<Omit<ExtensionManifest, "id" | "enabled"> & { manifest_id: string }>;
+    activation_history: ExtensionLifecycleEvent[];
+    records: Array<Omit<ExtensionRecord, "id" | "extension_key" | "created_at" | "updated_at"> & {
+      record_id: string;
+      history: ExtensionRevision[];
+    }>;
+  };
+  sha256: string;
+}
+export interface ExtensionImportReceipt {
+  id: string;
+  sha256: string;
+  mappings: Array<{ source_record_id: string; record_id: string }>;
+  replayed: boolean;
 }
 
 export interface ReleaseCapability {
@@ -841,8 +918,61 @@ export function listProjectActivations(
   client: ApiClient,
   orgId: string,
   projectId: string
-): Promise<{ items: Array<{ id: string; manifest_id: string; extension_key: string; status: string }> }> {
+): Promise<{ items: ExtensionActivation[] }> {
   return client.request(`${projBase(orgId, projectId)}/extensions/activations`);
+}
+
+function extensionBase(orgId: string, projectId: string, key: string): string {
+  return `${projBase(orgId, projectId)}/extensions/${encodeURIComponent(key)}`;
+}
+
+export function activateExtension(client: ApiClient, orgId: string, projectId: string, manifestId: string, csrf: string): Promise<ExtensionActivation> {
+  return client.request(`${projBase(orgId, projectId)}/extensions/activations`, {
+    method: "POST", body: JSON.stringify({manifest_id: manifestId}), headers: csrfHeaders(csrf)
+  });
+}
+export function deactivateExtension(client: ApiClient, orgId: string, projectId: string, activationId: string, csrf: string): Promise<ExtensionActivation> {
+  return client.request(`${projBase(orgId, projectId)}/extensions/activations/${encodeURIComponent(activationId)}/deactivate`, {
+    method: "POST", headers: csrfHeaders(csrf)
+  });
+}
+export function transitionExtension(client: ApiClient, orgId: string, projectId: string, activationId: string, expectedManifest: string, targetManifest: string, csrf: string): Promise<ExtensionActivation> {
+  return client.request(`${projBase(orgId, projectId)}/extensions/activations/${encodeURIComponent(activationId)}/transition`, {
+    method: "POST", body: JSON.stringify({expected_manifest_id: expectedManifest, target_manifest_id: targetManifest}), headers: csrfHeaders(csrf)
+  });
+}
+export function getExtensionActivationHistory(client: ApiClient, orgId: string, projectId: string, activationId: string): Promise<{items: ExtensionLifecycleEvent[]}> {
+  return client.request(`${projBase(orgId, projectId)}/extensions/activations/${encodeURIComponent(activationId)}/history`);
+}
+export function listExtensionRecords(client: ApiClient, orgId: string, projectId: string, key: string): Promise<{items: ExtensionRecord[]}> {
+  return client.request(`${extensionBase(orgId, projectId, key)}/records`);
+}
+export function createExtensionRecord(client: ApiClient, orgId: string, projectId: string, key: string, body: {
+  entity_name: string; payload: ExtensionPayload; linked_layer_id?: string; linked_feature_id?: string;
+  expected_link_context?: ExtensionLinkContext;
+}, csrf: string): Promise<ExtensionRecord> {
+  return client.request(`${extensionBase(orgId, projectId, key)}/records`, {
+    method: "POST", body: JSON.stringify(body), headers: csrfHeaders(csrf)
+  });
+}
+export function updateExtensionRecord(client: ApiClient, orgId: string, projectId: string, key: string, id: string, body: {
+  expected_revision: number; expected_manifest_id: string; payload: ExtensionPayload;
+  expected_link_context?: ExtensionLinkContext;
+}, csrf: string): Promise<ExtensionRecord> {
+  return client.request(`${extensionBase(orgId, projectId, key)}/records/${encodeURIComponent(id)}`, {
+    method: "PUT", body: JSON.stringify(body), headers: csrfHeaders(csrf)
+  });
+}
+export function getExtensionRecordHistory(client: ApiClient, orgId: string, projectId: string, key: string, id: string): Promise<{items: ExtensionRevision[]}> {
+  return client.request(`${extensionBase(orgId, projectId, key)}/records/${encodeURIComponent(id)}/history`);
+}
+export function exportExtensionBundle(client: ApiClient, orgId: string, projectId: string, key: string): Promise<ExtensionPortableBundle> {
+  return client.request(`${extensionBase(orgId, projectId, key)}/portable-export`);
+}
+export function importExtensionBundle(client: ApiClient, orgId: string, projectId: string, key: string, body: ExtensionPortableBundle & {expected_manifest_id: string}, csrf: string): Promise<ExtensionImportReceipt> {
+  return client.request(`${extensionBase(orgId, projectId, key)}/portable-import`, {
+    method: "POST", body: JSON.stringify(body), headers: csrfHeaders(csrf)
+  });
 }
 
 // R015 Operations

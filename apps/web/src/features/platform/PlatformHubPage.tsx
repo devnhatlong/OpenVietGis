@@ -6,7 +6,6 @@ import {
   getOrgEntitlement,
   listAllowlistedHosts,
   listCadConversions,
-  listExtensionManifests,
   listExternalConnections,
   loadCsrfToken,
   registerAllowlistedHost
@@ -24,6 +23,7 @@ import {
 import { ExternalSourcePreview } from "./ExternalSourcePreview";
 import { CollaborationWorkbenchPanel } from "./CollaborationWorkbenchPanel";
 import { CadImportPanel } from "./CadImportPanel";
+import { ExtensionWorkbenchPanel } from "./ExtensionWorkbenchPanel";
 
 type HubTab = "external" | "collab" | "cad" | "field" | "extensions" | "ops";
 
@@ -113,11 +113,6 @@ export function PlatformHubPage() {
     queryKey: ["hub", organizationId, projectId, "cad"],
     queryFn: () => listCadConversions(apiClient, organizationId, projectId),
     enabled: Boolean(organizationId && projectId)
-  });
-  const extManifestsQ = useQuery({
-    queryKey: ["hub", organizationId, "manifests"],
-    queryFn: () => listExtensionManifests(apiClient, organizationId),
-    enabled: Boolean(organizationId)
   });
   const readyQ = useQuery({
     queryKey: ["ops", "ready"],
@@ -394,21 +389,7 @@ export function PlatformHubPage() {
         )}
 
         {tab === "extensions" && (
-          <section className="ovg-card">
-            <h2>Nền tảng mô-đun mở rộng động (Manifest)</h2>
-            <p>
-              Số manifest mô-đun đã đăng ký trong tổ chức:{" "}
-              <strong>{extManifestsQ.data?.items.length ?? 0}</strong>
-            </p>
-            <ul>
-              {(extManifestsQ.data?.items ?? []).map((m) => (
-                <li key={m.id}>
-                  <strong>{m.display_name}</strong> (<code>{m.extension_key}@{m.version}</code>) —{" "}
-                  {m.description}
-                </li>
-              ))}
-            </ul>
-          </section>
+          <ExtensionWorkbenchPanel organizationId={organizationId} projectId={projectId} />
         )}
       </main>
     </div>

@@ -4,6 +4,11 @@ import {
   commitChangeset,
   createProcessingJob,
   executeLayerQuery,
+  exportExtensionBundle,
+  importExtensionBundle,
+  transitionExtension,
+  updateExtensionRecord,
+  type ExtensionPortableBundle,
   getOpsReleaseCapabilities,
   printExportDownloadUrl,
   offlinePackageDownloadUrl
@@ -47,5 +52,35 @@ describe("platform R006-R015 SDK helpers", () => {
     expect(offlinePackageDownloadUrl("o1", "p1", "pk1")).toBe(
       "/api/v1/organizations/o1/projects/p1/field/packages/pk1/download"
     );
+  });
+});
+
+
+describe("R014 portable extension contracts", () => {
+  it("keeps project scope, active manifest and expected record revision in protected requests", async () => {
+    const calls: Array<{url: string; body: unknown; method: string | undefined}> = [];
+    const fetchMock = vi.fn().mockImplementation(async (url: string, init?: RequestInit) => {
+      calls.push({url, body: typeof init?.body === "string" ? JSON.parse(init.body) : undefined, method: init?.method});
+      return new Response(JSON.stringify({items:[]}), {status:200, headers:{"content-type":"application/json"}});
+    });
+    const client = new ApiClient({baseUrl:"http://127.0.0.1:8000/api/v1",fetchImpl:fetchMock});
+    await exportExtensionBundle(client,"org","project","example");
+    await transitionExtension(client,"org","project","activation","old","new","csrf");
+    await updateExtensionRecord(client,"org","project","example","record",{
+      expected_manifest_id:"new",expected_revision:2,payload:{name:"test",value:0,flag:false}
+    },"csrf");
+    const bundle: ExtensionPortableBundle = {bundle:{format:"openvietgis.extension.portable.v1",
+      extension_key:"example", origin:{organization_id:"source-org",project_id:"source-project"},
+      active_manifest_id:"old",activation_status:"disabled",manifests:[],activation_history:[],records:[]},sha256:"0".repeat(64)};
+    await importExtensionBundle(client,"org","project","example",{...bundle,expected_manifest_id:"new"},"csrf");
+    expect(calls.map(c=>c.url)).toEqual([
+      "http://127.0.0.1:8000/api/v1/organizations/org/projects/project/extensions/example/portable-export",
+      "http://127.0.0.1:8000/api/v1/organizations/org/projects/project/extensions/activations/activation/transition",
+      "http://127.0.0.1:8000/api/v1/organizations/org/projects/project/extensions/example/records/record",
+      "http://127.0.0.1:8000/api/v1/organizations/org/projects/project/extensions/example/portable-import"
+    ]);
+    expect(calls[1]?.body).toEqual({expected_manifest_id:"old",target_manifest_id:"new"});
+    expect(calls[2]?.body).toEqual({expected_manifest_id:"new",expected_revision:2,payload:{name:"test",value:0,flag:false}});
+    expect(calls[3]?.body).toEqual({...bundle,expected_manifest_id:"new"});
   });
 });

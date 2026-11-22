@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Annotated, Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Response
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
@@ -53,6 +53,7 @@ def _act_wire(a: ProjectActivationRecord) -> dict[str, Any]:
         "extension_key": a.extension_key,
         "status": a.status,
         "activated_at": a.activated_at.isoformat(),
+        "updated_at": a.updated_at.isoformat(),
     }
 
 
@@ -65,6 +66,10 @@ def _rec_wire(r: ExtensionDataRecord) -> dict[str, Any]:
         "linked_layer_id": str(r.linked_layer_id) if r.linked_layer_id else None,
         "linked_feature_id": r.linked_feature_id,
         "created_at": r.created_at.isoformat(),
+        "updated_at": r.updated_at.isoformat(),
+        "manifest_id": str(r.manifest_id),
+        "revision": r.revision,
+        "link_context": r.link_context,
     }
 
 
@@ -92,6 +97,28 @@ class CreateExtensionRecordRequest(BaseModel):
     payload: dict[str, Any]
     linked_layer_id: UUID | None = None
     linked_feature_id: str | None = None
+    expected_link_context: dict[str, Any] | None = None
+
+
+class UpdateExtensionRecordRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    expected_revision: int = Field(ge=1, le=2147483646, strict=True)
+    expected_manifest_id: UUID
+    payload: dict[str, Any]
+    expected_link_context: dict[str, Any] | None = None
+
+
+class TransitionExtensionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    expected_manifest_id: UUID
+    target_manifest_id: UUID
+
+
+class PortableImportRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    expected_manifest_id: UUID
+    bundle: dict[str, Any]
+    sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
 
 
 @router.post(f"{_ORG}/extensions/manifests", status_code=201)
@@ -190,6 +217,7 @@ def create_extension_record(
             payload=body.payload,
             linked_layer_id=body.linked_layer_id,
             linked_feature_id=body.linked_feature_id,
+            expected_link_context=body.expected_link_context,
         )
     )
 
@@ -208,3 +236,119 @@ def list_extension_records(
         context=ctx, extension_key=extension_key, entity_name=entity_name
     )
     return {"items": [_rec_wire(r) for r in items]}
+
+
+@router.post(f"{_PROJ}/extensions/activations/{{activation_id}}/transition")
+def transition_project_extension(
+    organization_id: UUID,
+    project_id: UUID,
+    activation_id: UUID,
+    body: TransitionExtensionRequest,
+    auth: Annotated[AuthenticatedRequest, Depends(require_csrf)],
+    session: Annotated[Session, Depends(get_db_session, scope="function")],
+) -> dict[str, Any]:
+    ctx = context_for(auth, organization_id=organization_id, project_id=project_id)
+    return _act_wire(
+        SqlExtensionsRepository(session).transition_version(
+            context=ctx,
+            activation_id=activation_id,
+            expected_manifest_id=body.expected_manifest_id,
+            target_manifest_id=body.target_manifest_id,
+        )
+    )
+
+
+@router.get(f"{_PROJ}/extensions/activations/{{activation_id}}/history")
+def list_extension_activation_history(
+    organization_id: UUID,
+    project_id: UUID,
+    activation_id: UUID,
+    auth: Annotated[AuthenticatedRequest, Depends(authenticate_request)],
+    session: Annotated[Session, Depends(get_db_session, scope="function")],
+) -> dict[str, Any]:
+    ctx = context_for(auth, organization_id=organization_id, project_id=project_id)
+    return {
+        "items": SqlExtensionsRepository(session).activation_history(
+            context=ctx,
+            activation_id=activation_id,
+        )
+    }
+
+
+@router.put(f"{_PROJ}/extensions/{{extension_key}}/records/{{record_id}}")
+def update_extension_record(
+    organization_id: UUID,
+    project_id: UUID,
+    extension_key: str,
+    record_id: UUID,
+    body: UpdateExtensionRecordRequest,
+    auth: Annotated[AuthenticatedRequest, Depends(require_csrf)],
+    session: Annotated[Session, Depends(get_db_session, scope="function")],
+) -> dict[str, Any]:
+    ctx = context_for(auth, organization_id=organization_id, project_id=project_id)
+    return _rec_wire(
+        SqlExtensionsRepository(session).update_record(
+            context=ctx,
+            extension_key=extension_key,
+            record_id=record_id,
+            expected_revision=body.expected_revision,
+            expected_manifest_id=body.expected_manifest_id,
+            payload=body.payload,
+            expected_link_context=body.expected_link_context,
+        )
+    )
+
+
+@router.get(f"{_PROJ}/extensions/{{extension_key}}/records/{{record_id}}/history")
+def list_extension_record_history(
+    organization_id: UUID,
+    project_id: UUID,
+    extension_key: str,
+    record_id: UUID,
+    auth: Annotated[AuthenticatedRequest, Depends(authenticate_request)],
+    session: Annotated[Session, Depends(get_db_session, scope="function")],
+) -> dict[str, Any]:
+    ctx = context_for(auth, organization_id=organization_id, project_id=project_id)
+    return {
+        "items": SqlExtensionsRepository(session).record_history(
+            context=ctx,
+            extension_key=extension_key,
+            record_id=record_id,
+        )
+    }
+
+
+@router.get(f"{_PROJ}/extensions/{{extension_key}}/portable-export")
+def export_extension_bundle(
+    organization_id: UUID,
+    project_id: UUID,
+    extension_key: str,
+    response: Response,
+    auth: Annotated[AuthenticatedRequest, Depends(authenticate_request)],
+    session: Annotated[Session, Depends(get_db_session, scope="function")],
+) -> dict[str, Any]:
+    ctx = context_for(auth, organization_id=organization_id, project_id=project_id)
+    result = SqlExtensionsRepository(session).export_bundle(
+        context=ctx, extension_key=extension_key
+    )
+    response.headers["Cache-Control"] = "no-store"
+    return result
+
+
+@router.post(f"{_PROJ}/extensions/{{extension_key}}/portable-import")
+def import_extension_bundle(
+    organization_id: UUID,
+    project_id: UUID,
+    extension_key: str,
+    body: PortableImportRequest,
+    auth: Annotated[AuthenticatedRequest, Depends(require_csrf)],
+    session: Annotated[Session, Depends(get_db_session, scope="function")],
+) -> dict[str, Any]:
+    ctx = context_for(auth, organization_id=organization_id, project_id=project_id)
+    return SqlExtensionsRepository(session).import_bundle(
+        context=ctx,
+        extension_key=extension_key,
+        expected_manifest_id=body.expected_manifest_id,
+        bundle=body.bundle,
+        sha256=body.sha256,
+    )

@@ -2,16 +2,24 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
+import math
 import re
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from openvietgis_api.domains.platform_errors import PlatformValidationError
+from openvietgis_api.domains.platform_errors import PlatformConflictError, PlatformValidationError
 
 _EXT_KEY_RE = re.compile(r"^[a-z][a-z0-9_-]{1,99}$")
-_SEMVER_RE = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+$")
+_SEMVER_RE = re.compile(r"^(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)$")
+_NAME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_]{0,63}$")
+PORTABLE_FORMAT = "openvietgis.extension.portable.v1"
+MAX_RECORDS = 200
+MAX_REVISIONS = 1000
+MAX_BUNDLE_BYTES = 2 * 1024 * 1024
 _SUPPORTED_API_RANGE = "1.x"
 
 
@@ -59,6 +67,9 @@ class ExtensionDataRecord:
     created_by_actor_id: UUID
     created_at: datetime
     updated_at: datetime
+    manifest_id: UUID
+    revision: int
+    link_context: dict[str, Any] | None
 
 
 def validate_manifest_contract(
@@ -68,14 +79,16 @@ def validate_manifest_contract(
     api_compatibility: str,
     permissions: list[str],
     entity_schemas: dict[str, dict[str, Any]],
+    commands: list[dict[str, Any]] | None = None,
+    capabilities: list[str] | None = None,
 ) -> None:
     """Validate versioned extension manifest & permission namespace isolation."""
-    if not _EXT_KEY_RE.match(extension_key):
+    if not _EXT_KEY_RE.fullmatch(extension_key):
         raise PlatformValidationError(
             "extension_key must match ^[a-z][a-z0-9_-]{1,99}$",
             code="INVALID_EXTENSION_KEY",
         )
-    if not _SEMVER_RE.match(version):
+    if len(version) > 32 or not _SEMVER_RE.fullmatch(version):
         raise PlatformValidationError("version must be semver X.Y.Z", code="INVALID_VERSION")
     if api_compatibility != _SUPPORTED_API_RANGE:
         raise PlatformValidationError(
@@ -84,16 +97,67 @@ def validate_manifest_contract(
             code="INCOMPATIBLE_EXTENSION_API",
         )
     prefix = f"ext.{extension_key}."
+    if len(permissions) > 64 or len(set(permissions)) != len(permissions):
+        raise PlatformValidationError("duplicate or too many permission identifiers")
     for perm in permissions:
-        if not perm.startswith(prefix):
+        if not perm.startswith(prefix) or not _NAME_RE.fullmatch(perm[len(prefix) :]):
             raise PlatformValidationError(
                 f"permission {perm!r} must be namespaced under {prefix!r}",
                 code="INVALID_PERMISSION_NAMESPACE",
             )
-    if not entity_schemas:
+    if not entity_schemas or len(entity_schemas) > 100:
         raise PlatformValidationError(
-            "manifest must declare at least one entity_schema", code="EMPTY_SCHEMAS"
+            "manifest must declare one to 100 entity schemas", code="EMPTY_SCHEMAS"
         )
+    for entity, schema in entity_schemas.items():
+        if not _NAME_RE.fullmatch(entity) or set(schema) != {"fields"}:
+            raise PlatformValidationError("invalid entity schema")
+        fields = schema["fields"]
+        if not isinstance(fields, dict) or not fields or len(fields) > 100:
+            raise PlatformValidationError("entity fields must be a bounded mapping")
+        for name, spec in fields.items():
+            if (
+                not _NAME_RE.fullmatch(name)
+                or not isinstance(spec, dict)
+                or set(spec) - {"type", "required"}
+                or spec.get("type") not in ("text", "integer", "number", "boolean")
+                or not isinstance(spec.get("required", False), bool)
+            ):
+                raise PlatformValidationError("invalid or unsupported field declaration")
+    seen: set[str] = set()
+    if commands is not None:
+        if len(commands) > 64:
+            raise PlatformValidationError("too many command declarations")
+        for command in commands:
+            identifier = command.get("id")
+            label = command.get("label")
+            if (
+                set(command) != {"id", "label", "required_permission"}
+                or not isinstance(identifier, str)
+                or not _NAME_RE.fullmatch(identifier)
+                or identifier in seen
+                or not isinstance(label, str)
+                or not label.strip()
+                or len(label) > 200
+                or command.get("required_permission") not in permissions
+            ):
+                raise PlatformValidationError("invalid or duplicate command declaration")
+            seen.add(identifier)
+    if capabilities is not None and (
+        len(capabilities) > 64
+        or len(set(capabilities)) != len(capabilities)
+        or any(not _NAME_RE.fullmatch(capability) for capability in capabilities)
+    ):
+        raise PlatformValidationError("invalid or duplicate capability declaration")
+    canonical_bytes(
+        {
+            "permissions": permissions,
+            "commands": commands,
+            "capabilities": capabilities,
+            "schemas": entity_schemas,
+        },
+        limit=128 * 1024,
+    )
 
 
 def validate_record_against_schema(
@@ -127,17 +191,107 @@ def validate_record_against_schema(
                 )
             cleaned[fname] = None
             continue
-        if ftype == "integer" and (isinstance(val, bool) or not isinstance(val, int)):
+        if ftype == "integer" and (
+            isinstance(val, bool) or not isinstance(val, int) or abs(val) > 9007199254740991
+        ):
             raise PlatformValidationError(
                 f"field {fname!r} expects integer", code="SCHEMA_MISMATCH"
             )
-        if ftype == "number" and (isinstance(val, bool) or not isinstance(val, (int, float))):
+        if ftype == "number" and (
+            isinstance(val, bool)
+            or not isinstance(val, (int, float))
+            or (isinstance(val, int) and abs(val) > 9007199254740991)
+            or (isinstance(val, float) and not math.isfinite(val))
+        ):
             raise PlatformValidationError(f"field {fname!r} expects number", code="SCHEMA_MISMATCH")
         if ftype == "boolean" and not isinstance(val, bool):
             raise PlatformValidationError(
                 f"field {fname!r} expects boolean", code="SCHEMA_MISMATCH"
             )
-        if ftype == "text" and not isinstance(val, str):
+        if ftype == "text" and (not isinstance(val, str) or len(val) > 4096 or "\0" in val):
             raise PlatformValidationError(f"field {fname!r} expects text", code="SCHEMA_MISMATCH")
         cleaned[fname] = val
+    canonical_bytes(cleaned, limit=64 * 1024)
     return cleaned
+
+
+def _canonical_value(value: Any) -> Any:
+    # Browser JSON serialization may convert 12.0 to 12. Preserve semantic
+    # JSON numbers, not incidental lexical form, within the exact integer range.
+    if isinstance(value, bool) or value is None or isinstance(value, str):
+        return value
+    if isinstance(value, (int, float)):
+        if abs(value) > 9007199254740991 or not math.isfinite(value):
+            raise ValueError("number out of portable range")
+        return int(value) if isinstance(value, float) and value.is_integer() else value
+    if isinstance(value, dict):
+        return {key: _canonical_value(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_canonical_value(item) for item in value]
+    raise ValueError("unsupported JSON value")
+
+
+def canonical_bytes(value: Any, *, limit: int = MAX_BUNDLE_BYTES) -> bytes:
+    """Deterministic transfer representation, not a signed provenance assertion."""
+    try:
+        encoded = json.dumps(
+            _canonical_value(value),
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+        ).encode("utf-8")
+    except (TypeError, ValueError, RecursionError, UnicodeError) as exc:
+        raise PlatformValidationError("invalid portable JSON") from exc
+    if len(encoded) > limit:
+        raise PlatformValidationError(
+            "portable data exceeds bounded transfer limit", code="EXTENSION_TRANSFER_LIMIT"
+        )
+    return encoded
+
+
+def bundle_digest(bundle: dict[str, Any]) -> str:
+    return hashlib.sha256(canonical_bytes(bundle)).hexdigest()
+
+
+def manifest_contract(manifest: ExtensionManifestRecord) -> dict[str, Any]:
+    """Only declared semantics, not installation approval or code execution."""
+    return {
+        "extension_key": manifest.extension_key,
+        "version": manifest.version,
+        "api_compatibility": manifest.api_compatibility,
+        "permissions": manifest.permissions,
+        "commands": manifest.commands,
+        "capabilities": manifest.capabilities,
+        "entity_schemas": manifest.entity_schemas,
+    }
+
+
+def verify_transition(current: ExtensionManifestRecord, target: ExtensionManifestRecord) -> None:
+    """A deliberately narrow, data-preserving metadata-only forward transition."""
+    if (
+        current.extension_key != target.extension_key
+        or not target.enabled
+        or target.api_compatibility != _SUPPORTED_API_RANGE
+        or current.api_compatibility != _SUPPORTED_API_RANGE
+    ):
+        raise PlatformConflictError(
+            "incompatible extension transition", code="EXTENSION_TRANSITION_INCOMPATIBLE"
+        )
+    try:
+        old = tuple(int(v) for v in current.version.split("."))
+        new = tuple(int(v) for v in target.version.split("."))
+        if len(old) != 3 or len(new) != 3 or old[0] != new[0] or new <= old:
+            raise ValueError
+    except ValueError as exc:
+        raise PlatformConflictError(
+            "only forward same-major versions are supported",
+            code="EXTENSION_TRANSITION_INCOMPATIBLE",
+        ) from exc
+    old_contract, new_contract = manifest_contract(current), manifest_contract(target)
+    del old_contract["version"], new_contract["version"]
+    if canonical_bytes(old_contract) != canonical_bytes(new_contract):
+        raise PlatformConflictError(
+            "schema, permission or contribution changes require verified migration",
+            code="EXTENSION_TRANSITION_MIGRATION_REQUIRED",
+        )
