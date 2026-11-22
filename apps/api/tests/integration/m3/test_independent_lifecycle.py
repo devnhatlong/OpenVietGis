@@ -112,6 +112,22 @@ def test_review_assignee_current_permission_and_immutable_decision(migrated_data
         req = {"changeset_id": changes.json()["id"], "assignee_user_id": str(world.member_user_id)}
         reviews = f"{base}/collaboration/reviews"
         assert owner.post(reviews, json=req).status_code == 422
+        reader_grant = _grant(owner, world, "membership", str(world.member_membership_id), "viewer")
+        self_review = owner.post(
+            reviews,
+            json={**req, "assignee_user_id": str(world.owner_user_id)},
+        )
+        assert self_review.status_code == 201
+        reader_review = f"{reviews}/{self_review.json()['id']}"
+        assert reviewer.get(reviews).status_code == 200
+        assert (
+            reviewer.post(
+                f"{reader_review}/comments",
+                json={"body": "Viewer cannot mutate"},
+            ).status_code
+            == 403
+        )
+        assert owner.post(f"{org}/grants/{reader_grant}/revoke").status_code == 204
         grant = _grant(owner, world, "membership", str(world.member_membership_id), "editor")
         with get_admin_engine().begin() as conn:
             conn.execute(

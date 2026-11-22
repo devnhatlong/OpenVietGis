@@ -329,7 +329,7 @@ class SqlCollaborationRepository:
         body: str,
         feature_id: str | None = None,
     ) -> ReviewCommentRecord:
-        prepare_project_scope(self._session, context, permission=Permission.PROJECT_READ)
+        prepare_project_scope(self._session, context, permission=Permission.PROJECT_EDIT)
         assert context.organization_id is not None and context.project_id is not None
         assert context.actor.actor_id is not None
         clean_body = body.strip()

@@ -136,7 +136,7 @@ function CollaborationWorkbench({ organizationId, projectId, accountId }: {
       {matchingDetail && <ul>{matchingDetail.operations.map(op =>
         <li key={op.id}>{op.op_type}: {op.feature_id}</li>
       )}</ul>}
-      <fieldset disabled={busy || !matchingDetail || project.status !== "active"}>
+      <fieldset disabled={busy || !matchingDetail || !writable}>
         <legend>Bình luận</legend>
         <ul>{comments.map(item => <li key={item.id}>{item.author_display}: {item.body}
           {item.feature_id && <> — {item.feature_id}</>}</li>)}</ul>
