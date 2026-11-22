@@ -57,10 +57,14 @@ No production, audit database or house-numbering package changed.
 # OPENVIETGIS_ARTIFACT_STORE_DIR set to branch-private artifact directory
 # OPENVIETGIS_LIVE_OIDC=0
 uv run --locked --offline --project apps/api python -m tools.run_with_test_database pytest \
- apps/api/tests/integration/m3/test_extension_portability.py \
+ tests/modules/test_extension_portability.py \
  apps/api/tests/integration/m3/test_independent_lifecycle.py \
  tests/modules/test_reference_modules.py --junitxml=dist/remediation-r014/real.xml -x -q
 ```
+
+The recorded run used the pre-relocation path
+`apps/api/tests/integration/m3/test_extension_portability.py`; the same tests
+now live under `tests/modules` to respect the Core runtime scope guard.
 
 Actual result: 0018_production_ops → 0019_extension_history succeeded;
 **5 tests passed**, no skipped/failing cases. JUnit:

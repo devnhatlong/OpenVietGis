@@ -1,4 +1,9 @@
-"""R014 independent module histories, scoped transitions and portable data copies."""
+"""R014 independent module histories and copies; run with the guarded DB wrapper.
+
+Reference module names and schemas belong in tests/modules, outside Core runtime
+scope. tools.run_with_test_database migrates the dedicated test database before
+collection; CI's integration job likewise provisions/migrates that database.
+"""
 
 from __future__ import annotations
 
@@ -6,9 +11,8 @@ import json
 from pathlib import Path
 from uuid import uuid4
 
-from sqlalchemy import text
-
 from openvietgis_api.domains.extensions.domain import bundle_digest
+from sqlalchemy import text
 from tests.fixtures.db_admin import get_admin_engine
 from tests.fixtures.identity_tenancy import seed_access_world
 from tests.integration.m2.test_r006_r009_real import _import_geojson
@@ -17,7 +21,7 @@ from tests.integration.spatial.test_sources import _client
 
 
 def manifest(name: str) -> dict:
-    path = Path(__file__).resolve().parents[5] / "modules" / name / "manifest.json"
+    path = Path(__file__).resolve().parents[2] / "modules" / name / "manifest.json"
     return json.loads(path.read_text())
 
 
@@ -30,7 +34,7 @@ def registration(client, org, project, body):
     return mid, activation.json()["id"]
 
 
-def test_linked_house_record_history_disabled_portability_and_scope(migrated_database):
+def test_linked_house_record_history_disabled_portability_and_scope():
     world = seed_access_world()
     org = f"/api/v1/organizations/{world.organization_id}"
     project = f"{org}/projects/{world.project_id}"
@@ -167,7 +171,7 @@ def test_linked_house_record_history_disabled_portability_and_scope(migrated_dat
         assert outsider.get(f"{oproject}/extensions/house_numbering/records").json()["items"] == []
 
 
-def test_land_asset_atomic_copy_explicit_transition_and_replay(migrated_database):
+def test_land_asset_atomic_copy_explicit_transition_and_replay():
     origin, dest = seed_access_world(), seed_access_world()
     oorg = f"/api/v1/organizations/{origin.organization_id}"
     op = f"{oorg}/projects/{origin.project_id}"
@@ -180,7 +184,7 @@ def test_land_asset_atomic_copy_explicit_transition_and_replay(migrated_database
         _client(dest.member_user_id) as viewer,
     ):
         body = manifest("land_asset")
-        smid, said = registration(source, oorg, op, body)
+        _smid, said = registration(source, oorg, op, body)
         mid, aid = registration(owner, dorg, dp, body)
         source_records = f"{op}/extensions/land_asset/records"
         payload = {
