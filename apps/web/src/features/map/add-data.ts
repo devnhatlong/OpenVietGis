@@ -1,7 +1,43 @@
 import type {
   MapLayerReference,
-  SpatialLayer
+  SpatialLayer,
+  SpatialLayerList
 } from "@openvietgis/client-sdk";
+
+import { currentProtectedData } from "../../app/protected-query";
+
+/** Metadata must belong to the exact requested layer and current project. */
+export function layerScopeMatches(
+  layer: SpatialLayer, organizationId: string, projectId: string, layerId = layer.id
+): boolean {
+  return layer.id === layerId &&
+    layer.organization_id === organizationId && layer.project_id === projectId &&
+    layer.source.organization_id === organizationId && layer.source.project_id === projectId &&
+    layer.source_id === layer.source.id;
+}
+
+export type CatalogReadState =
+  | { status: "loading" | "unavailable"; page: undefined }
+  | { status: "ready"; page: SpatialLayerList };
+
+/** Never interpret pending, denied, mismatched or closed-catalog data as empty. */
+export function currentAddDataCatalog(
+  open: boolean,
+  result: Parameters<typeof currentProtectedData<SpatialLayerList>>[0],
+  organizationId: string,
+  projectId: string
+): CatalogReadState {
+  if (!open) return { status: "loading", page: undefined };
+  if (result.error !== null) return { status: "unavailable", page: undefined };
+  const page = currentProtectedData(result);
+  if (!page) return { status: "loading", page: undefined };
+  if (page.organization_id !== organizationId ||
+      page.project_id !== projectId ||
+      !page.items.every(layer => layerScopeMatches(layer, organizationId, projectId))) {
+    return { status: "unavailable", page: undefined };
+  }
+  return { status: "ready", page };
+}
 
 export type AddDataAvailability =
   | "addable"

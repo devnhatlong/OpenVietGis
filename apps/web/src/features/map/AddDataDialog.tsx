@@ -4,11 +4,12 @@ import {
 } from "react";
 import { Link } from "react-router-dom";
 
-import type { AddDataCandidateView } from "./add-data";
+import type { AddDataCandidateView, CatalogReadState } from "./add-data";
 
 export function AddDataDialog({
   open,
   candidates,
+  catalogStatus,
   locked,
   importPath,
   catalogPath,
@@ -19,6 +20,7 @@ export function AddDataDialog({
 }: {
   open: boolean;
   candidates: AddDataCandidateView[];
+  catalogStatus: CatalogReadState["status"];
   locked: boolean;
   importPath: string;
   catalogPath: string;
@@ -77,14 +79,18 @@ export function AddDataDialog({
           </div>
         </div>
 
-        {candidates.length > 0 && candidates.every((candidate) => candidate.alreadyOnMap) ? (
+        {catalogStatus === "ready" && candidates.length > 0 && candidates.every((candidate) => candidate.alreadyOnMap) ? (
           <p role="status" className="map-dialog-empty">
             {nextCatalog || previousCatalog
               ? "Tất cả lớp trong trang này đã có trên bản đồ."
               : "Tất cả lớp dữ liệu hiện có đã được thêm vào bản đồ."}
           </p>
         ) : null}
-        {candidates.length ? (
+        {catalogStatus === "loading" ? (
+          <p role="status" className="map-dialog-empty">Đang kiểm tra quyền và danh mục lớp…</p>
+        ) : catalogStatus === "unavailable" ? (
+          <p role="alert" className="map-dialog-empty">Không thể xác thực danh mục lớp hiện tại. Đóng rồi mở lại hộp thoại để thử lại.</p>
+        ) : candidates.length ? (
           <ul className="map-add-data-list">
             {candidates.map((candidate) => (
               <li key={candidate.layerId}>

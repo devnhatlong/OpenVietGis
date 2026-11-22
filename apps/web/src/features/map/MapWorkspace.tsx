@@ -22,11 +22,12 @@ import { SaveStateIndicator } from "./SaveStateIndicator";
 import { TechnicalDetailsDrawer } from "./TechnicalDetailsDrawer";
 import { LayerTree } from "./LayerTree";
 import { WorkspaceLayout } from "./WorkspaceLayout";
-import { buildAddDataCandidates } from "./add-data";
+import { buildAddDataCandidates,currentAddDataCatalog,layerScopeMatches } from "./add-data";
+import { sameCamera,sameViewportBounds } from "./map-initialization";
 import { buildLayerPanelItemView } from "./layer-view";
 import { createCommands,invokeCommand,type MapCommandId } from "./commands";
 import { BASEMAP_OPTIONS,type BasemapId,type MapEngine,type RenderLayer } from "./engine";
-import { createMapLibreEngine } from "./maplibre-engine";
+import { loadMapEngine,type MapEngineFactory } from "./map-engine-loader";
 import { beginSave,markUnresolved,receiptMatches,saveErrorState,type PendingSave } from "./save";
 import { buildSaveIndicatorView } from "./save-indicator";
 import { buildTechnicalDetailsView } from "./technical-details";
@@ -71,7 +72,7 @@ function mapStateLabel(state:string):string {
  }[state]??"Đang kiểm tra";
 }
 
-function Workspace({organizationId,projectId,accountId,project,initial,canEdit}:{organizationId:string;projectId:string;accountId:string;project:Project;initial:ProjectMap;canEdit:boolean}) {
+function Workspace({organizationId,projectId,accountId,project,initial,canEdit,createEngine}:{organizationId:string;projectId:string;accountId:string;project:Project;initial:ProjectMap;canEdit:boolean;createEngine:MapEngineFactory}) {
  const queryClient=useQueryClient(),canvas=useRef<HTMLDivElement>(null),engine=useRef<MapEngine|null>(null),alive=useRef(true);
  const [saved,setSaved]=useState(initial),[configuration,setConfiguration]=useState<MapConfiguration>(initial.configuration);
  const [active,setActive]=useState<string|null>(initial.configuration.layers[0]?.layer_id??null);
@@ -91,10 +92,13 @@ function Workspace({organizationId,projectId,accountId,project,initial,canEdit}:
  const writable=canEdit&&project.status==="active";
  const locked=working||pending?.status==="unresolved"||pending?.status==="conflict";
  const scopePrefix=["map-workspace",accountId,organizationId,projectId];
- const catalogQuery=useQuery({queryKey:[...scopePrefix,"catalog",catalogCursor],queryFn:()=>listSpatialLayers(apiClient,organizationId,projectId,{limit:100,...(catalogCursor?{after_id:catalogCursor}:{})}),...protectedQueryOptions});
- const catalog=currentProtectedData(catalogQuery);
+ // The full catalog is only used by Add Data. It can be expensive and duplicates
+ // per-layer metadata; request it only while the dialog is open, never on ordinary map open.
+ const catalogQuery=useQuery({queryKey:[...scopePrefix,"catalog",catalogCursor],queryFn:()=>listSpatialLayers(apiClient,organizationId,projectId,{limit:100,...(catalogCursor?{after_id:catalogCursor}:{})}),enabled:addDataOpen,...protectedQueryOptions});
+ const catalogState=currentAddDataCatalog(addDataOpen,catalogQuery,organizationId,projectId);
+ const catalog=catalogState.page;
  const metadataQueries=useQueries({queries:configuration.layers.map(ref=>({queryKey:[...scopePrefix,"layer",ref.layer_id],queryFn:()=>getSpatialLayer(apiClient,organizationId,projectId,ref.layer_id),...protectedQueryOptions}))});
- const metadata=metadataQueries.map(result=>{const layer=currentProtectedData(result);return layer&&layer.organization_id===organizationId&&layer.project_id===projectId&&layer.source.organization_id===organizationId&&layer.source.project_id===projectId&&layer.source_id===layer.source.id?layer:undefined;});
+ const metadata=metadataQueries.map((result,index)=>{const layer=currentProtectedData(result);return layer&&layerScopeMatches(layer,organizationId,projectId,configuration.layers[index]!.layer_id)?layer:undefined;});
  const activeIndex=configuration.layers.findIndex(ref=>ref.layer_id===active);
  const activeLayer=activeIndex>=0?metadata[activeIndex]:undefined;
  const activeScope:SelectionScope|null=activeLayer?{accountId,organizationId,projectId,layerId:activeLayer.id,sourceId:activeLayer.source_id,contentRevision:activeLayer.source.content_revision,schemaRevision:activeLayer.source.schema_revision}:null;
@@ -128,11 +132,16 @@ function Workspace({organizationId,projectId,accountId,project,initial,canEdit}:
   setSelection({key:activeKey,ids,focus:ids.includes(id)?id:ids[ids.length-1]??null});
  }
  const handlers=useRef({pick:select,viewport:(bounds:Bounds,value:MapViewpoint)=>{setBbox(bounds);setCamera(value);}});
- handlers.current={pick:select,viewport:(bounds,value)=>{setBbox(current=>current&&current.every((v,i)=>Math.abs(v-bounds[i]!)<1e-9)?current:bounds);setCamera(value);}};
- useLayoutEffect(()=>{
+ handlers.current={pick:select,viewport:(bounds,value)=>{setBbox(current=>sameViewportBounds(current,bounds)?current:bounds);setCamera(current=>sameCamera(current,value)?current:value);}};
+ // Start the protected React Query observers before the synchronous renderer
+ // construction/layout work. No viewport read is enabled until the real engine
+ // publishes its exact bounds and the corresponding fresh metadata is available.
+ useEffect(()=>{
   if(!canvas.current)return;
-  const map=createMapLibreEngine(canvas.current,{viewport:(bounds,value)=>handlers.current.viewport(bounds,value),pick:(id,multiple)=>handlers.current.pick(id,multiple),ready:setEngineReady,error:()=>setEngineError(true)});
-  engine.current=map;map.setBasemap(window.location.protocol==="https:"?"google-hybrid":"grid");map.setCamera(initial.configuration.default_viewpoint??defaultCamera);
+  const map=createEngine(canvas.current,{viewport:(bounds,value)=>handlers.current.viewport(bounds,value),pick:(id,multiple)=>handlers.current.pick(id,multiple),ready:setEngineReady,error:()=>setEngineError(true)});
+  engine.current=map;
+  map.setActiveLayer(initial.configuration.layers[0]?.visible?initial.configuration.layers[0].layer_id:null);
+  map.setBasemap(window.location.protocol==="https:"?"google-hybrid":"grid");map.setCamera(initial.configuration.default_viewpoint??defaultCamera);
   return ()=>{map.clear();map.destroy();engine.current=null;};
  },[]);
  const frames:RenderLayer[]=[];
@@ -336,6 +345,7 @@ function Workspace({organizationId,projectId,accountId,project,initial,canEdit}:
   <AddDataDialog
    open={addDataOpen}
    candidates={addDataCandidates}
+   catalogStatus={catalogState.status}
    locked={locked}
    importPath={"/app/organizations/"+organizationId+"/projects/"+projectId+"/transfers"}
    catalogPath={"/app/organizations/"+organizationId+"/projects/"+projectId+"/spatial"}
@@ -373,12 +383,22 @@ function ProtectedMap({organizationId,projectId,accountId}:{organizationId:strin
  const projectQuery=useQuery({queryKey:[...prefix,"project"],queryFn:()=>getProject(apiClient,organizationId,projectId),...protectedQueryOptions});
  const permissionQuery=useQuery({queryKey:[...prefix,"permissions"],queryFn:()=>getEffectivePermissions(apiClient,organizationId,{project_id:projectId}),...protectedQueryOptions});
  const mapQuery=useQuery({queryKey:[...prefix,"definition"],queryFn:()=>getMap(apiClient,organizationId,projectId),...protectedQueryOptions});
+ // Fetch/parse only static renderer code alongside protected auth/definition reads.
+ // No map instance or protected query data is shared by the module loader.
+ const [adapter,setAdapter]=useState<Awaited<ReturnType<typeof loadMapEngine>>>();
+ const [adapterError,setAdapterError]=useState(false);
+ useEffect(()=>{
+  let disposed=false;
+  void loadMapEngine().then(value=>{if(!disposed)setAdapter(value);},()=>{if(!disposed)setAdapterError(true);});
+  return ()=>{disposed=true;};
+ },[]);
  const project=currentProtectedData(projectQuery),permissions=currentProtectedData(permissionQuery),map=currentProtectedData(mapQuery);
  if(!project||!permissions||!map||project.id!==projectId||project.organization_id!==organizationId||project.status==="deleted"||!mapResponseMatches(organizationId,projectId,map)||!permissions.permissions.includes("project.read")){
   const error=projectQuery.error||permissionQuery.error||mapQuery.error;
   return <main className="map-access"><Link to={"/app/organizations/"+organizationId+"/projects"}>← Dự án</Link><h1>Không gian Bản đồ</h1><p role={error?"alert":"status"}>{error?"Không có quyền truy cập bản đồ dự án này.":"Đang kiểm tra quyền truy cập bản đồ dự án…"}</p></main>;
  }
- return <Workspace key={accountId+":"+organizationId+":"+projectId} organizationId={organizationId} projectId={projectId} accountId={accountId} project={project} initial={map} canEdit={permissions.permissions.includes("project.edit")}/>;
+ if(!adapter)return <main className="map-access"><Link to={"/app/organizations/"+organizationId+"/projects"}>← Dự án</Link><h1>Không gian Bản đồ</h1><p role={adapterError?"alert":"status"}>{adapterError?"Không thể khởi tạo công cụ bản đồ. Hãy tải lại trang.":"Đang khởi tạo công cụ bản đồ…"}</p></main>;
+ return <Workspace key={accountId+":"+organizationId+":"+projectId} organizationId={organizationId} projectId={projectId} accountId={accountId} project={project} initial={map} canEdit={permissions.permissions.includes("project.edit")} createEngine={adapter.createMapLibreEngine}/>;
 }
 export function MapWorkspace() {
  const {organizationId,projectId}=useParams();
