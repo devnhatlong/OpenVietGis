@@ -29,3 +29,5 @@ Track-specific detailed evidence and source pins: [R004](r004-renderer-generatio
 ## Release gate
 
 Release preflight on runtime pin correctly refuses because no accepted self-host team deployment profile, exact candidate independent verification or mandatory release certification. Human observations in [manual acceptance protocol](manual-acceptance-runbook.md) remain unexecuted. Real-world independent acceptance and spec-by-spec evidence remain necessary; no release flags changed.
+
+Follow-up: [third R004 integrated optimization and measured SC007 pass](r004-third-integration-evidence.md). The preceding failed measurements remain retained unchanged.
