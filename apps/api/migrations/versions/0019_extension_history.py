@@ -28,13 +28,24 @@ def upgrade() -> None:
         op.execute(f"ALTER TABLE extensions.{table} NO FORCE ROW LEVEL SECURITY")
     _statements("""
         ALTER TABLE extensions.manifests
+        ADD COLUMN ui_contributions jsonb NOT NULL DEFAULT '[]'::jsonb,
         ADD CONSTRAINT uq_ext_manifest_owner_id UNIQUE (organization_id, id);
         ALTER TABLE extensions.records
         ADD COLUMN manifest_id uuid,
         ADD COLUMN revision integer NOT NULL DEFAULT 1,
         ADD COLUMN link_context jsonb,
+        ADD COLUMN operation_id uuid NULL,
+        ADD COLUMN updated_by_actor_id uuid NULL,
         ADD CONSTRAINT uq_ext_record_owner_id UNIQUE (organization_id, project_id, id),
         ADD CONSTRAINT ck_ext_record_revision CHECK (revision >= 1);
+        UPDATE extensions.records
+        SET updated_by_actor_id = created_by_actor_id
+        WHERE updated_by_actor_id IS NULL;
+        ALTER TABLE extensions.records
+        ALTER COLUMN updated_by_actor_id SET NOT NULL;
+        CREATE UNIQUE INDEX uq_ext_record_operation
+        ON extensions.records (organization_id, project_id, extension_key, operation_id)
+        WHERE operation_id IS NOT NULL;
         UPDATE extensions.records r
         SET manifest_id = a.manifest_id,
             link_context = CASE WHEN r.linked_layer_id IS NOT NULL
@@ -47,6 +58,10 @@ def upgrade() -> None:
         ADD CONSTRAINT fk_ext_record_manifest FOREIGN KEY (organization_id, manifest_id)
           REFERENCES extensions.manifests(organization_id, id) ON DELETE RESTRICT;
         ALTER TABLE extensions.project_activations
+        ADD COLUMN revision bigint NOT NULL DEFAULT 1,
+        ADD COLUMN disabled_by_actor_id uuid NULL,
+        ADD COLUMN disabled_at timestamptz NULL,
+        ADD CONSTRAINT ck_ext_activation_revision CHECK (revision > 0),
         ADD CONSTRAINT uq_ext_activation_owner_id UNIQUE (organization_id, project_id, id),
         ADD CONSTRAINT fk_ext_activation_manifest_owner FOREIGN KEY (organization_id, manifest_id)
           REFERENCES extensions.manifests (organization_id, id) ON DELETE RESTRICT
@@ -156,7 +171,10 @@ def upgrade() -> None:
     op.execute("REVOKE UPDATE ON extensions.manifests FROM openvietgis_runtime")
     op.execute("REVOKE UPDATE, DELETE ON extensions.records FROM openvietgis_runtime")
     op.execute("""
-        GRANT UPDATE (payload, updated_at, revision, manifest_id, link_context)
+        GRANT UPDATE (
+            payload, updated_at, revision, manifest_id, link_context,
+            operation_id, updated_by_actor_id
+        )
           ON extensions.records TO openvietgis_runtime
     """)
 
@@ -181,16 +199,26 @@ def downgrade() -> None:
     op.execute("DROP TABLE extensions.activation_events")
     op.execute("DROP TABLE extensions.record_revisions")
     _statements("""
+        DROP INDEX IF EXISTS extensions.uq_ext_record_operation;
         ALTER TABLE extensions.project_activations
+          DROP CONSTRAINT IF EXISTS ck_ext_activation_revision,
           DROP CONSTRAINT fk_ext_activation_manifest_owner,
-          DROP CONSTRAINT uq_ext_activation_owner_id;
+          DROP CONSTRAINT uq_ext_activation_owner_id,
+          DROP COLUMN disabled_at,
+          DROP COLUMN disabled_by_actor_id,
+          DROP COLUMN revision;
         ALTER TABLE extensions.records
           DROP CONSTRAINT fk_ext_record_manifest,
           DROP CONSTRAINT uq_ext_record_owner_id,
+          DROP CONSTRAINT IF EXISTS ck_ext_record_revision,
+          DROP COLUMN updated_by_actor_id,
+          DROP COLUMN operation_id,
           DROP COLUMN manifest_id,
           DROP COLUMN revision,
           DROP COLUMN link_context;
-        ALTER TABLE extensions.manifests DROP CONSTRAINT uq_ext_manifest_owner_id
+        ALTER TABLE extensions.manifests
+          DROP CONSTRAINT uq_ext_manifest_owner_id,
+          DROP COLUMN ui_contributions
     """)
     op.execute("GRANT UPDATE ON extensions.manifests TO openvietgis_runtime")
     op.execute("GRANT UPDATE, DELETE ON extensions.records TO openvietgis_runtime")

@@ -1,0 +1,909 @@
+import { ApiClient } from "@openvietgis/client-sdk";
+
+export type HouseNumberingRule = {
+  id: string;
+  version: string;
+  status: "draft" | "authoritative";
+  authority_ref: string | null;
+  left_odd: boolean;
+  suffix_style: "letters" | "dash";
+  max_distance_m: number;
+  revision: number;
+};
+
+export type HouseNumberingArea = {
+  id: string;
+  name: string;
+  kind: "current" | "historic" | "custom";
+  parent_id: string | null;
+  linked_source_id: string | null;
+  linked_feature_id: string | null;
+  revision: number;
+};
+
+export type HouseNumberingRoute = {
+  id: string;
+  name: string;
+  route_type: "street" | "alley";
+  parent_route_id: string | null;
+  prefix: string | null;
+  linked_source_id: string;
+  linked_feature_id: string;
+  direction_state: "forward" | "reverse";
+  source_label: string;
+  status: "draft" | "confirmed";
+  revision: number;
+  building_count?: number;
+};
+
+export type HouseNumberingBuilding = {
+  id: string;
+  route_id: string | null;
+  area_id: string | null;
+  parcel_ref: string | null;
+  linked_source_id: string;
+  linked_feature_id: string;
+  eligibility: "unknown" | "eligible" | "ineligible";
+  ineligibility_reason: string | null;
+  plaque_status: "not_planned" | "planned" | "installed" | "replaced" | "removed";
+  plaque_updated_at: string | null;
+  state: string;
+  revision: number;
+};
+
+export type HouseNumberingBuildingLineage = {
+  id: string;
+  operation_id: string;
+  relation_kind: "split" | "merge";
+  predecessor_building_id: string;
+  successor_building_id: string;
+  created_by_actor_id: string;
+  created_at: string;
+};
+
+export type HouseNumberingInspection = {
+  location: {
+    measure_m: number;
+    distance_m: number;
+    side: "left" | "right" | null;
+    crs_code: number;
+  };
+  suggestion: { number: string | null; reason: string; rule_version?: string };
+  neighbors?: {
+    before: Record<string, unknown> | null;
+    after: Record<string, unknown> | null;
+  };
+  context?: {
+    building: {
+      id: string;
+      parcel_ref: string | null;
+      linked_source_id: string | null;
+      linked_feature_id: string | null;
+      core_feature_attributes: Record<string, unknown> | null;
+    } | null;
+    evidence: Array<Record<string, unknown>>;
+  };
+};
+
+export type HouseNumberingPreview = {
+  id: string;
+  operation_id: string;
+  candidate_changes: Array<{
+    building_id: string;
+    route_id: string;
+    old_number: string | null;
+    number: string;
+    side: string | null;
+    measure: number;
+    reason: string;
+    result_number_id?: string;
+  }>;
+  warnings: string[];
+  expires_at: string;
+  applied_at: string | null;
+};
+
+export type HouseNumberingProposal = {
+  id: string;
+  scope_kind: "route" | "area";
+  scope_id: string;
+  rule_id: string;
+  status: "draft" | "submitted" | "approved";
+  revision: number;
+  decision_comment: string | null;
+};
+
+export type HouseNumberingSurvey = {
+  id: string;
+  client_uuid: string;
+  building_id: string | null;
+  point_x: number | null;
+  point_y: number | null;
+  crs_code: number | null;
+  gps_accuracy_m: number | null;
+  gps_deviation_m: number | null;
+  warnings: Array<Record<string, unknown>>;
+  photo_artifact_ids: string[];
+  condition: "house" | "vacant" | "removed" | "other";
+  state: "draft" | "submitted" | "accepted" | "rejected";
+  recorded_by_actor_id: string;
+  submitted_by_actor_id: string | null;
+  revision: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type HouseNumberingAssignment = {
+  id: string;
+  scope_kind: "area" | "route";
+  scope_id: string;
+  assignee_actor_id: string;
+  target_count: number | null;
+  starts_on: string;
+  ends_on: string | null;
+  revision: number;
+};
+
+export type HouseNumberingReconcileCase = {
+  id: string;
+  building_id: string | null;
+  evidence_ids: string[];
+  case_class:
+    | "matched"
+    | "number_mismatch"
+    | "cad_certificate_mismatch"
+    | "new_building"
+    | "no_longer_exists"
+    | "not_surveyed"
+    | "certificate_unmatched";
+  estimated: boolean;
+  status: "open" | "resolved" | "ignored";
+  resolution: string | null;
+  revision: number;
+};
+
+export type HouseNumberingProgress = {
+  positions: number;
+  houses: number;
+  vacant: number;
+  other: number;
+  completion: number | null;
+  removed: number;
+  submitted_pending: number;
+};
+
+export type HouseNumberingDocument = {
+  id: string;
+  building_id: string;
+  doc_type: "inspection" | "certificate" | "house_form" | "plate";
+  template_revision: string;
+  status: "draft" | "official" | "void" | "reissue_required";
+  artifact_id: string | null;
+  revision: number;
+  artifact?: {
+    id: string;
+    filename: string;
+    content_type: string;
+    byte_size: number;
+    sha256: string;
+  };
+};
+
+export type HouseNumberingExport = {
+  artifact_id: string;
+  filename: string;
+  content_type: string;
+  byte_size: number;
+  sha256: string;
+  record_count: number;
+  include_private: boolean;
+};
+
+function base(orgId: string, projectId: string): string {
+  return `/organizations/${encodeURIComponent(orgId)}/projects/${encodeURIComponent(
+    projectId
+  )}/modules/house-numbering`;
+}
+
+function jsonMutation<T>(
+  client: ApiClient,
+  path: string,
+  method: "POST" | "PUT" | "PATCH" | "DELETE",
+  body?: unknown
+): Promise<T> {
+  return client.request<T>(path, {
+    method,
+    ...(body === undefined ? {} : { body: JSON.stringify(body) })
+  });
+}
+
+export function listHouseNumberingRules(client: ApiClient, orgId: string, projectId: string) {
+  return client.request<{ items: HouseNumberingRule[] }>(`${base(orgId, projectId)}/rules`);
+}
+export function createHouseNumberingRule(
+  client: ApiClient,
+  orgId: string,
+  projectId: string,
+  body: {
+    version: string;
+    status: "draft" | "authoritative";
+    authority_ref?: string | null;
+    left_odd: boolean;
+    suffix_style: "letters" | "dash";
+    max_distance_m: number;
+  }
+) {
+  return jsonMutation<HouseNumberingRule>(client, `${base(orgId, projectId)}/rules`, "POST", body);
+}
+
+export function listHouseNumberingAreas(client: ApiClient, orgId: string, projectId: string) {
+  return client.request<{ items: HouseNumberingArea[] }>(`${base(orgId, projectId)}/areas`);
+}
+export function createHouseNumberingArea(
+  client: ApiClient,
+  orgId: string,
+  projectId: string,
+  body: {
+    name: string;
+    kind: "current" | "historic" | "custom";
+    parent_id?: string | null;
+    source_id?: string | null;
+    feature_id?: string | null;
+  }
+) {
+  return jsonMutation<HouseNumberingArea>(client, `${base(orgId, projectId)}/areas`, "POST", body);
+}
+
+export function updateHouseNumberingArea(
+  client: ApiClient,
+  orgId: string,
+  projectId: string,
+  areaId: string,
+  body: {
+    expected_revision: number;
+    name: string;
+    kind: "current" | "historic" | "custom";
+    parent_id?: string | null;
+    source_id?: string | null;
+    feature_id?: string | null;
+  }
+) {
+  return jsonMutation<HouseNumberingArea>(
+    client,
+    `${base(orgId, projectId)}/areas/${encodeURIComponent(areaId)}`,
+    "PUT",
+    body
+  );
+}
+
+export function deleteHouseNumberingArea(
+  client: ApiClient,
+  orgId: string,
+  projectId: string,
+  areaId: string,
+  expectedRevision: number
+) {
+  return client.requestWithoutBody(
+    `${base(orgId, projectId)}/areas/${encodeURIComponent(areaId)}?expected_revision=${expectedRevision}`,
+    { method: "DELETE" }
+  );
+}
+
+export function listHouseNumberingRoutes(client: ApiClient, orgId: string, projectId: string) {
+  return client.request<{ items: HouseNumberingRoute[] }>(`${base(orgId, projectId)}/routes`);
+}
+export function createHouseNumberingRoute(
+  client: ApiClient,
+  orgId: string,
+  projectId: string,
+  body: {
+    name: string;
+    route_type: "street" | "alley";
+    parent_route_id?: string | null;
+    prefix?: string | null;
+    source_id: string;
+    feature_id: string;
+    direction_state: "forward" | "reverse";
+    source_label: string;
+    status: "draft" | "confirmed";
+  }
+) {
+  return jsonMutation<HouseNumberingRoute>(client, `${base(orgId, projectId)}/routes`, "POST", body);
+}
+export function updateHouseNumberingRoute(
+  client: ApiClient,
+  orgId: string,
+  projectId: string,
+  routeId: string,
+  body: {
+    expected_revision: number;
+    name: string;
+    direction_state: "forward" | "reverse";
+    status: "draft" | "confirmed";
+  }
+) {
+  return jsonMutation<HouseNumberingRoute>(
+    client,
+    `${base(orgId, projectId)}/routes/${encodeURIComponent(routeId)}`,
+    "PUT",
+    body
+  );
+}
+export function deleteHouseNumberingRoute(
+  client: ApiClient,
+  orgId: string,
+  projectId: string,
+  routeId: string
+) {
+  return client.requestWithoutBody(
+    `${base(orgId, projectId)}/routes/${encodeURIComponent(routeId)}`,
+    { method: "DELETE" }
+  );
+}
+
+export function listHouseNumberingBuildings(
+  client: ApiClient,
+  orgId: string,
+  projectId: string,
+  routeId?: string
+) {
+  const qs = routeId ? `?route_id=${encodeURIComponent(routeId)}` : "";
+  return client.request<{ items: HouseNumberingBuilding[] }>(
+    `${base(orgId, projectId)}/buildings${qs}`
+  );
+}
+export function createHouseNumberingBuilding(
+  client: ApiClient,
+  orgId: string,
+  projectId: string,
+  body: {
+    route_id?: string | null;
+    area_id?: string | null;
+    parcel_ref?: string | null;
+    source_id: string;
+    feature_id: string;
+    eligibility: "unknown" | "eligible" | "ineligible";
+    ineligibility_reason?: string | null;
+  }
+) {
+  return jsonMutation<HouseNumberingBuilding>(
+    client,
+    `${base(orgId, projectId)}/buildings`,
+    "POST",
+    body
+  );
+}
+export function updateHouseNumberingBuilding(
+  client: ApiClient,
+  orgId: string,
+  projectId: string,
+  buildingId: string,
+  body: {
+    expected_revision: number;
+    route_id?: string | null;
+    area_id?: string | null;
+    parcel_ref?: string | null;
+    source_id: string;
+    feature_id: string;
+  }
+) {
+  return jsonMutation<HouseNumberingBuilding>(
+    client,
+    `${base(orgId, projectId)}/buildings/${encodeURIComponent(buildingId)}`,
+    "PUT",
+    body
+  );
+}
+
+export function retireHouseNumberingBuilding(
+  client: ApiClient,
+  orgId: string,
+  projectId: string,
+  buildingId: string,
+  expectedRevision: number
+) {
+  return client.requestWithoutBody(
+    `${base(orgId, projectId)}/buildings/${encodeURIComponent(buildingId)}?expected_revision=${expectedRevision}`,
+    { method: "DELETE" }
+  );
+}
+
+export function setHouseNumberingEligibility(
+  client: ApiClient,
+  orgId: string,
+  projectId: string,
+  buildingId: string,
+  body: {
+    expected_revision: number;
+    eligibility: "unknown" | "eligible" | "ineligible";
+    reason?: string | null;
+  }
+) {
+  return jsonMutation<HouseNumberingBuilding>(
+    client,
+    `${base(orgId, projectId)}/buildings/${encodeURIComponent(buildingId)}/eligibility`,
+    "PATCH",
+    body
+  );
+}
+
+export function setHouseNumberingPlaqueStatus(
+  client: ApiClient,
+  orgId: string,
+  projectId: string,
+  buildingId: string,
+  body: { expected_revision: number; status: HouseNumberingBuilding["plaque_status"] }
+) {
+  return jsonMutation<HouseNumberingBuilding>(
+    client,
+    `${base(orgId, projectId)}/buildings/${encodeURIComponent(buildingId)}/plaque`,
+    "PATCH",
+    body
+  );
+}
+
+export function recordHouseNumberingBuildingLineage(
+  client: ApiClient,
+  orgId: string,
+  projectId: string,
+  body: {
+    relation_kind: "split" | "merge";
+    operation_id: string;
+    predecessor_building_ids: string[];
+    successor_building_ids: string[];
+    expected_revisions: Record<string, number>;
+  }
+) {
+  return jsonMutation<{
+    operation_id: string;
+    relation_kind: "split" | "merge";
+    items: HouseNumberingBuildingLineage[];
+  }>(client, `${base(orgId, projectId)}/buildings/lineage`, "POST", body);
+}
+
+export function listHouseNumberingBuildingLineage(
+  client: ApiClient,
+  orgId: string,
+  projectId: string,
+  buildingId: string
+) {
+  return client.request<{ items: HouseNumberingBuildingLineage[] }>(
+    `${base(orgId, projectId)}/buildings/${encodeURIComponent(buildingId)}/lineage`
+  );
+}
+
+export function inspectHouseNumberingLocation(
+  client: ApiClient,
+  orgId: string,
+  projectId: string,
+  body: {
+    x: number;
+    y: number;
+    crs_code: number;
+    route_id: string;
+    rule_id: string;
+    existing_building_id?: string | null;
+  }
+) {
+  return jsonMutation<HouseNumberingInspection>(
+    client,
+    `${base(orgId, projectId)}/inspect`,
+    "POST",
+    body
+  );
+}
+export function previewHouseNumbering(
+  client: ApiClient,
+  orgId: string,
+  projectId: string,
+  body: { building_ids: string[]; rule_id: string; operation_id: string }
+) {
+  return jsonMutation<HouseNumberingPreview>(
+    client,
+    `${base(orgId, projectId)}/previews`,
+    "POST",
+    body
+  );
+}
+export function applyHouseNumberingPreview(
+  client: ApiClient,
+  orgId: string,
+  projectId: string,
+  previewId: string
+) {
+  return jsonMutation<{ items: Array<Record<string, unknown>> }>(
+    client,
+    `${base(orgId, projectId)}/previews/${encodeURIComponent(previewId)}/apply`,
+    "POST"
+  );
+}
+
+export function createHouseNumberingProposal(
+  client: ApiClient,
+  orgId: string,
+  projectId: string,
+  body: {
+    scope_kind: "route" | "area";
+    scope_id: string;
+    rule_id: string;
+    building_ids: string[];
+  }
+) {
+  return jsonMutation<{ proposal: HouseNumberingProposal; items: Array<Record<string, unknown>> }>(
+    client,
+    `${base(orgId, projectId)}/proposals`,
+    "POST",
+    body
+  );
+}
+export function getHouseNumberingProposal(
+  client: ApiClient,
+  orgId: string,
+  projectId: string,
+  proposalId: string
+) {
+  return client.request<{
+    proposal: HouseNumberingProposal;
+    items: Array<Record<string, unknown>>;
+  }>(`${base(orgId, projectId)}/proposals/${encodeURIComponent(proposalId)}`);
+}
+export function transitionHouseNumberingProposal(
+  client: ApiClient,
+  orgId: string,
+  projectId: string,
+  proposalId: string,
+  body: {
+    expected_revision: number;
+    action: "submit" | "withdraw" | "approve" | "reject";
+    comment?: string | null;
+  }
+) {
+  return jsonMutation<HouseNumberingProposal>(
+    client,
+    `${base(orgId, projectId)}/proposals/${encodeURIComponent(proposalId)}/transition`,
+    "POST",
+    body
+  );
+}
+
+export async function importHouseNumberingEvidence(
+  client: ApiClient,
+  orgId: string,
+  projectId: string,
+  body: {
+    file: File;
+    source_format: string;
+    origin: string;
+    mapping: Record<string, string>;
+    default_source_reference: string;
+    source_crs?: number | null;
+    default_confidence?: string;
+  }
+) {
+  const form = new FormData();
+  form.set("file", body.file);
+  form.set("source_format", body.source_format);
+  form.set("origin", body.origin);
+  form.set("mapping_json", JSON.stringify(body.mapping));
+  form.set("default_source_reference", body.default_source_reference);
+  if (body.source_crs !== undefined && body.source_crs !== null) {
+    form.set("source_crs", String(body.source_crs));
+  }
+  form.set("default_confidence", body.default_confidence ?? "observed");
+  return client.request<{
+    batch: Record<string, unknown>;
+    replayed: boolean;
+    rejections: Array<Record<string, unknown>>;
+  }>(`${base(orgId, projectId)}/imports`, { method: "POST", body: form });
+}
+export function listHouseNumberingImports(client: ApiClient, orgId: string, projectId: string) {
+  return client.request<{ items: Array<Record<string, unknown>> }>(
+    `${base(orgId, projectId)}/imports`
+  );
+}
+export function rebuildHouseNumberingReconciliation(
+  client: ApiClient,
+  orgId: string,
+  projectId: string,
+  body: { removed_building_ids?: string[]; estimated_building_ids?: string[] }
+) {
+  return jsonMutation<{ items: HouseNumberingReconcileCase[] }>(
+    client,
+    `${base(orgId, projectId)}/reconciliation/rebuild`,
+    "POST",
+    {
+      removed_building_ids: body.removed_building_ids ?? [],
+      estimated_building_ids: body.estimated_building_ids ?? []
+    }
+  );
+}
+export function listHouseNumberingReconciliation(
+  client: ApiClient,
+  orgId: string,
+  projectId: string
+) {
+  return client.request<{ items: HouseNumberingReconcileCase[] }>(
+    `${base(orgId, projectId)}/reconciliation/cases`
+  );
+}
+export function resolveHouseNumberingCase(
+  client: ApiClient,
+  orgId: string,
+  projectId: string,
+  caseId: string,
+  body: {
+    expected_revision: number;
+    status: "resolved" | "ignored";
+    resolution: string;
+    building_id?: string | null;
+  }
+) {
+  return jsonMutation<HouseNumberingReconcileCase>(
+    client,
+    `${base(orgId, projectId)}/reconciliation/cases/${encodeURIComponent(caseId)}/resolve`,
+    "POST",
+    body
+  );
+}
+
+export function syncHouseNumberingSurveys(
+  client: ApiClient,
+  orgId: string,
+  projectId: string,
+  operations: Array<Record<string, unknown>>
+) {
+  return jsonMutation<{
+    applied: string[];
+    replayed: string[];
+    conflicts: Array<Record<string, unknown>>;
+    warnings: Array<Record<string, unknown>>;
+  }>(
+    client,
+    `${base(orgId, projectId)}/survey/sync`,
+    "POST",
+    { operations }
+  );
+}
+export function listHouseNumberingSurveys(
+  client: ApiClient,
+  orgId: string,
+  projectId: string,
+  state?: HouseNumberingSurvey["state"]
+) {
+  const qs = state ? `?state=${encodeURIComponent(state)}` : "";
+  return client.request<{ items: HouseNumberingSurvey[] }>(
+    `${base(orgId, projectId)}/surveys${qs}`
+  );
+}
+export function reviewHouseNumberingSurvey(
+  client: ApiClient,
+  orgId: string,
+  projectId: string,
+  surveyId: string,
+  body: { expected_revision: number; decision: "accepted" | "rejected" }
+) {
+  return jsonMutation<HouseNumberingSurvey>(
+    client,
+    `${base(orgId, projectId)}/surveys/${encodeURIComponent(surveyId)}/review`,
+    "POST",
+    body
+  );
+}
+export function listHouseNumberingAssignments(client: ApiClient, orgId: string, projectId: string) {
+  return client.request<{ items: HouseNumberingAssignment[] }>(
+    `${base(orgId, projectId)}/assignments`
+  );
+}
+export function createHouseNumberingAssignment(
+  client: ApiClient,
+  orgId: string,
+  projectId: string,
+  body: {
+    scope_kind: "area" | "route";
+    scope_id: string;
+    assignee_actor_id: string;
+    starts_on: string;
+    ends_on?: string | null;
+    target_count?: number | null;
+  }
+) {
+  return jsonMutation<HouseNumberingAssignment>(
+    client,
+    `${base(orgId, projectId)}/assignments`,
+    "POST",
+    body
+  );
+}
+export function getHouseNumberingProgress(client: ApiClient, orgId: string, projectId: string) {
+  return client.request<HouseNumberingProgress>(`${base(orgId, projectId)}/progress`);
+}
+export function houseNumberingProgressReportUrl(orgId: string, projectId: string) {
+  return `/api/v1${base(orgId, projectId)}/progress/report.xlsx`;
+}
+
+export function issueHouseNumberingDocument(
+  client: ApiClient,
+  orgId: string,
+  projectId: string,
+  body: {
+    building_id: string;
+    doc_type: "inspection" | "certificate" | "house_form" | "plate";
+    output_format: "docx" | "pdf";
+    template_revision: string;
+    template_verified: boolean;
+    replaces_document_id?: string | null;
+  }
+) {
+  return jsonMutation<HouseNumberingDocument>(
+    client,
+    `${base(orgId, projectId)}/documents`,
+    "POST",
+    body
+  );
+}
+export function listHouseNumberingDocuments(
+  client: ApiClient,
+  orgId: string,
+  projectId: string,
+  buildingId: string
+) {
+  return client.request<{ items: HouseNumberingDocument[] }>(
+    `${base(orgId, projectId)}/buildings/${encodeURIComponent(buildingId)}/documents`
+  );
+}
+export function houseNumberingDocumentDownloadUrl(
+  orgId: string,
+  projectId: string,
+  documentId: string
+) {
+  return `/api/v1${base(orgId, projectId)}/documents/${encodeURIComponent(documentId)}/download`;
+}
+
+export function searchHouseNumbers(
+  client: ApiClient,
+  orgId: string,
+  projectId: string,
+  query: string
+) {
+  return client.request<{ items: Array<Record<string, unknown>> }>(
+    `${base(orgId, projectId)}/search?query=${encodeURIComponent(query)}`
+  );
+}
+export function createHouseNumberingExport(
+  client: ApiClient,
+  orgId: string,
+  projectId: string,
+  body: {
+    fields: string[];
+    output_format: "csv" | "geojson" | "dxf" | "shapefile_zip";
+    include_private?: boolean;
+    purpose?: string | null;
+  }
+) {
+  return jsonMutation<HouseNumberingExport>(
+    client,
+    `${base(orgId, projectId)}/exports`,
+    "POST",
+    body
+  );
+}
+export function houseNumberingExportDownloadUrl(
+  orgId: string,
+  projectId: string,
+  artifactId: string
+) {
+  return `/api/v1${base(orgId, projectId)}/exports/${encodeURIComponent(artifactId)}/download`;
+}
+
+export async function uploadHouseNumberingSurveyPhoto(
+  client: ApiClient,
+  orgId: string,
+  projectId: string,
+  file: File
+) {
+  const form = new FormData();
+  form.set("file", file);
+  return client.request<{ id: string; content_type: string; byte_size: number; sha256: string }>(
+    `${base(orgId, projectId)}/survey/photos`,
+    { method: "POST", body: form }
+  );
+}
+
+export function reviewHouseNumberingAssignment(
+  client: ApiClient,
+  orgId: string,
+  projectId: string,
+  assignmentId: string,
+  body: { expected_revision: number; assignee_actor_id: string }
+) {
+  return jsonMutation<HouseNumberingAssignment>(
+    client,
+    `${base(orgId, projectId)}/assignments/${encodeURIComponent(assignmentId)}`,
+    "PATCH",
+    body
+  );
+}
+
+export function issueHouseNumberingDocumentBatch(
+  client: ApiClient,
+  orgId: string,
+  projectId: string,
+  body: {
+    building_ids: string[];
+    doc_type: "inspection" | "certificate" | "house_form" | "plate";
+    output_format: "docx" | "pdf";
+    template_revision: string;
+    template_verified: boolean;
+  }
+) {
+  return jsonMutation<{ items: HouseNumberingDocument[] }>(
+    client,
+    `${base(orgId, projectId)}/documents/batch`,
+    "POST",
+    body
+  );
+}
+
+export function searchHouseNumbersNear(
+  client: ApiClient,
+  orgId: string,
+  projectId: string,
+  coordinates: { x: number; y: number; crs_code: number; max_distance?: number; limit?: number }
+) {
+  const query = new URLSearchParams({
+    x: String(coordinates.x),
+    y: String(coordinates.y),
+    crs_code: String(coordinates.crs_code),
+    max_distance: String(coordinates.max_distance ?? 100),
+    limit: String(coordinates.limit ?? 100)
+  });
+  return client.request<{ items: Array<Record<string, unknown>> }>(
+    `${base(orgId, projectId)}/search?${query}`
+  );
+}
+
+export type HouseNumberingPrivateHousehold = {
+  id: string;
+  building_id: string;
+  purpose: string;
+  consent: boolean;
+  lawful_basis_ref: string | null;
+  protected_data: Record<string, unknown>;
+  expires_at: string | null;
+  revision: number;
+};
+
+export function upsertHouseNumberingPrivateHousehold(
+  client: ApiClient,
+  orgId: string,
+  projectId: string,
+  body: {
+    building_id: string;
+    purpose: string;
+    consent: boolean;
+    lawful_basis_ref?: string | null;
+    protected_data: Record<string, unknown>;
+    expires_at?: string | null;
+    record_id?: string | null;
+    expected_revision?: number | null;
+  }
+) {
+  return jsonMutation<HouseNumberingPrivateHousehold>(
+    client,
+    `${base(orgId, projectId)}/private-households`,
+    "POST",
+    body
+  );
+}
+
+export function listHouseNumberingPrivateHouseholds(
+  client: ApiClient,
+  orgId: string,
+  projectId: string,
+  buildingId: string,
+  purpose: string
+) {
+  return client.request<{ items: HouseNumberingPrivateHousehold[] }>(
+    `${base(orgId, projectId)}/buildings/${encodeURIComponent(buildingId)}/private-households?purpose=${encodeURIComponent(purpose)}`
+  );
+}

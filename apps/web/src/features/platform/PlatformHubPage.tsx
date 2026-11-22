@@ -1,14 +1,20 @@
 import {
+  activateProjectExtension,
   cogoTraverse,
+  disableProjectExtension,
   createExternalConnection,
   getOpsHealthReady,
   getOpsReleaseCapabilities,
   getOrgEntitlement,
   listAllowlistedHosts,
   listCadConversions,
+  listExtensionManifests,
   listExternalConnections,
+  listOfficialExtensions,
+  listProjectActivations,
   loadCsrfToken,
-  registerAllowlistedHost
+  registerAllowlistedHost,
+  registerOfficialExtension
 } from "@openvietgis/client-sdk";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
@@ -112,6 +118,21 @@ export function PlatformHubPage() {
   const cadQ = useQuery({
     queryKey: ["hub", organizationId, projectId, "cad"],
     queryFn: () => listCadConversions(apiClient, organizationId, projectId),
+    enabled: Boolean(organizationId && projectId)
+  });
+  const extManifestsQ = useQuery({
+    queryKey: ["hub", organizationId, "manifests"],
+    queryFn: () => listExtensionManifests(apiClient, organizationId),
+    enabled: Boolean(organizationId)
+  });
+  const officialExtensionsQ = useQuery({
+    queryKey: ["hub", organizationId, "official-extensions"],
+    queryFn: () => listOfficialExtensions(apiClient, organizationId),
+    enabled: Boolean(organizationId)
+  });
+  const extensionActivationsQ = useQuery({
+    queryKey: ["hub", organizationId, projectId, "extension-activations"],
+    queryFn: () => listProjectActivations(apiClient, organizationId, projectId),
     enabled: Boolean(organizationId && projectId)
   });
   const readyQ = useQuery({
@@ -389,7 +410,91 @@ export function PlatformHubPage() {
         )}
 
         {tab === "extensions" && (
-          <ExtensionWorkbenchPanel organizationId={organizationId} projectId={projectId} />
+          <>
+            <section className="ovg-card">
+              <h2>Module chính thức (Official Modules)</h2>
+              <table className="ovg-table">
+                <thead>
+                  <tr>
+                    <th>Module official</th><th>Phiên bản</th><th>Trạng thái</th><th>Thao tác</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(officialExtensionsQ.data?.items ?? []).map((official) => {
+                    const manifest = (extManifestsQ.data?.items ?? []).find(
+                      (item) => item.extension_key === official.extension_key && item.version === official.version
+                    );
+                    const activation = (extensionActivationsQ.data?.items ?? []).find(
+                      (item) => item.extension_key === official.extension_key
+                    );
+                    const contribution = official.ui_contributions.find(
+                      (item) => item.slot === "project_route"
+                    );
+                    const suffix = typeof contribution?.route_suffix === "string"
+                      ? contribution.route_suffix
+                      : `/extensions/${official.extension_key}`;
+                    return (
+                      <tr key={official.extension_key}>
+                        <td><strong>{official.display_name}</strong><br /><small>{official.description}</small></td>
+                        <td><code>{official.version}</code></td>
+                        <td>{activation?.status ?? (manifest ? "registered" : "available")}</td>
+                        <td>
+                          <div className="ovg-form-row">
+                            {!manifest && (
+                              <button className="ovg-btn" type="button" onClick={async () => {
+                                setError(null);
+                                try {
+                                  const csrf = await loadCsrfToken(apiClient);
+                                  await registerOfficialExtension(apiClient, organizationId, official.extension_key, csrf);
+                                  setNotice(`Đã đăng ký ${official.display_name}.`);
+                                  await Promise.all([
+                                    qc.invalidateQueries({ queryKey: ["hub", organizationId] }),
+                                    qc.invalidateQueries({ queryKey: ["extensions", organizationId, "manifests"] })
+                                  ]);
+                                } catch (err) { setError(err instanceof Error ? err.message : "Đăng ký thất bại."); }
+                              }}>Đăng ký</button>
+                            )}
+                            {manifest && activation?.status !== "active" && (
+                              <button className="ovg-btn" type="button" onClick={async () => {
+                                setError(null);
+                                try {
+                                  const csrf = await loadCsrfToken(apiClient);
+                                  await activateProjectExtension(apiClient, organizationId, projectId, manifest.id, csrf);
+                                  setNotice(`Đã kích hoạt ${official.display_name}.`);
+                                  await Promise.all([
+                                    qc.invalidateQueries({ queryKey: ["hub", organizationId, projectId] }),
+                                    qc.invalidateQueries({ queryKey: ["extensions", organizationId, projectId, "activations"] })
+                                  ]);
+                                } catch (err) { setError(err instanceof Error ? err.message : "Kích hoạt thất bại."); }
+                              }}>Kích hoạt</button>
+                            )}
+                            {activation?.status === "active" && (
+                              <>
+                                <Link className="ovg-btn" to={`/organizations/${organizationId}/projects/${projectId}${suffix}`}>Mở module</Link>
+                                <button className="ovg-btn ovg-btn-secondary" type="button" onClick={async () => {
+                                  setError(null);
+                                  try {
+                                    const csrf = await loadCsrfToken(apiClient);
+                                    await disableProjectExtension(apiClient, organizationId, projectId, official.extension_key, csrf);
+                                    setNotice(`Đã tắt ${official.display_name}; dữ liệu được giữ nguyên.`);
+                                    await Promise.all([
+                                      qc.invalidateQueries({ queryKey: ["hub", organizationId, projectId] }),
+                                      qc.invalidateQueries({ queryKey: ["extensions", organizationId, projectId, "activations"] })
+                                    ]);
+                                  } catch (err) { setError(err instanceof Error ? err.message : "Tắt module thất bại."); }
+                                }}>Tắt</button>
+                              </>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </section>
+            <ExtensionWorkbenchPanel organizationId={organizationId} projectId={projectId} />
+          </>
         )}
       </main>
     </div>

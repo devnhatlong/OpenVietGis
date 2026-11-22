@@ -131,6 +131,10 @@ export const router = createBrowserRouter(
           lazy: async () => ({ Component: (await import("../features/platform/PlatformHubPage")).PlatformHubPage })
         },
         {
+          path: "organizations/:organizationId/projects/:projectId/extensions/:extensionKey/*",
+          lazy: async () => ({ Component: (await import("../features/extensions/ExtensionModulePage")).ExtensionModulePage })
+        },
+        {
           path: "organizations/:organizationId/membership",
           lazy: async () => ({ Component: (await import("../features/membership/MembershipPage")).MembershipPage })
         },
@@ -185,6 +189,11 @@ export const router = createBrowserRouter(
     {
       path: "/organizations/:organizationId/projects/:projectId/platform-hub",
       element: <LegacyProjectRedirect suffix="/platform-hub" />
+    },
+    {
+      path: "/organizations/:organizationId/projects/:projectId/extensions/:extensionKey/*",
+      hydrateFallbackElement: <RouteLoading />,
+      lazy: async () => ({ Component: (await import("../features/extensions/ExtensionModulePage")).ExtensionModulePage })
     },
     {
       path: "/organizations/:organizationId/membership",

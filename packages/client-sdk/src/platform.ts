@@ -196,6 +196,15 @@ export interface OfflinePackage {
   layer_pins: Array<Record<string, unknown>>;
 }
 
+export interface OfficialExtensionCatalogItem {
+  extension_key: string;
+  version: string;
+  display_name: string;
+  description: string;
+  capabilities: string[];
+  ui_contributions: Array<Record<string, unknown>>;
+}
+
 export interface ExtensionManifest {
   id: string;
   extension_key: string;
@@ -208,6 +217,7 @@ export interface ExtensionManifest {
   commands: Array<{ id: string; label: string; required_permission: string }>;
   capabilities: string[];
   entity_schemas: Record<string, { fields: Record<string, { type: string; required?: boolean }> }>;
+  ui_contributions?: Array<Record<string, unknown>>;
 }
 
 export type ExtensionPayload = Record<string, string | number | boolean | null>;
@@ -231,12 +241,16 @@ export interface ExtensionRecord {
   created_at: string;
   updated_at: string;
 }
+export type ExtensionDataRecord = ExtensionRecord;
+
 export interface ExtensionActivation {
   id: string;
   manifest_id: string;
   extension_key: string;
   status: "active" | "disabled";
+  revision?: number;
   activated_at: string;
+  disabled_at?: string | null;
   updated_at: string;
 }
 export interface ExtensionRevision {
@@ -905,6 +919,50 @@ export function syncOfflineOutbox(
 }
 
 // R014 Extensions
+export function listOfficialExtensions(
+  client: ApiClient,
+  orgId: string
+): Promise<{ items: OfficialExtensionCatalogItem[] }> {
+  return client.request<{ items: OfficialExtensionCatalogItem[] }>(
+    `/organizations/${encodeURIComponent(orgId)}/extensions/official`
+  );
+}
+
+export function registerOfficialExtension(
+  client: ApiClient,
+  orgId: string,
+  extensionKey: string,
+  csrf: string
+): Promise<ExtensionManifest> {
+  return client.request<ExtensionManifest>(
+    `/organizations/${encodeURIComponent(orgId)}/extensions/official/${encodeURIComponent(extensionKey)}/register`,
+    { method: "POST", headers: csrfHeaders(csrf) }
+  );
+}
+
+export function activateProjectExtension(
+  client: ApiClient,
+  orgId: string,
+  projectId: string,
+  manifestId: string,
+  csrf: string
+): Promise<ExtensionActivation> {
+  return activateExtension(client, orgId, projectId, manifestId, csrf);
+}
+
+export function disableProjectExtension(
+  client: ApiClient,
+  orgId: string,
+  projectId: string,
+  extensionKey: string,
+  csrf: string
+): Promise<ExtensionActivation> {
+  return client.request<ExtensionActivation>(
+    `${projBase(orgId, projectId)}/extensions/${encodeURIComponent(extensionKey)}/disable`,
+    { method: "POST", headers: csrfHeaders(csrf) }
+  );
+}
+
 export function listExtensionManifests(
   client: ApiClient,
   orgId: string

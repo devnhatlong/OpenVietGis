@@ -10,7 +10,7 @@ export default defineConfig(({ mode }) => {
   if (!/^\d{1,5}$/.test(rawApiPort) || Number(rawApiPort) < 1 || Number(rawApiPort) > 65535) {
     throw new Error("OPENVIETGIS_API_PROXY_PORT must be a valid loopback port");
   }
-  const apiTarget = `http://127.0.0.1:${Number(rawApiPort)}`;
+  const apiTarget = environment.OPENVIETGIS_VITE_API_TARGET ?? `http://127.0.0.1:${Number(rawApiPort)}`;
   return {
     plugins: [react()],
     server: { proxy: { "/api": { target: apiTarget, changeOrigin: false } } },

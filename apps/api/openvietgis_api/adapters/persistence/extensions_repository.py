@@ -64,6 +64,7 @@ def _manifest_from_row(row: RowMapping) -> ExtensionManifestRecord:
         enabled=bool(row["enabled"]),
         registered_by_actor_id=row["registered_by_actor_id"],
         created_at=row["created_at"],
+        ui_contributions=list(row.get("ui_contributions") or []),
     )
 
 
@@ -78,6 +79,9 @@ def _act_from_row(row: RowMapping) -> ProjectActivationRecord:
         activated_by_actor_id=row["activated_by_actor_id"],
         activated_at=row["activated_at"],
         updated_at=row["updated_at"],
+        revision=int(row.get("revision") or 1),
+        disabled_by_actor_id=row.get("disabled_by_actor_id"),
+        disabled_at=row.get("disabled_at"),
     )
 
 
@@ -95,8 +99,10 @@ def _rec_from_row(row: RowMapping) -> ExtensionDataRecord:
         created_at=row["created_at"],
         updated_at=row["updated_at"],
         manifest_id=row["manifest_id"],
-        revision=row["revision"],
+        revision=int(row["revision"]),
         link_context=dict(row["link_context"]) if row["link_context"] is not None else None,
+        operation_id=row.get("operation_id"),
+        updated_by_actor_id=row.get("updated_by_actor_id"),
     )
 
 
@@ -130,6 +136,7 @@ class SqlExtensionsRepository:
         commands: list[dict[str, Any]],
         capabilities: list[str],
         entity_schemas: dict[str, dict[str, Any]],
+        ui_contributions: list[dict[str, Any]] | None = None,
     ) -> ExtensionManifestRecord:
         self._bind_org(context)
         assert context.organization_id is not None and context.actor.actor_id is not None
@@ -164,6 +171,7 @@ class SqlExtensionsRepository:
             entity_schemas=entity_schemas,
             commands=commands,
             capabilities=capabilities,
+            ui_contributions=ui_contributions or [],
         )
         if not display_name.strip() or len(display_name) > 200 or len(description) > 500:
             raise PlatformValidationError("invalid manifest display name or description")
@@ -186,11 +194,12 @@ class SqlExtensionsRepository:
                 INSERT INTO extensions.manifests (
                     id, organization_id, extension_key, version, api_compatibility,
                     display_name, description, permissions, commands, capabilities,
-                    entity_schemas, enabled, registered_by_actor_id, created_at
+                    entity_schemas, ui_contributions, enabled, registered_by_actor_id, created_at
                 ) VALUES (
                     :id, :org, :key, :ver, :compat,
                     :dname, :desc, CAST(:perms AS jsonb), CAST(:cmds AS jsonb),
-                    CAST(:caps AS jsonb), CAST(:schemas AS jsonb), true, :actor, :now
+                    CAST(:caps AS jsonb), CAST(:schemas AS jsonb), CAST(:ui AS jsonb),
+                    true, :actor, :now
                 )
                 RETURNING *
             """),
@@ -206,6 +215,7 @@ class SqlExtensionsRepository:
                     "cmds": json.dumps(commands),
                     "caps": json.dumps(capabilities),
                     "schemas": json.dumps(entity_schemas),
+                    "ui": json.dumps(ui_contributions or []),
                     "actor": context.actor.actor_id,
                     "now": now,
                 },
@@ -277,15 +287,19 @@ class SqlExtensionsRepository:
                 text("""
                 INSERT INTO extensions.project_activations (
                     id, organization_id, project_id, manifest_id, extension_key,
-                    status, activated_by_actor_id, activated_at, updated_at
+                    status, revision, activated_by_actor_id, activated_at,
+                    disabled_by_actor_id, disabled_at, updated_at
                 ) VALUES (
                     :id, :org, :proj, :mid, :key,
-                    'active', :actor, :now, :now
+                    'active', 1, :actor, :now, NULL, NULL, :now
                 )
                 ON CONFLICT (organization_id, project_id, extension_key) DO UPDATE
                 SET status = 'active',
+                    revision = extensions.project_activations.revision + 1,
                     activated_by_actor_id = EXCLUDED.activated_by_actor_id,
                     activated_at = EXCLUDED.activated_at,
+                    disabled_by_actor_id = NULL,
+                    disabled_at = NULL,
                     updated_at = EXCLUDED.updated_at
                 RETURNING *
             """),
@@ -356,6 +370,76 @@ class SqlExtensionsRepository:
             created_at=now,
         )
         self._append_activation_event(context, row, "deactivate", row["manifest_id"])
+        self._session.commit()
+        return _act_from_row(row)
+
+    def disable_for_project(
+        self, *, context: AuthorizationContext, extension_key: str
+    ) -> ProjectActivationRecord:
+        prepare_project_scope(self._session, context, permission=Permission.PROJECT_MANAGE)
+        assert context.organization_id is not None and context.project_id is not None
+        assert context.actor.actor_id is not None
+        now = datetime.now(UTC)
+        row = (
+            self._session.execute(
+                text("""
+                UPDATE extensions.project_activations
+                SET status = 'disabled',
+                    revision = revision + 1,
+                    disabled_by_actor_id = :actor,
+                    disabled_at = :now,
+                    updated_at = :now
+                WHERE organization_id = :org AND project_id = :proj
+                  AND extension_key = :key AND status = 'active'
+                RETURNING *
+            """),
+                {
+                    "org": context.organization_id,
+                    "proj": context.project_id,
+                    "key": extension_key,
+                    "actor": context.actor.actor_id,
+                    "now": now,
+                },
+            )
+            .mappings()
+            .first()
+        )
+        changed = row is not None
+        if row is None:
+            row = (
+                self._session.execute(
+                    text("""
+                    SELECT * FROM extensions.project_activations
+                    WHERE organization_id = :org AND project_id = :proj
+                      AND extension_key = :key
+                """),
+                    {
+                        "org": context.organization_id,
+                        "proj": context.project_id,
+                        "key": extension_key,
+                    },
+                )
+                .mappings()
+                .first()
+            )
+        if row is None:
+            raise PlatformNotFoundError("project extension activation not found")
+        if changed:
+            append_project_audit(
+                self._session,
+                context,
+                audit_id=uuid4(),
+                action="extension.disable",
+                resource_type="extension_activation",
+                resource_id=row["id"],
+                metadata={
+                    "manifest_id": str(row["manifest_id"]),
+                    "extension_key": str(row["extension_key"]),
+                    "revision": int(row["revision"]),
+                },
+                created_at=now,
+            )
+            self._append_activation_event(context, row, "deactivate", row["manifest_id"])
         self._session.commit()
         return _act_from_row(row)
 
@@ -694,6 +778,7 @@ class SqlExtensionsRepository:
         linked_feature_id: str | None,
         link_context: dict[str, Any] | None,
         import_origin: dict[str, Any] | None = None,
+        operation_id: UUID | None = None,
     ) -> ExtensionDataRecord:
         cleaned = validate_record_against_schema(
             entity_name=entity_name,
@@ -707,10 +792,12 @@ class SqlExtensionsRepository:
             INSERT INTO extensions.records (
                 id, organization_id, project_id, extension_key, entity_name,
                 payload, linked_layer_id, linked_feature_id, created_by_actor_id,
-                created_at, updated_at, manifest_id, revision, link_context
+                updated_by_actor_id, created_at, updated_at, manifest_id, revision,
+                link_context, operation_id
             ) VALUES (
                 :id, :org, :proj, :key, :entity, CAST(:payload AS jsonb),
-                :lid, :fid, :actor, :now, :now, :manifest, 1, CAST(:link AS jsonb)
+                :lid, :fid, :actor, :actor, :now, :now, :manifest, 1,
+                CAST(:link AS jsonb), :op
             ) RETURNING *
         """),
                 {
@@ -725,6 +812,7 @@ class SqlExtensionsRepository:
                     "now": now,
                     "manifest": manifest.id,
                     "link": json.dumps(link_context) if link_context is not None else None,
+                    "op": operation_id,
                 },
             )
             .mappings()
@@ -754,9 +842,30 @@ class SqlExtensionsRepository:
         linked_layer_id: UUID | None = None,
         linked_feature_id: str | None = None,
         expected_link_context: dict[str, Any] | None = None,
+        operation_id: UUID | None = None,
     ) -> ExtensionDataRecord:
         prepare_project_scope(self._session, context, permission=Permission.PROJECT_EDIT)
         manifest = self._active_manifest(context, extension_key)
+        if operation_id is not None:
+            existing = (
+                self._session.execute(
+                    text("""
+                    SELECT * FROM extensions.records
+                    WHERE organization_id = :org AND project_id = :proj
+                      AND extension_key = :key AND operation_id = :op
+                """),
+                    {
+                        "org": context.organization_id,
+                        "proj": context.project_id,
+                        "key": extension_key,
+                        "op": operation_id,
+                    },
+                )
+                .mappings()
+                .first()
+            )
+            if existing is not None:
+                return _rec_from_row(existing)
         link = self._assert_link(context, linked_layer_id, linked_feature_id, expected_link_context)
         record = self._insert_record(
             context,
@@ -766,6 +875,7 @@ class SqlExtensionsRepository:
             linked_layer_id,
             linked_feature_id,
             link,
+            operation_id=operation_id,
         )
         self._session.commit()
         return record
@@ -798,14 +908,41 @@ class SqlExtensionsRepository:
         extension_key: str,
         record_id: UUID,
         expected_revision: int,
-        expected_manifest_id: UUID,
+        expected_manifest_id: UUID | None,
         payload: dict[str, Any],
-        expected_link_context: dict[str, Any] | None,
+        expected_link_context: dict[str, Any] | None = None,
+        operation_id: UUID | None = None,
     ) -> ExtensionDataRecord:
         prepare_project_scope(self._session, context, permission=Permission.PROJECT_EDIT)
         manifest = self._active_manifest(context, extension_key)
+        if operation_id is not None:
+            prior = (
+                self._session.execute(
+                    text("""
+                    SELECT * FROM extensions.records
+                    WHERE organization_id = :org AND project_id = :proj
+                      AND extension_key = :key AND operation_id = :op
+                """),
+                    {
+                        "org": context.organization_id,
+                        "proj": context.project_id,
+                        "key": extension_key,
+                        "op": operation_id,
+                    },
+                )
+                .mappings()
+                .first()
+            )
+            if prior is not None:
+                if prior["id"] != record_id:
+                    raise PlatformConflictError(
+                        "operation_id already used by another record",
+                        code="OPERATION_REPLAY_CONFLICT",
+                    )
+                return _rec_from_row(prior)
         old = self._record_row(context, extension_key, record_id)
-        if old["revision"] != expected_revision or manifest.id != expected_manifest_id:
+        effective_expected_manifest = expected_manifest_id or manifest.id
+        if old["revision"] != expected_revision or manifest.id != effective_expected_manifest:
             raise PlatformConflictError(
                 "record or active manifest version changed", code="STALE_EXTENSION_RECORD"
             )
@@ -828,7 +965,8 @@ class SqlExtensionsRepository:
             self._session.execute(
                 text("""
             UPDATE extensions.records SET payload=CAST(:payload AS jsonb), revision=revision+1,
-              manifest_id=:manifest, link_context=CAST(:link AS jsonb), updated_at=:now
+              manifest_id=:manifest, link_context=CAST(:link AS jsonb),
+              operation_id=:op, updated_by_actor_id=:actor, updated_at=:now
             WHERE organization_id=:org AND project_id=:proj AND id=:id AND revision=:expected
             RETURNING *
         """),
@@ -839,6 +977,8 @@ class SqlExtensionsRepository:
                     "payload": json.dumps(cleaned),
                     "manifest": manifest.id,
                     "link": json.dumps(link) if link is not None else None,
+                    "op": operation_id,
+                    "actor": context.actor.actor_id,
                     "now": now,
                 },
             )
@@ -1227,6 +1367,7 @@ class SqlExtensionsRepository:
     ) -> list[ExtensionDataRecord]:
         prepare_project_scope(self._session, context, permission=Permission.PROJECT_READ)
         assert context.organization_id is not None and context.project_id is not None
+        self._active_manifest(context, extension_key)
         sql = """
             SELECT * FROM extensions.records
             WHERE organization_id = :org AND project_id = :proj AND extension_key = :key

@@ -6,7 +6,7 @@ import hashlib
 import json
 import math
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 from uuid import UUID
@@ -39,6 +39,7 @@ class ExtensionManifestRecord:
     enabled: bool
     registered_by_actor_id: UUID
     created_at: datetime
+    ui_contributions: list[dict[str, Any]] = field(default_factory=list)
 
 
 @dataclass(frozen=True, slots=True)
@@ -52,6 +53,9 @@ class ProjectActivationRecord:
     activated_by_actor_id: UUID
     activated_at: datetime
     updated_at: datetime
+    revision: int = 1
+    disabled_by_actor_id: UUID | None = None
+    disabled_at: datetime | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -70,6 +74,8 @@ class ExtensionDataRecord:
     manifest_id: UUID
     revision: int
     link_context: dict[str, Any] | None
+    operation_id: UUID | None = None
+    updated_by_actor_id: UUID | None = None
 
 
 def validate_manifest_contract(
@@ -81,6 +87,7 @@ def validate_manifest_contract(
     entity_schemas: dict[str, dict[str, Any]],
     commands: list[dict[str, Any]] | None = None,
     capabilities: list[str] | None = None,
+    ui_contributions: list[dict[str, Any]] | None = None,
 ) -> None:
     """Validate versioned extension manifest & permission namespace isolation."""
     if not _EXT_KEY_RE.fullmatch(extension_key):
@@ -149,12 +156,45 @@ def validate_manifest_contract(
         or any(not _NAME_RE.fullmatch(capability) for capability in capabilities)
     ):
         raise PlatformValidationError("invalid or duplicate capability declaration")
+    if ui_contributions is not None:
+        if len(ui_contributions) > 64:
+            raise PlatformValidationError("too many UI contributions", code="INVALID_MANIFEST")
+        contribution_ids: set[str] = set()
+        for contribution in ui_contributions:
+            if not isinstance(contribution, dict):
+                raise PlatformValidationError(
+                    "UI contribution must be an object", code="INVALID_MANIFEST"
+                )
+            cid = contribution.get("id")
+            slot = contribution.get("slot")
+            label = contribution.get("label")
+            route_suffix = contribution.get("route_suffix")
+            if (
+                not isinstance(cid, str)
+                or not _NAME_RE.fullmatch(cid)
+                or cid in contribution_ids
+                or slot not in {"project_tool", "project_panel", "project_route"}
+                or not isinstance(label, str)
+                or not label.strip()
+                or not isinstance(route_suffix, str)
+                or not route_suffix.startswith("/")
+                or ".." in route_suffix
+            ):
+                raise PlatformValidationError("invalid UI contribution", code="INVALID_MANIFEST")
+            required = contribution.get("required_permission")
+            if required is not None and required not in permissions:
+                raise PlatformValidationError(
+                    f"UI contribution {cid!r} references undeclared permission",
+                    code="INVALID_MANIFEST",
+                )
+            contribution_ids.add(cid)
     canonical_bytes(
         {
             "permissions": permissions,
             "commands": commands,
             "capabilities": capabilities,
             "schemas": entity_schemas,
+            "ui_contributions": ui_contributions or [],
         },
         limit=128 * 1024,
     )

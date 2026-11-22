@@ -183,6 +183,8 @@ Field & Offline.
 
 Module Framework & References.
 
+Child [Spec 019 — House Numbering Plugin](specs/019-house-numbering-plugin/spec.md): isolated technical candidate implemented and automated-verified across dynamic module UI, PostGIS workflows, browser/mobile, security, 10k/100k performance and DB+artifact recovery. [Plan](specs/019-house-numbering-plugin/plan.md) | [Tasks](specs/019-house-numbering-plugin/tasks.md) | [Convergence evidence](specs/019-house-numbering-plugin/evidence/convergence.md).
+
 ### R015
 
 Production & Commercial Readiness.

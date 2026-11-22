@@ -6,18 +6,28 @@ export type BasemapId = "grid" | "osm" | "satellite" | "hybrid" | "google-satell
 export interface BasemapOption {
   id: BasemapId;
   label: string;
+  available: boolean;
 }
 
+// The accepted shared configuration currently allows only grid. HTTPS is not
+// permission to disclose viewed geography. Online providers must remain
+// disabled until an approved/licensed configuration and informed opt-in exist.
+export const LOCAL_BASEMAP = "grid" as const;
+export const ONLINE_BASEMAP_UNAVAILABLE = "Nền trực tuyến chưa được cấu hình/phê duyệt; lưới cục bộ không gửi vị trí khung nhìn ra ngoài.";
 export const BASEMAP_OPTIONS: BasemapOption[] = [
-  { id: "google-hybrid", label: "Google Hybrid (Vệ tinh + Nhãn)" },
-  { id: "google-satellite", label: "Vệ tinh Google" },
-  { id: "hybrid", label: "Vệ tinh Esri + Nhãn" },
-  { id: "satellite", label: "Vệ tinh Esri" },
-  { id: "osm", label: "Đường phố (OSM)" },
-  { id: "topo", label: "Địa hình (Topo)" },
-  { id: "dark", label: "Nền tối" },
-  { id: "grid", label: "Lưới tọa độ (Ngoại tuyến)" }
+  { id: "grid", label: "Lưới tọa độ (Ngoại tuyến)", available: true },
+  { id: "google-hybrid", label: "Google Hybrid (Vệ tinh + Nhãn)", available: false },
+  { id: "google-satellite", label: "Vệ tinh Google", available: false },
+  { id: "hybrid", label: "Vệ tinh Esri + Nhãn", available: false },
+  { id: "satellite", label: "Vệ tinh Esri", available: false },
+  { id: "osm", label: "Đường phố (OSM)", available: false },
+  { id: "topo", label: "Địa hình (Topo)", available: false },
+  { id: "dark", label: "Nền tối", available: false }
 ];
+
+export function isBasemapAvailable(id: BasemapId): id is typeof LOCAL_BASEMAP {
+  return id === LOCAL_BASEMAP;
+}
 
 export interface RenderGeometry {
   type: "Point" | "LineString" | "Polygon";

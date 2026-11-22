@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import { ActiveModuleLinks } from "../extensions/ActiveModuleLinks";
 import "./platform.css";
 
 interface ProjectToolbarProps {
@@ -39,6 +40,7 @@ export function ProjectToolbar({
         <Link to={`${base}/platform-hub`} className={active === "hub" ? "active" : ""}>
           Công cụ nâng cao
         </Link>
+        <ActiveModuleLinks organizationId={organizationId} projectId={projectId} slot="project_route" />
       </nav>
     </header>
   );

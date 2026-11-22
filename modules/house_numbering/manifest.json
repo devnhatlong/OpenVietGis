@@ -1,33 +1,101 @@
 {
   "extension_key": "house_numbering",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "api_compatibility": "1.x",
-  "display_name": "House Numbering Reference Module",
-  "description": "Independent vertical reference module for street-segment house number assignment (ADR-008).",
+  "display_name": "Quản lý và đánh số nhà",
+  "description": "Official project-scoped house numbering workflow: registry, inspection, numbering, approval, reconciliation, field work and handover.",
   "permissions": [
     "ext.house_numbering.read",
-    "ext.house_numbering.assign"
+    "ext.house_numbering.edit",
+    "ext.house_numbering.assign",
+    "ext.house_numbering.approve",
+    "ext.house_numbering.survey",
+    "ext.house_numbering.private_read",
+    "ext.house_numbering.export_sensitive",
+    "ext.house_numbering.manage"
   ],
   "commands": [
     {
-      "id": "assign_street_numbers",
-      "label": "Assign Odd/Even House Numbers",
+      "id": "inspect_location",
+      "label": "Kiểm tra vị trí",
+      "required_permission": "ext.house_numbering.read"
+    },
+    {
+      "id": "preview_numbering",
+      "label": "Xem trước đánh số",
       "required_permission": "ext.house_numbering.assign"
+    },
+    {
+      "id": "apply_numbering",
+      "label": "Áp dụng số đề xuất",
+      "required_permission": "ext.house_numbering.assign"
+    },
+    {
+      "id": "submit_proposal",
+      "label": "Trình phương án",
+      "required_permission": "ext.house_numbering.edit"
+    },
+    {
+      "id": "approve_proposal",
+      "label": "Duyệt phương án",
+      "required_permission": "ext.house_numbering.approve"
     }
   ],
   "capabilities": [
-    "address_plate_registry",
-    "street_sequence_check"
+    "area_tree",
+    "spatial_house_registry",
+    "source_import",
+    "location_inspection",
+    "numbering_rules",
+    "bulk_numbering",
+    "source_reconciliation",
+    "approval_workflow",
+    "field_survey",
+    "progress_tracking",
+    "inspection_documents",
+    "search_and_handover",
+    "protected_household_data"
   ],
   "entity_schemas": {
     "address_plate": {
       "fields": {
-        "street_name": { "type": "text", "required": true },
-        "house_number": { "type": "text", "required": true },
-        "side": { "type": "text", "required": true },
-        "ward_code": { "type": "text", "required": false },
-        "verified": { "type": "boolean", "required": false }
+        "street_name": {
+          "type": "text",
+          "required": true
+        },
+        "house_number": {
+          "type": "text",
+          "required": true
+        },
+        "side": {
+          "type": "text",
+          "required": true
+        },
+        "ward_code": {
+          "type": "text",
+          "required": false
+        },
+        "verified": {
+          "type": "boolean",
+          "required": false
+        }
       }
     }
-  }
+  },
+  "ui_contributions": [
+    {
+      "id": "house_numbering_workspace",
+      "slot": "project_route",
+      "label": "Số nhà",
+      "route_suffix": "/extensions/house_numbering",
+      "required_permission": "ext.house_numbering.read"
+    },
+    {
+      "id": "house_numbering_selected_feature",
+      "slot": "project_tool",
+      "label": "→ Số nhà: đối tượng đang chọn",
+      "route_suffix": "/extensions/house_numbering",
+      "required_permission": "ext.house_numbering.read"
+    }
+  ]
 }
