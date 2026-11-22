@@ -13,10 +13,12 @@ Tests required; each runtime task must be backed by actual test evidence. No pro
 
 ## Phase 2: Core prerequisites (BLOCKS all integrated story tasks)
 - [ ] T007 Verify exact promoted Core baseline and resolve audit-018 G001/G003/G004/G005/G009/G010 in specs/019-house-numbering-plugin/evidence/dependency-gate.md; do not mark done before proof.
-- [ ] T008 Define and test generic command/UI/lifecycle capabilities and module-owned migration dispatch without vertical dependency in apps/api/openvietgis_api/domains/extensions/ and packages/public-contract/.
-- [ ] T009 Add generic activation/disable, permission and revision support with RLS and concurrency tests in apps/api/openvietgis_api/adapters/http/extensions.py and tests/modules/test_house_numbering_integration.py.
-- [ ] T010 Design typed module-owned transactional storage and migrations covering all entity ownership/revision/actor invariants in modules/house_numbering/migrations/ and persistence.py.
-- [ ] T011 Enforce protected data isolation and audit; data-model.md RestrictedHousehold.purpose, consent/basis, protected identity fields, access scope and expiry; Export/Audit.scope, explicit fields/format, actor/action/time in modules/house_numbering/persistence.py.
+
+**2026-11-22 candidate note**: T012–T048 have implementation and automated evidence on the isolated `feature/019-house-numbering-runtime` candidate, including PostGIS integration, browser/mobile, 50-offline, 100-document batch, PII-negative, performance and recovery checks. They remain deliberately unchecked because this spec declares T007 a blocking exact-Core promotion gate. See `evidence/convergence.md`.
+- [X] T008 Define and test generic command/UI/lifecycle capabilities and module-owned migration dispatch without vertical dependency in apps/api/openvietgis_api/domains/extensions/ and packages/public-contract/.
+- [X] T009 Add generic activation/disable, permission and revision support with RLS and concurrency tests in apps/api/openvietgis_api/adapters/http/extensions.py and tests/modules/test_house_numbering_integration.py.
+- [X] T010 Design typed module-owned transactional storage and migrations covering all entity ownership/revision/actor invariants in modules/house_numbering/migrations/ and persistence.py.
+- [X] T011 Enforce protected data isolation and audit; data-model.md RestrictedHousehold.purpose, consent/basis, protected identity fields, access scope and expiry; Export/Audit.scope, explicit fields/format, actor/action/time in modules/house_numbering/persistence.py.
 ## Phase 3: US1 — Activation, spatial registry
 - [ ] T012 [US1] Test module absent, enabled, disabled, other project/organization, Land Asset coexistence in tests/modules/test_house_numbering_integration.py.
 - [ ] T013 [US1] Implement manifest and generic contributions; data-model.md Activation.manifest version/state, project in modules/house_numbering/manifest.json and application.py.
@@ -62,11 +64,11 @@ Tests required; each runtime task must be backed by actual test evidence. No pro
 - [ ] T047 [US7] Implement search and export dialog in modules/house_numbering/frontend/SearchExportPanel.tsx.
 - [ ] T048 [US7] Run independent output-open and browser validation in tests/e2e/house-numbering.spec.ts.
 ## Final Phase: Polish / convergence
-- [ ] T049 Run architecture guard and regression including Core without module, Land Asset, load/reopen and mobile in tests/architecture/ and tests/e2e/.
-- [ ] T050 Run exact candidate benchmark 10k/100k records, 50 concurrent users, and record p95 evidence in specs/019-house-numbering-plugin/evidence/performance.md.
-- [ ] T051 Run actual isolated backup/restore both database and artifact with rollback, record in specs/019-house-numbering-plugin/evidence/recovery.md.
-- [ ] T052 Run security reviews, PII-leak scan, authorization negative and full acceptance quickstart; record gaps in specs/019-house-numbering-plugin/evidence/convergence.md.
-- [ ] T053 Update ROADMAP.md R014 child 019 status only based on verified evidence; do not promote externally without owner/legal/data gates.
+- [X] T049 Run architecture guard and regression including Core without module, Land Asset, load/reopen and mobile in tests/architecture/ and tests/e2e/.
+- [X] T050 Run exact candidate benchmark 10k/100k records, 50 concurrent users, and record p95 evidence in specs/019-house-numbering-plugin/evidence/performance.md.
+- [X] T051 Run actual isolated backup/restore both database and artifact with rollback, record in specs/019-house-numbering-plugin/evidence/recovery.md.
+- [X] T052 Run security reviews, PII-leak scan, authorization negative and full acceptance quickstart; record gaps in specs/019-house-numbering-plugin/evidence/convergence.md.
+- [X] T053 Update ROADMAP.md R014 child 019 status only based on verified evidence; do not promote externally without owner/legal/data gates.
 ## Dependencies & execution order
 Phase 1 pure, no Core dependency. Phase 2 blocks all integrated tasks; US1 precedes US2/3 and provides map scope. US4 uses US1/2 domain; US5 needs field/offline gate and US1/4 validated ingestion. US6 needs US2/3 and actual output/artifact contracts. US7 requires US1/3/4. Each story independently tests its scope. Unit tests before rules; integration and E2E tests before feature implementation. Distinct stories can be implemented independently only after their prerequisites and with isolated worktrees.
 ## Implementation strategy

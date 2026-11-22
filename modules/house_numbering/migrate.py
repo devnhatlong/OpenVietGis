@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 from pathlib import Path
 
 from alembic import command
@@ -45,5 +46,16 @@ def downgrade() -> None:
     command.downgrade(alembic_config(), "base")
 
 
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Migrate the House Numbering module schema.")
+    parser.add_argument("action", choices=("upgrade", "downgrade"), nargs="?", default="upgrade")
+    args = parser.parse_args()
+    if args.action == "downgrade":
+        downgrade()
+    else:
+        upgrade()
+    return 0
+
+
 if __name__ == "__main__":
-    upgrade()
+    raise SystemExit(main())

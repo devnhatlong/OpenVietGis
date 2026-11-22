@@ -45,8 +45,20 @@ export type HouseNumberingBuilding = {
   linked_feature_id: string;
   eligibility: "unknown" | "eligible" | "ineligible";
   ineligibility_reason: string | null;
+  plaque_status: "not_planned" | "planned" | "installed" | "replaced" | "removed";
+  plaque_updated_at: string | null;
   state: string;
   revision: number;
+};
+
+export type HouseNumberingBuildingLineage = {
+  id: string;
+  operation_id: string;
+  relation_kind: "split" | "merge";
+  predecessor_building_id: string;
+  successor_building_id: string;
+  created_by_actor_id: string;
+  created_at: string;
 };
 
 export type HouseNumberingInspection = {
@@ -56,7 +68,21 @@ export type HouseNumberingInspection = {
     side: "left" | "right" | null;
     crs_code: number;
   };
-  suggestion: { number: string | null; reason: string };
+  suggestion: { number: string | null; reason: string; rule_version?: string };
+  neighbors?: {
+    before: Record<string, unknown> | null;
+    after: Record<string, unknown> | null;
+  };
+  context?: {
+    building: {
+      id: string;
+      parcel_ref: string | null;
+      linked_source_id: string | null;
+      linked_feature_id: string | null;
+      core_feature_attributes: Record<string, unknown> | null;
+    } | null;
+    evidence: Array<Record<string, unknown>>;
+  };
 };
 
 export type HouseNumberingPreview = {
@@ -94,9 +120,14 @@ export type HouseNumberingSurvey = {
   point_x: number | null;
   point_y: number | null;
   crs_code: number | null;
+  gps_accuracy_m: number | null;
+  gps_deviation_m: number | null;
+  warnings: Array<Record<string, unknown>>;
   photo_artifact_ids: string[];
   condition: "house" | "vacant" | "removed" | "other";
   state: "draft" | "submitted" | "accepted" | "rejected";
+  recorded_by_actor_id: string;
+  submitted_by_actor_id: string | null;
   revision: number;
   created_at: string;
   updated_at: string;
@@ -223,6 +254,41 @@ export function createHouseNumberingArea(
   return jsonMutation<HouseNumberingArea>(client, `${base(orgId, projectId)}/areas`, "POST", body);
 }
 
+export function updateHouseNumberingArea(
+  client: ApiClient,
+  orgId: string,
+  projectId: string,
+  areaId: string,
+  body: {
+    expected_revision: number;
+    name: string;
+    kind: "current" | "historic" | "custom";
+    parent_id?: string | null;
+    source_id?: string | null;
+    feature_id?: string | null;
+  }
+) {
+  return jsonMutation<HouseNumberingArea>(
+    client,
+    `${base(orgId, projectId)}/areas/${encodeURIComponent(areaId)}`,
+    "PUT",
+    body
+  );
+}
+
+export function deleteHouseNumberingArea(
+  client: ApiClient,
+  orgId: string,
+  projectId: string,
+  areaId: string,
+  expectedRevision: number
+) {
+  return client.requestWithoutBody(
+    `${base(orgId, projectId)}/areas/${encodeURIComponent(areaId)}?expected_revision=${expectedRevision}`,
+    { method: "DELETE" }
+  );
+}
+
 export function listHouseNumberingRoutes(client: ApiClient, orgId: string, projectId: string) {
   return client.request<{ items: HouseNumberingRoute[] }>(`${base(orgId, projectId)}/routes`);
 }
@@ -307,6 +373,41 @@ export function createHouseNumberingBuilding(
     body
   );
 }
+export function updateHouseNumberingBuilding(
+  client: ApiClient,
+  orgId: string,
+  projectId: string,
+  buildingId: string,
+  body: {
+    expected_revision: number;
+    route_id?: string | null;
+    area_id?: string | null;
+    parcel_ref?: string | null;
+    source_id: string;
+    feature_id: string;
+  }
+) {
+  return jsonMutation<HouseNumberingBuilding>(
+    client,
+    `${base(orgId, projectId)}/buildings/${encodeURIComponent(buildingId)}`,
+    "PUT",
+    body
+  );
+}
+
+export function retireHouseNumberingBuilding(
+  client: ApiClient,
+  orgId: string,
+  projectId: string,
+  buildingId: string,
+  expectedRevision: number
+) {
+  return client.requestWithoutBody(
+    `${base(orgId, projectId)}/buildings/${encodeURIComponent(buildingId)}?expected_revision=${expectedRevision}`,
+    { method: "DELETE" }
+  );
+}
+
 export function setHouseNumberingEligibility(
   client: ApiClient,
   orgId: string,
@@ -323,6 +424,51 @@ export function setHouseNumberingEligibility(
     `${base(orgId, projectId)}/buildings/${encodeURIComponent(buildingId)}/eligibility`,
     "PATCH",
     body
+  );
+}
+
+export function setHouseNumberingPlaqueStatus(
+  client: ApiClient,
+  orgId: string,
+  projectId: string,
+  buildingId: string,
+  body: { expected_revision: number; status: HouseNumberingBuilding["plaque_status"] }
+) {
+  return jsonMutation<HouseNumberingBuilding>(
+    client,
+    `${base(orgId, projectId)}/buildings/${encodeURIComponent(buildingId)}/plaque`,
+    "PATCH",
+    body
+  );
+}
+
+export function recordHouseNumberingBuildingLineage(
+  client: ApiClient,
+  orgId: string,
+  projectId: string,
+  body: {
+    relation_kind: "split" | "merge";
+    operation_id: string;
+    predecessor_building_ids: string[];
+    successor_building_ids: string[];
+    expected_revisions: Record<string, number>;
+  }
+) {
+  return jsonMutation<{
+    operation_id: string;
+    relation_kind: "split" | "merge";
+    items: HouseNumberingBuildingLineage[];
+  }>(client, `${base(orgId, projectId)}/buildings/lineage`, "POST", body);
+}
+
+export function listHouseNumberingBuildingLineage(
+  client: ApiClient,
+  orgId: string,
+  projectId: string,
+  buildingId: string
+) {
+  return client.request<{ items: HouseNumberingBuildingLineage[] }>(
+    `${base(orgId, projectId)}/buildings/${encodeURIComponent(buildingId)}/lineage`
   );
 }
 
@@ -408,7 +554,7 @@ export function transitionHouseNumberingProposal(
   proposalId: string,
   body: {
     expected_revision: number;
-    action: "submit" | "approve" | "reject";
+    action: "submit" | "withdraw" | "approve" | "reject";
     comment?: string | null;
   }
 ) {
@@ -506,7 +652,12 @@ export function syncHouseNumberingSurveys(
   projectId: string,
   operations: Array<Record<string, unknown>>
 ) {
-  return jsonMutation<{ applied: string[]; replayed: string[]; conflicts: Array<Record<string, unknown>> }>(
+  return jsonMutation<{
+    applied: string[];
+    replayed: string[];
+    conflicts: Array<Record<string, unknown>>;
+    warnings: Array<Record<string, unknown>>;
+  }>(
     client,
     `${base(orgId, projectId)}/survey/sync`,
     "POST",

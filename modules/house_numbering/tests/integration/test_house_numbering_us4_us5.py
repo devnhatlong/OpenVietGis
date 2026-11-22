@@ -7,6 +7,7 @@ import json
 import zipfile
 from uuid import uuid4
 
+import shapefile
 from PIL import Image
 from sqlalchemy import text
 from tests.fixtures.db_admin import get_admin_engine
@@ -99,6 +100,77 @@ def _activate_and_seed(world):
             assert building.status_code == 201, building.text
             buildings[name] = building.json()["id"]
     return org_base, proj_base, module_base, rule.json()["id"], route_id, buildings
+
+
+def _minimal_xlsx(rows: list[list[str]]) -> bytes:
+    def inline_cell(ref: str, value: str) -> str:
+        escaped = value.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+        return f'<c r="{ref}" t="inlineStr"><is><t>{escaped}</t></is></c>'
+
+    sheet_rows: list[str] = []
+    for row_index, values in enumerate(rows, start=1):
+        cells = []
+        for col_index, value in enumerate(values, start=1):
+            column = chr(ord("A") + col_index - 1)
+            cells.append(inline_cell(f"{column}{row_index}", value))
+        sheet_rows.append(f'<row r="{row_index}">{"".join(cells)}</row>')
+    sheet = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+        f"<sheetData>{''.join(sheet_rows)}</sheetData></worksheet>"
+    )
+    output = io.BytesIO()
+    with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr(
+            "[Content_Types].xml",
+            '<?xml version="1.0" encoding="UTF-8"?>'
+            '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+            '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+            '<Default Extension="xml" ContentType="application/xml"/>'
+            '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'
+            '<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'
+            "</Types>",
+        )
+        archive.writestr(
+            "_rels/.rels",
+            '<?xml version="1.0" encoding="UTF-8"?>'
+            '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+            '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>'
+            "</Relationships>",
+        )
+        archive.writestr(
+            "xl/workbook.xml",
+            '<?xml version="1.0" encoding="UTF-8"?>'
+            '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" '
+            'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+            '<sheets><sheet name="Sheet1" sheetId="1" r:id="rId1"/></sheets></workbook>',
+        )
+        archive.writestr(
+            "xl/_rels/workbook.xml.rels",
+            '<?xml version="1.0" encoding="UTF-8"?>'
+            '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+            '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>'
+            "</Relationships>",
+        )
+        archive.writestr("xl/worksheets/sheet1.xml", sheet)
+    return output.getvalue()
+
+
+def _point_shapefile_zip(raw_number: str) -> bytes:
+    shp = io.BytesIO()
+    shx = io.BytesIO()
+    dbf = io.BytesIO()
+    writer = shapefile.Writer(shp=shp, shx=shx, dbf=dbf, shapeType=shapefile.POINT)
+    writer.field("RAW_NUM", "C", size=64)
+    writer.point(10.0, -5.0)
+    writer.record(raw_number)
+    writer.close()
+    output = io.BytesIO()
+    with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("evidence.shp", shp.getvalue())
+        archive.writestr("evidence.shx", shx.getvalue())
+        archive.writestr("evidence.dbf", dbf.getvalue())
+    return output.getvalue()
 
 
 def _post_csv_import(client, module_base, origin, rows, filename):
@@ -318,3 +390,121 @@ def test_house_numbering_us4_import_reconcile_and_us5_offline_progress(
             {"org": world.organization_id, "project": world.project_id},
         ).scalar_one()
         assert batch_count == 3
+
+
+def test_house_numbering_import_format_matrix(migrated_database: None) -> None:
+    migrate_house_numbering()
+    world = seed_access_world()
+    _, _, module_base, _, route_id, buildings = _activate_and_seed(world)
+
+    with _client(world.owner_user_id) as client:
+        cp1258_text = (
+            "building_id,route_id,raw_number,source_reference\n"
+            f"{buildings['a']},{route_id},Đ12,CP1258-SRC\n"
+        )
+        cp1258 = client.post(
+            f"{module_base}/imports",
+            data={
+                "source_format": "csv",
+                "origin": "legacy",
+                "mapping_json": json.dumps(
+                    {
+                        "building_id": "building_id",
+                        "route_id": "route_id",
+                        "raw_number": "raw_number",
+                        "source_reference": "source_reference",
+                    }
+                ),
+                "default_source_reference": "cp1258.csv",
+                "default_confidence": "observed",
+            },
+            files={
+                "file": (
+                    "cp1258.csv",
+                    cp1258_text.encode("cp1258"),
+                    "text/csv",
+                )
+            },
+        )
+        assert cp1258.status_code == 201, cp1258.text
+        assert cp1258.json()["batch"]["accepted_count"] == 1
+        assert cp1258.json()["batch"]["mapping"]["encoding"] == "cp1258"
+
+        xlsx_data = _minimal_xlsx(
+            [
+                ["building_id", "route_id", "raw_number", "source_reference"],
+                [buildings["b"], route_id, "XLSX-14", "XLSX-SRC"],
+            ]
+        )
+        xlsx = client.post(
+            f"{module_base}/imports",
+            data={
+                "source_format": "xlsx",
+                "origin": "certificate",
+                "mapping_json": json.dumps(
+                    {
+                        "building_id": "building_id",
+                        "route_id": "route_id",
+                        "raw_number": "raw_number",
+                        "source_reference": "source_reference",
+                    }
+                ),
+                "default_source_reference": "evidence.xlsx",
+                "default_confidence": "authoritative",
+            },
+            files={
+                "file": (
+                    "evidence.xlsx",
+                    xlsx_data,
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                )
+            },
+        )
+        assert xlsx.status_code == 201, xlsx.text
+        assert xlsx.json()["batch"]["accepted_count"] == 1
+        assert xlsx.json()["batch"]["rejected_count"] == 0
+
+        shp_data = _point_shapefile_zip("SHP-16")
+        shp_base = {
+            "source_format": "shapefile_zip",
+            "origin": "cad",
+            "mapping_json": json.dumps({"raw_number": "RAW_NUM"}),
+            "default_source_reference": "evidence.zip",
+            "default_confidence": "observed",
+        }
+        shp_without_crs = client.post(
+            f"{module_base}/imports",
+            data=shp_base,
+            files={"file": ("evidence.zip", shp_data, "application/zip")},
+        )
+        assert shp_without_crs.status_code == 422, shp_without_crs.text
+        shp = client.post(
+            f"{module_base}/imports",
+            data={**shp_base, "source_crs": "3857"},
+            files={"file": ("evidence.zip", shp_data, "application/zip")},
+        )
+        assert shp.status_code == 201, shp.text
+        assert shp.json()["batch"]["accepted_count"] == 1
+        assert shp.json()["batch"]["source_crs"] == 3857
+
+        with get_admin_engine().connect() as connection:
+            rows = (
+                connection.execute(
+                    text(
+                        """
+                    SELECT raw_number,source_reference
+                    FROM house_numbering.evidence
+                    WHERE organization_id=:org AND project_id=:project
+                      AND source_reference IN ('CP1258-SRC','XLSX-SRC','evidence.zip')
+                    ORDER BY source_reference
+                    """
+                    ),
+                    {"org": world.organization_id, "project": world.project_id},
+                )
+                .mappings()
+                .all()
+            )
+        values = {(row["raw_number"], row["source_reference"]) for row in rows}
+        assert ("Đ12", "CP1258-SRC") in values
+        assert ("XLSX-14", "XLSX-SRC") in values
+        assert ("SHP-16", "evidence.zip") in values

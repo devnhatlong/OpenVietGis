@@ -292,6 +292,20 @@ class HouseNumberingImporter:
             raise PlatformValidationError(
                 "invalid evidence confidence", code="IMPORT_CONFIDENCE"
             )
+        if source_format in {"geojson", "dxf", "shapefile_zip"}:
+            if source_crs is None:
+                raise PlatformValidationError(
+                    "spatial import requires an explicit source CRS",
+                    code="IMPORT_CRS_REQUIRED",
+                )
+            known_crs = self.session.execute(
+                text("SELECT 1 FROM spatial_ref_sys WHERE srid=:srid"),
+                {"srid": source_crs},
+            ).first()
+            if known_crs is None:
+                raise PlatformValidationError(
+                    "spatial import CRS is unknown", code="IMPORT_CRS_UNKNOWN"
+                )
         fingerprint_payload = json.dumps(
             {
                 "source_format": source_format,

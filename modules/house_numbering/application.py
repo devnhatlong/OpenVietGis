@@ -96,6 +96,15 @@ class HouseNumberingService:
     def list_areas(self) -> list[dict[str, Any]]:
         return [_wire(row) for row in self.repo.list_areas()]
 
+    def update_area(self, area_id: UUID, **kwargs: Any) -> dict[str, Any]:
+        row = self.repo.update_area(area_id, **kwargs)
+        self.commit()
+        return _wire(row)
+
+    def delete_area(self, area_id: UUID, *, expected_revision: int) -> None:
+        self.repo.delete_area(area_id, expected_revision=expected_revision)
+        self.commit()
+
     def create_route(self, **kwargs: Any) -> dict[str, Any]:
         row = self.repo.create_route(**kwargs)
         self.commit()
@@ -121,12 +130,68 @@ class HouseNumberingService:
     def list_buildings(self, route_id: UUID | None = None) -> list[dict[str, Any]]:
         return [_wire(row) for row in self.repo.list_buildings(route_id=route_id)]
 
+    def update_building(self, building_id: UUID, **kwargs: Any) -> dict[str, Any]:
+        row = self.repo.update_building(building_id, **kwargs)
+        self.commit()
+        return _wire(row)
+
+    def retire_building(self, building_id: UUID, *, expected_revision: int) -> None:
+        self.repo.retire_building(building_id, expected_revision=expected_revision)
+        self.commit()
+
     def set_building_eligibility(
         self, building_id: UUID, **kwargs: Any
     ) -> dict[str, Any]:
         row = self.repo.set_building_eligibility(building_id, **kwargs)
         self.commit()
         return _wire(row)
+
+    def set_building_plaque(
+        self,
+        building_id: UUID,
+        *,
+        expected_revision: int,
+        status: str,
+    ) -> dict[str, Any]:
+        row = self.repo.set_plaque_status(
+            building_id, expected_revision=expected_revision, status=status
+        )
+        self.commit()
+        return _wire(row)
+
+    def record_building_lineage(
+        self,
+        *,
+        relation_kind: str,
+        operation_id: UUID,
+        predecessor_building_ids: list[UUID],
+        successor_building_ids: list[UUID],
+        expected_revisions: dict[str, int],
+    ) -> dict[str, Any]:
+        try:
+            revisions = {
+                UUID(key): int(value) for key, value in expected_revisions.items()
+            }
+        except (ValueError, TypeError) as exc:
+            raise PlatformValidationError(
+                "invalid lineage expected_revisions", code="LINEAGE_REVISION_SET"
+            ) from exc
+        rows = self.repo.record_building_lineage(
+            relation_kind=relation_kind,
+            operation_id=operation_id,
+            predecessor_ids=predecessor_building_ids,
+            successor_ids=successor_building_ids,
+            expected_revisions=revisions,
+        )
+        self.commit()
+        return {
+            "operation_id": str(operation_id),
+            "relation_kind": relation_kind,
+            "items": [_wire(row) for row in rows],
+        }
+
+    def list_building_lineage(self, building_id: UUID) -> list[dict[str, Any]]:
+        return [_wire(row) for row in self.repo.list_building_lineage(building_id)]
 
     def inspect(
         self,
@@ -141,6 +206,11 @@ class HouseNumberingService:
         route = self.repo.route_geometry(route_id)
         rule_row = self.repo.get_rule(rule_id)
         rule = _domain_rule(rule_row)
+        context = self.repo.inspection_context(existing_building_id, route_id)
+        context_wire = {
+            "building": _wire(context["building"]) if context["building"] else None,
+            "evidence": [_wire(row) for row in context["evidence"]],
+        }
         target_crs = int(route["srid"])
         point = (
             (x, y)
@@ -164,6 +234,7 @@ class HouseNumberingService:
                     "rule_version": rule.version,
                 },
                 "neighbors": {"before": None, "after": None},
+                "context": context_wire,
             }
 
         rows = self.repo.building_points_for_route(route_id, target_crs)
@@ -276,6 +347,7 @@ class HouseNumberingService:
                 "rule_version": suggestion.rule_version,
             },
             "neighbors": {"before": neighbor(before), "after": neighbor(after)},
+            "context": context_wire,
         }
 
     def preview_assignment(

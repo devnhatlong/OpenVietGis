@@ -1,7 +1,31 @@
-# Dependency gate assessment — 2026-11-21
-**Status: BLOCKED for Core integration; pure domain permitted.**
-- Verified main `c5cc5a9` is R003 convergence; only modules/README.md in its module area.
-- Running candidate `c6d449f` on integration/r006-r015-complete has private generic framework and reference workflow, but main has not been promoted. Active dev has 35 modified/untracked frontend files; must preserve.
-- Candidate R014 provides only register/list manifest, activate/list and create/list records. It lacks verified module disable, dynamic UI contribution/lifecycle, revisioned typed updates/atomic preview/apply, actual scoped command enforcement and spatial relation integrity. No runtime workbench for number assignment. The existing generic record API cannot enforce complete House Numbering constraints.
-- Audit 018 worktree `c8487eb`, gaps.md: G001 divergent verified main/deployment; G003 graphical edit; G004 external-source retrieval; G005 offline client; G007 missing E2E; G008 human acceptance; G009 processing output invalid; G010 artifact backup incomplete. Gate evidence: `/opt/openvietgis-audit-018/specs/018-full-product-audit/gaps.md`.
-- Await promotion of exact reviewed Core candidate and link generic remediation with owners of active branches; no unauthorized changes to those branches. HN01–13 integrated acceptance remains open. Data authorization, local authority rule and approved templates are external release gates, not architecture questions.
+# Dependency gate assessment — updated 2026-11-22
+
+**Status: HN019 isolated technical candidate verified; external Core promotion gate remains BLOCKED.**
+
+## What changed since the 2026-11-21 assessment
+
+The isolated `feature/019-house-numbering-runtime` candidate now contains and verifies:
+
+- generic R014 official-module discovery, manifest lifecycle, activation/disable and dynamic UI contributions;
+- module-owned migration dispatch with no vertical dependency from Core;
+- typed House Numbering persistence with revisions, RLS/project scope, audit and protected household access;
+- official dynamic module frontend under `modules/house_numbering/frontend`;
+- real PostGIS workflows for registry, inspect, numbering preview/apply, proposal approval, imports/reconciliation, survey/progress, documents, search/export and protected data;
+- Land Asset coexistence;
+- browser, mobile, performance, recovery and security-negative evidence.
+
+Architecture checks pass and the module remains outside Core.
+
+## Gate that is still open
+
+T007 requires proof of the **exact promoted Core baseline** and audit-018 G001/G003/G004/G005/G009/G010. The HN branch cannot truthfully close that organization-wide promotion gate by itself.
+
+Current audit truth:
+- G001: exact promoted main/deployment convergence still requires independent proof. The latest isolated SC007 100-open/100-select Core run on `fix/018-confirmed-blockers` still missed the map-open p95 gate: **3352.17 ms** observed vs **3000 ms** required.
+- G003: graphical editing acceptance on the promoted Core still requires closure.
+- G004: real external-source retrieval/capability acceptance on the promoted Core still requires closure.
+- G005: true platform offline client acceptance on the promoted Core still requires closure.
+- G009: remediation exists, but must be part of the exact promoted candidate.
+- G010: artifact-byte backup/restore remediation exists and HN module recovery passes, but full platform authority reconciliation still reports incomplete.
+
+Therefore integrated HN work is **candidate-verified only** and must not be described as production-released. No production worktree/database was modified by HN019 verification.

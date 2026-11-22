@@ -303,6 +303,52 @@ def test_house_numbering_us6_documents_and_us7_search_exports_privacy(
         dxf_doc = ezdxf.read(io.StringIO(dxf_download.content.decode("utf-8")))
         assert len(list(dxf_doc.modelspace().query("POINT"))) >= 6
 
+        dxf_import_base = {
+            "source_format": "dxf",
+            "origin": "cad",
+            "mapping_json": json.dumps({"raw_number": "raw_number"}),
+            "default_source_reference": "roundtrip-export.dxf",
+            "default_confidence": "observed",
+        }
+        dxf_without_crs = client.post(
+            f"{module_base}/imports",
+            data=dxf_import_base,
+            files={
+                "file": (
+                    "roundtrip-export.dxf",
+                    dxf_download.content,
+                    "application/dxf",
+                )
+            },
+        )
+        assert dxf_without_crs.status_code == 422, dxf_without_crs.text
+        dxf_unknown_crs = client.post(
+            f"{module_base}/imports",
+            data={**dxf_import_base, "source_crs": "999999"},
+            files={
+                "file": (
+                    "roundtrip-export.dxf",
+                    dxf_download.content,
+                    "application/dxf",
+                )
+            },
+        )
+        assert dxf_unknown_crs.status_code == 422, dxf_unknown_crs.text
+        dxf_roundtrip = client.post(
+            f"{module_base}/imports",
+            data={**dxf_import_base, "source_crs": "3857"},
+            files={
+                "file": (
+                    "roundtrip-export.dxf",
+                    dxf_download.content,
+                    "application/dxf",
+                )
+            },
+        )
+        assert dxf_roundtrip.status_code == 201, dxf_roundtrip.text
+        assert dxf_roundtrip.json()["batch"]["accepted_count"] >= 6
+        assert dxf_roundtrip.json()["batch"]["rejected_count"] == 0
+
         geojson = client.post(
             f"{module_base}/exports",
             json={
@@ -319,6 +365,40 @@ def test_house_numbering_us6_documents_and_us7_search_exports_privacy(
         payload = json.loads(geojson_download.content)
         assert payload["type"] == "FeatureCollection"
         assert len(payload["features"]) >= 6
+
+        geo_import_base = {
+            "source_format": "geojson",
+            "origin": "survey",
+            "mapping_json": json.dumps({"raw_number": "house_number"}),
+            "default_source_reference": "roundtrip-export.geojson",
+            "default_confidence": "observed",
+        }
+        geo_without_crs = client.post(
+            f"{module_base}/imports",
+            data=geo_import_base,
+            files={
+                "file": (
+                    "roundtrip-export.geojson",
+                    geojson_download.content,
+                    "application/geo+json",
+                )
+            },
+        )
+        assert geo_without_crs.status_code == 422, geo_without_crs.text
+        geo_roundtrip = client.post(
+            f"{module_base}/imports",
+            data={**geo_import_base, "source_crs": "4326"},
+            files={
+                "file": (
+                    "roundtrip-export.geojson",
+                    geojson_download.content,
+                    "application/geo+json",
+                )
+            },
+        )
+        assert geo_roundtrip.status_code == 201, geo_roundtrip.text
+        assert geo_roundtrip.json()["batch"]["accepted_count"] >= 6
+        assert geo_roundtrip.json()["batch"]["rejected_count"] == 0
 
     with get_admin_engine().begin() as connection:
         connection.execute(

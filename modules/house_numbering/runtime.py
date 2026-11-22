@@ -63,6 +63,16 @@ class AreaCreate(BaseModel):
     feature_id: str | None = Field(default=None, max_length=128)
 
 
+class AreaUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    expected_revision: PositiveInt
+    name: str = Field(min_length=1, max_length=200)
+    kind: Literal["current", "historic", "custom"]
+    parent_id: UUID | None = None
+    source_id: UUID | None = None
+    feature_id: str | None = Field(default=None, max_length=128)
+
+
 class RouteCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
     name: str = Field(min_length=1, max_length=200)
@@ -107,11 +117,36 @@ class BuildingCreate(BaseModel):
     ineligibility_reason: str | None = Field(default=None, max_length=500)
 
 
+class BuildingUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    expected_revision: PositiveInt
+    route_id: UUID | None = None
+    area_id: UUID | None = None
+    parcel_ref: str | None = Field(default=None, max_length=200)
+    source_id: UUID
+    feature_id: str = Field(min_length=1, max_length=128)
+
+
 class EligibilityUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
     expected_revision: PositiveInt
     eligibility: Literal["unknown", "eligible", "ineligible"]
     reason: str | None = Field(default=None, max_length=500)
+
+
+class PlaqueUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    expected_revision: PositiveInt
+    status: Literal["not_planned", "planned", "installed", "replaced", "removed"]
+
+
+class BuildingLineageCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    relation_kind: Literal["split", "merge"]
+    operation_id: UUID
+    predecessor_building_ids: list[UUID] = Field(min_length=1, max_length=100)
+    successor_building_ids: list[UUID] = Field(min_length=1, max_length=100)
+    expected_revisions: dict[str, PositiveInt]
 
 
 class InspectRequest(BaseModel):
@@ -142,7 +177,7 @@ class ProposalCreate(BaseModel):
 class ProposalTransition(BaseModel):
     model_config = ConfigDict(extra="forbid")
     expected_revision: PositiveInt
-    action: Literal["submit", "approve", "reject"]
+    action: Literal["submit", "withdraw", "approve", "reject"]
     comment: str | None = Field(default=None, max_length=1000)
 
 
@@ -190,6 +225,35 @@ def create_area(
     return _service(organization_id, project_id, auth, session).create_area(
         **body.model_dump()
     )
+
+
+@router.put(f"{_PROJ}/areas/{{area_id}}")
+def update_area(
+    organization_id: UUID,
+    project_id: UUID,
+    area_id: UUID,
+    body: AreaUpdate,
+    auth: Annotated[AuthenticatedRequest, Depends(require_csrf)],
+    session: Annotated[Session, Depends(get_db_session, scope="function")],
+) -> dict[str, object]:
+    return _service(organization_id, project_id, auth, session).update_area(
+        area_id, **body.model_dump()
+    )
+
+
+@router.delete(f"{_PROJ}/areas/{{area_id}}", status_code=204)
+def delete_area(
+    organization_id: UUID,
+    project_id: UUID,
+    area_id: UUID,
+    auth: Annotated[AuthenticatedRequest, Depends(require_csrf)],
+    session: Annotated[Session, Depends(get_db_session, scope="function")],
+    expected_revision: Annotated[PositiveInt, Query()],
+) -> Response:
+    _service(organization_id, project_id, auth, session).delete_area(
+        area_id, expected_revision=expected_revision
+    )
+    return Response(status_code=204)
 
 
 @router.get(f"{_PROJ}/routes")
@@ -269,6 +333,35 @@ def create_building(
     )
 
 
+@router.put(f"{_PROJ}/buildings/{{building_id}}")
+def update_building(
+    organization_id: UUID,
+    project_id: UUID,
+    building_id: UUID,
+    body: BuildingUpdate,
+    auth: Annotated[AuthenticatedRequest, Depends(require_csrf)],
+    session: Annotated[Session, Depends(get_db_session, scope="function")],
+) -> dict[str, object]:
+    return _service(organization_id, project_id, auth, session).update_building(
+        building_id, **body.model_dump()
+    )
+
+
+@router.delete(f"{_PROJ}/buildings/{{building_id}}", status_code=204)
+def retire_building(
+    organization_id: UUID,
+    project_id: UUID,
+    building_id: UUID,
+    auth: Annotated[AuthenticatedRequest, Depends(require_csrf)],
+    session: Annotated[Session, Depends(get_db_session, scope="function")],
+    expected_revision: Annotated[PositiveInt, Query()],
+) -> Response:
+    _service(organization_id, project_id, auth, session).retire_building(
+        building_id, expected_revision=expected_revision
+    )
+    return Response(status_code=204)
+
+
 @router.patch(f"{_PROJ}/buildings/{{building_id}}/eligibility")
 def set_eligibility(
     organization_id: UUID,
@@ -286,6 +379,50 @@ def set_eligibility(
         eligibility=body.eligibility,
         reason=body.reason,
     )
+
+
+@router.patch(f"{_PROJ}/buildings/{{building_id}}/plaque")
+def set_building_plaque(
+    organization_id: UUID,
+    project_id: UUID,
+    building_id: UUID,
+    body: PlaqueUpdate,
+    auth: Annotated[AuthenticatedRequest, Depends(require_csrf)],
+    session: Annotated[Session, Depends(get_db_session, scope="function")],
+) -> dict[str, object]:
+    return _service(organization_id, project_id, auth, session).set_building_plaque(
+        building_id,
+        expected_revision=body.expected_revision,
+        status=body.status,
+    )
+
+
+@router.post(f"{_PROJ}/buildings/lineage", status_code=201)
+def record_building_lineage(
+    organization_id: UUID,
+    project_id: UUID,
+    body: BuildingLineageCreate,
+    auth: Annotated[AuthenticatedRequest, Depends(require_csrf)],
+    session: Annotated[Session, Depends(get_db_session, scope="function")],
+) -> dict[str, object]:
+    return _service(organization_id, project_id, auth, session).record_building_lineage(
+        **body.model_dump()
+    )
+
+
+@router.get(f"{_PROJ}/buildings/{{building_id}}/lineage")
+def list_building_lineage(
+    organization_id: UUID,
+    project_id: UUID,
+    building_id: UUID,
+    auth: Annotated[AuthenticatedRequest, Depends(authenticate_request)],
+    session: Annotated[Session, Depends(get_db_session, scope="function")],
+) -> dict[str, object]:
+    return {
+        "items": _service(
+            organization_id, project_id, auth, session
+        ).list_building_lineage(building_id)
+    }
 
 
 @router.post(f"{_PROJ}/inspect")

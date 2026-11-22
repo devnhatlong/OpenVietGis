@@ -124,15 +124,100 @@ class HouseNumberingExportService:
             raise PlatformValidationError("search limit must be 1..500")
         if query:
             q = query.strip()
-            rows = (
-                self.session.execute(
+            if not q:
+                raise PlatformValidationError("search query must not be blank")
+
+            def wire(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+                return [
+                    {
+                        "building_id": str(row["building_id"]),
+                        "route_name": row["route_name"],
+                        "house_number": row["house_number"],
+                        "state": row["state"],
+                        "old_number": row["evidence_number"],
+                        "evidence_origin": row["evidence_origin"],
+                        "parcel_number": row["parcel_ref"],
+                    }
+                    for row in rows
+                ]
+
+            exact_rows = [
+                dict(row)
+                for row in self.session.execute(
+                    text("""
+                    WITH candidates AS (
+                        SELECT building_id
+                        FROM house_numbering.address_numbers
+                        WHERE organization_id=:org AND project_id=:project
+                          AND number_text=:exact AND retired_at IS NULL
+                          AND building_id IS NOT NULL
+                        UNION
+                        SELECT building_id
+                        FROM house_numbering.evidence
+                        WHERE organization_id=:org AND project_id=:project
+                          AND raw_number=:exact AND building_id IS NOT NULL
+                        UNION
+                        SELECT id
+                        FROM house_numbering.buildings
+                        WHERE organization_id=:org AND project_id=:project
+                          AND parcel_ref=:exact AND state='active'
+                    )
+                    SELECT b.id AS building_id,r.name AS route_name,b.parcel_ref,
+                           n.number_text AS house_number,n.kind AS state,
+                           ev.raw_number AS evidence_number,ev.origin AS evidence_origin
+                    FROM candidates c
+                    JOIN house_numbering.buildings b
+                      ON b.organization_id=:org AND b.project_id=:project
+                     AND b.id=c.building_id AND b.state='active'
+                    LEFT JOIN house_numbering.routes r
+                      ON r.organization_id=b.organization_id AND r.project_id=b.project_id
+                     AND r.id=b.route_id
+                    LEFT JOIN LATERAL (
+                        SELECT number_text,kind
+                        FROM house_numbering.address_numbers n
+                        WHERE n.organization_id=b.organization_id
+                          AND n.project_id=b.project_id AND n.building_id=b.id
+                          AND n.retired_at IS NULL
+                        ORDER BY CASE n.kind WHEN 'approved' THEN 1 WHEN 'submitted' THEN 2
+                                 WHEN 'proposed' THEN 3 ELSE 4 END,n.created_at DESC,n.id
+                        LIMIT 1
+                    ) n ON true
+                    LEFT JOIN LATERAL (
+                        SELECT raw_number,origin
+                        FROM house_numbering.evidence ev
+                        WHERE ev.organization_id=b.organization_id
+                          AND ev.project_id=b.project_id AND ev.building_id=b.id
+                        ORDER BY ev.evidence_date DESC NULLS LAST,ev.created_at DESC,ev.id DESC
+                        LIMIT 1
+                    ) ev ON true
+                    ORDER BY r.name,n.number_text,b.id
+                    LIMIT :limit
+                    """),
+                    {
+                        "org": self.org,
+                        "project": self.project,
+                        "exact": q,
+                        "limit": limit,
+                    },
+                )
+                .mappings()
+                .all()
+            ]
+            if exact_rows:
+                return wire(exact_rows)
+
+            safe_query = q.replace("%", "").replace("_", "")
+            rows = [
+                dict(row)
+                for row in self.session.execute(
                     text("""
                     SELECT DISTINCT b.id AS building_id,r.name AS route_name,b.parcel_ref,
                            n.number_text AS house_number,n.kind AS state,
                            ev.raw_number AS evidence_number,ev.origin AS evidence_origin
                     FROM house_numbering.buildings b
                     LEFT JOIN house_numbering.routes r
-                      ON r.organization_id=b.organization_id AND r.project_id=b.project_id AND r.id=b.route_id
+                      ON r.organization_id=b.organization_id AND r.project_id=b.project_id
+                     AND r.id=b.route_id
                     LEFT JOIN house_numbering.address_numbers n
                       ON n.organization_id=b.organization_id AND n.project_id=b.project_id
                      AND n.building_id=b.id AND n.retired_at IS NULL
@@ -140,34 +225,23 @@ class HouseNumberingExportService:
                       ON ev.organization_id=b.organization_id AND ev.project_id=b.project_id
                      AND ev.building_id=b.id
                     WHERE b.organization_id=:org AND b.project_id=:project
-                      AND (
+                      AND b.state='active' AND (
                         n.number_text ILIKE :q OR ev.raw_number ILIKE :q OR r.name ILIKE :q
                         OR COALESCE(b.parcel_ref,'') ILIKE :q
                       )
                     ORDER BY r.name,n.number_text,b.id LIMIT :limit
-                """),
+                    """),
                     {
                         "org": self.org,
                         "project": self.project,
-                        "q": f"%{q.replace('%', '').replace('_', '')}%",
+                        "q": f"%{safe_query}%",
                         "limit": limit,
                     },
                 )
                 .mappings()
                 .all()
-            )
-            return [
-                {
-                    "building_id": str(row["building_id"]),
-                    "route_name": row["route_name"],
-                    "house_number": row["house_number"],
-                    "state": row["state"],
-                    "old_number": row["evidence_number"],
-                    "evidence_origin": row["evidence_origin"],
-                    "parcel_number": row["parcel_ref"],
-                }
-                for row in rows
             ]
+            return wire(rows)
         if any(v is not None for v in (x, y, crs_code)):
             if x is None or y is None or crs_code is None:
                 raise PlatformValidationError(

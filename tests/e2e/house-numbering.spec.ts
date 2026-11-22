@@ -39,7 +39,7 @@ test("House Numbering official module lifecycle and seven UI journeys", async ({
   // US1 — registry CRUD remains available without inventing geometry.
   await page.getByLabel("Tên khu/phường").fill("Phường E2E");
   await page.getByRole("button", { name: "Thêm khu" }).click();
-  await expect(page.getByText("Phường E2E")).toBeVisible();
+  await expect(page.getByRole("cell", { name: /Phường E2E current · rev/ })).toBeVisible();
 
   // US2 — versioned rule UI.
   await page.getByRole("button", { name: "Đánh số", exact: true }).click();
@@ -75,6 +75,29 @@ test("House Numbering official module lifecycle and seven UI journeys", async ({
   await page.evaluate(() => window.dispatchEvent(new Event("online")));
   await expect(page.getByText("Đang online", { exact: true })).toBeVisible();
 
+  // Offline queue survives a browser reload; sync idempotency itself is verified in PostGIS tests.
+  const queueKey = `hn-survey-queue:${fixture.organizationId}:${fixture.projectId}`;
+  await page.evaluate(
+    ({ key }) => {
+      localStorage.setItem(
+        key,
+        JSON.stringify([
+          {
+            client_uuid: "11111111-1111-4111-8111-111111111111",
+            building_id: "22222222-2222-4222-8222-222222222222",
+            condition: "house",
+            photo_artifact_ids: []
+          }
+        ])
+      );
+    },
+    { key: queueKey }
+  );
+  await page.reload();
+  await page.getByRole("button", { name: "Hiện trường", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Sync 1 phiếu", exact: true })).toBeVisible();
+  await page.evaluate(({ key }) => localStorage.removeItem(key), { key: queueKey });
+
   // US6 — document gate surface.
   await page.getByRole("button", { name: "Hồ sơ", exact: true }).click();
   await expect(page.getByRole("button", { name: "Tạo hồ sơ" })).toBeVisible();
@@ -96,6 +119,28 @@ test("House Numbering official module lifecycle and seven UI journeys", async ({
   await viewer.getByRole("button", { name: "Tra cứu & Xuất", exact: true }).click();
   await expect(viewer.getByText(/PII tách khỏi registry công khai/)).toBeVisible();
   await viewerContext.close();
+
+  // Mobile regression — active module must remain usable without page-level horizontal overflow.
+  const mobileContext = await browser.newContext({
+    baseURL: "http://127.0.0.1:5178",
+    viewport: { width: 390, height: 844 },
+    permissions: ["geolocation"],
+    geolocation: { longitude: 106.7, latitude: 10.8, accuracy: 7 }
+  });
+  const mobile = await mobileContext.newPage();
+  await hnSignIn(mobile);
+  await mobile.goto(fixture.root + "/extensions/house_numbering");
+  await expect(mobile.getByText("OpenVietGIS · Số nhà", { exact: true })).toBeVisible();
+  await mobile.getByRole("button", { name: "Đánh số", exact: true }).click();
+  await expect(mobile.getByRole("heading", { name: "Quy tắc đánh số" })).toBeVisible();
+  await mobile.getByRole("button", { name: "Hiện trường", exact: true }).click();
+  await mobile.getByRole("button", { name: "Lấy GPS", exact: true }).click();
+  await expect(mobile.getByText("EPSG:4326 · ±7.0 m", { exact: true })).toBeVisible();
+  const pageOverflows = await mobile.evaluate(
+    () => document.documentElement.scrollWidth > window.innerWidth + 1
+  );
+  expect(pageOverflows).toBe(false);
+  await mobileContext.close();
 
   // Disable must hide runtime without deleting module data.
   await page.goto(fixture.root + "/platform-hub");

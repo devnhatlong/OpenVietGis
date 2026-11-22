@@ -420,18 +420,19 @@ class HouseNumberingDocumentService:
             f"Căn cứ: {snapshot.get('authority_ref') or '—'}",
             f"Template revision: {template_revision}",
         ]
-        maps = [
-            _map_png(snapshot, mode="overview"),
-            _map_png(snapshot, mode="detail"),
-            _map_png(snapshot, mode="comparison"),
-        ]
         if doc_type == "plate":
             data = _plate_pdf(number, str(snapshot.get("route_name") or ""))
             output_format = "pdf"
-        elif output_format == "docx":
-            data = _docx_bytes(title, lines, maps)
         else:
-            data = _pdf_bytes(title, lines, maps)
+            maps = [
+                _map_png(snapshot, mode="overview"),
+                _map_png(snapshot, mode="detail"),
+                _map_png(snapshot, mode="comparison"),
+            ]
+            if output_format == "docx":
+                data = _docx_bytes(title, lines, maps)
+            else:
+                data = _pdf_bytes(title, lines, maps)
         content_type = (
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
             if output_format == "docx"

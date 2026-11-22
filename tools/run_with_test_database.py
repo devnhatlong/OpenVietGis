@@ -8,6 +8,7 @@ from pathlib import Path
 from alembic import command
 from alembic.config import Config
 
+from tools.migrate_official_modules import migrate_official_modules
 from tools.test_database import build_test_environment
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -19,6 +20,7 @@ def main() -> int:
     environment = build_test_environment(os.environ)
     os.environ.update(environment)
     command.upgrade(Config(str(ROOT / "apps" / "api" / "alembic.ini")), "head")
+    migrate_official_modules()
     return subprocess.run(sys.argv[1:], cwd=ROOT, env=environment, check=False).returncode
 
 

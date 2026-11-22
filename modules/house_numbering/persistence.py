@@ -280,6 +280,178 @@ class HouseNumberingRepository:
             .all()
         )
 
+    def get_area(self, area_id: UUID, *, for_update: bool = False) -> RowMapping:
+        self.prepare("edit" if for_update else "read")
+        lock = " FOR UPDATE" if for_update else ""
+        row = (
+            self.session.execute(
+                text(
+                    """
+                    SELECT * FROM house_numbering.areas
+                    WHERE organization_id=:org AND project_id=:project AND id=:id
+                    """
+                    + lock
+                ),
+                {"org": self.org_id, "project": self.project_id, "id": area_id},
+            )
+            .mappings()
+            .first()
+        )
+        if row is None:
+            raise PlatformNotFoundError("area not found")
+        return row
+
+    def update_area(
+        self,
+        area_id: UUID,
+        *,
+        expected_revision: int,
+        name: str,
+        kind: str,
+        parent_id: UUID | None,
+        source_id: UUID | None,
+        feature_id: str | None,
+    ) -> RowMapping:
+        current = self.get_area(area_id, for_update=True)
+        if int(current["revision"]) != expected_revision:
+            raise PlatformConflictError("area revision is stale", code="STALE_AREA")
+        if parent_id == area_id:
+            raise PlatformValidationError(
+                "area cannot be its own parent", code="AREA_PARENT"
+            )
+        if (source_id is None) != (feature_id is None):
+            raise PlatformValidationError(
+                "area spatial source and feature must be supplied together"
+            )
+        if source_id is not None and feature_id is not None:
+            self.spatial_feature(source_id, feature_id, expected={"ST_Polygon"})
+        if parent_id is not None:
+            self.get_area(parent_id)
+            cycle = self.session.execute(
+                text("""
+                    WITH RECURSIVE descendants AS (
+                        SELECT id FROM house_numbering.areas
+                        WHERE organization_id=:org AND project_id=:project
+                          AND parent_id=:area
+                        UNION ALL
+                        SELECT child.id
+                        FROM house_numbering.areas child
+                        JOIN descendants parent ON child.parent_id=parent.id
+                        WHERE child.organization_id=:org AND child.project_id=:project
+                    )
+                    SELECT 1 FROM descendants WHERE id=:parent LIMIT 1
+                """),
+                {
+                    "org": self.org_id,
+                    "project": self.project_id,
+                    "area": area_id,
+                    "parent": parent_id,
+                },
+            ).first()
+            if cycle is not None:
+                raise PlatformConflictError(
+                    "area parent would create a cycle", code="AREA_PARENT_CYCLE"
+                )
+        now = datetime.now(UTC)
+        row = (
+            self.session.execute(
+                text("""
+                    UPDATE house_numbering.areas
+                    SET name=:name,kind=:kind,parent_id=:parent,
+                        linked_source_id=:source,linked_feature_id=:feature,
+                        revision=revision+1,updated_by_actor_id=:actor,updated_at=:now
+                    WHERE organization_id=:org AND project_id=:project AND id=:id
+                    RETURNING *
+                """),
+                {
+                    "name": name.strip(),
+                    "kind": kind,
+                    "parent": parent_id,
+                    "source": source_id,
+                    "feature": feature_id,
+                    "actor": self.actor_id,
+                    "now": now,
+                    "org": self.org_id,
+                    "project": self.project_id,
+                    "id": area_id,
+                },
+            )
+            .mappings()
+            .one()
+        )
+        self.audit(
+            "house_numbering.area.update",
+            "house_numbering_area",
+            area_id,
+            {
+                "before": {
+                    "name": current["name"],
+                    "kind": current["kind"],
+                    "parent_id": str(current["parent_id"])
+                    if current["parent_id"]
+                    else None,
+                    "linked_source_id": str(current["linked_source_id"])
+                    if current["linked_source_id"]
+                    else None,
+                    "linked_feature_id": current["linked_feature_id"],
+                },
+                "after_revision": int(row["revision"]),
+            },
+        )
+        return row
+
+    def delete_area(self, area_id: UUID, *, expected_revision: int) -> None:
+        current = self.get_area(area_id, for_update=True)
+        if int(current["revision"]) != expected_revision:
+            raise PlatformConflictError("area revision is stale", code="STALE_AREA")
+        dependency = (
+            self.session.execute(
+                text("""
+                SELECT kind FROM (
+                    SELECT 'child_area' AS kind FROM house_numbering.areas
+                    WHERE organization_id=:org AND project_id=:project AND parent_id=:area
+                    UNION ALL
+                    SELECT 'building_history' AS kind FROM house_numbering.buildings
+                    WHERE organization_id=:org AND project_id=:project
+                      AND area_id=:area
+                ) dependencies LIMIT 1
+            """),
+                {"org": self.org_id, "project": self.project_id, "area": area_id},
+            )
+            .mappings()
+            .first()
+        )
+        if dependency is not None:
+            raise PlatformConflictError(
+                f"area has dependent {dependency['kind']}", code="AREA_HAS_DEPENDENCIES"
+            )
+        self.session.execute(
+            text("""
+                DELETE FROM house_numbering.areas
+                WHERE organization_id=:org AND project_id=:project AND id=:id
+            """),
+            {"org": self.org_id, "project": self.project_id, "id": area_id},
+        )
+        self.audit(
+            "house_numbering.area.delete",
+            "house_numbering_area",
+            area_id,
+            {
+                "deleted_snapshot": {
+                    "name": current["name"],
+                    "kind": current["kind"],
+                    "parent_id": str(current["parent_id"])
+                    if current["parent_id"]
+                    else None,
+                    "linked_source_id": str(current["linked_source_id"])
+                    if current["linked_source_id"]
+                    else None,
+                    "linked_feature_id": current["linked_feature_id"],
+                    "revision": int(current["revision"]),
+                }
+            },
+        )
+
     def create_route(
         self,
         *,
@@ -438,14 +610,19 @@ class HouseNumberingRepository:
         dependency = (
             self.session.execute(
                 text("""
-                SELECT 'child_route' AS kind FROM house_numbering.routes
-                 WHERE organization_id=:org AND project_id=:project AND parent_route_id=:route LIMIT 1
-                UNION ALL
-                SELECT 'building' AS kind FROM house_numbering.buildings
-                 WHERE organization_id=:org AND project_id=:project AND route_id=:route LIMIT 1
-                UNION ALL
-                SELECT 'number' AS kind FROM house_numbering.address_numbers
-                 WHERE organization_id=:org AND project_id=:project AND route_id=:route LIMIT 1
+                SELECT kind FROM (
+                    SELECT 'child_route' AS kind FROM house_numbering.routes
+                     WHERE organization_id=:org AND project_id=:project
+                       AND parent_route_id=:route
+                    UNION ALL
+                    SELECT 'building' AS kind FROM house_numbering.buildings
+                     WHERE organization_id=:org AND project_id=:project
+                       AND route_id=:route
+                    UNION ALL
+                    SELECT 'number' AS kind FROM house_numbering.address_numbers
+                     WHERE organization_id=:org AND project_id=:project
+                       AND route_id=:route
+                ) dependencies
                 LIMIT 1
             """),
                 {"org": self.org_id, "project": self.project_id, "route": route_id},
@@ -568,6 +745,158 @@ class HouseNumberingRepository:
             raise PlatformNotFoundError("building not found")
         return row
 
+    def update_building(
+        self,
+        building_id: UUID,
+        *,
+        expected_revision: int,
+        route_id: UUID | None,
+        area_id: UUID | None,
+        parcel_ref: str | None,
+        source_id: UUID,
+        feature_id: str,
+    ) -> RowMapping:
+        current = self.get_building(building_id, for_update=True)
+        if current["state"] != "active":
+            raise PlatformConflictError(
+                "building is not active", code="BUILDING_NOT_ACTIVE"
+            )
+        if int(current["revision"]) != expected_revision:
+            raise PlatformConflictError(
+                "building revision is stale", code="STALE_BUILDING"
+            )
+        self.spatial_feature(source_id, feature_id, expected={"ST_Point", "ST_Polygon"})
+        if route_id is not None:
+            self.get_route(route_id)
+        if area_id is not None:
+            self.get_area(area_id)
+        if route_id != current["route_id"]:
+            locked = self.session.execute(
+                text("""
+                    SELECT 1 FROM house_numbering.address_numbers
+                    WHERE organization_id=:org AND project_id=:project
+                      AND building_id=:building AND retired_at IS NULL
+                      AND kind IN ('submitted','approved','reserved')
+                    LIMIT 1
+                """),
+                {
+                    "org": self.org_id,
+                    "project": self.project_id,
+                    "building": building_id,
+                },
+            ).first()
+            if locked is not None:
+                raise PlatformConflictError(
+                    "building route is locked by an official number",
+                    code="BUILDING_ROUTE_LOCKED",
+                )
+        now = datetime.now(UTC)
+        row = (
+            self.session.execute(
+                text("""
+                    UPDATE house_numbering.buildings
+                    SET route_id=:route,area_id=:area,parcel_ref=:parcel,
+                        linked_source_id=:source,linked_feature_id=:feature,
+                        revision=revision+1,updated_by_actor_id=:actor,updated_at=:now
+                    WHERE organization_id=:org AND project_id=:project AND id=:id
+                    RETURNING *
+                """),
+                {
+                    "route": route_id,
+                    "area": area_id,
+                    "parcel": parcel_ref.strip() if parcel_ref else None,
+                    "source": source_id,
+                    "feature": feature_id,
+                    "actor": self.actor_id,
+                    "now": now,
+                    "org": self.org_id,
+                    "project": self.project_id,
+                    "id": building_id,
+                },
+            )
+            .mappings()
+            .one()
+        )
+        self.audit(
+            "house_numbering.building.update",
+            "house_numbering_building",
+            building_id,
+            {
+                "before": {
+                    "route_id": str(current["route_id"])
+                    if current["route_id"]
+                    else None,
+                    "area_id": str(current["area_id"]) if current["area_id"] else None,
+                    "parcel_ref": current["parcel_ref"],
+                    "linked_source_id": str(current["linked_source_id"]),
+                    "linked_feature_id": current["linked_feature_id"],
+                },
+                "after_revision": int(row["revision"]),
+            },
+        )
+        return row
+
+    def retire_building(self, building_id: UUID, *, expected_revision: int) -> None:
+        current = self.get_building(building_id, for_update=True)
+        if current["state"] != "active":
+            raise PlatformConflictError(
+                "building is not active", code="BUILDING_NOT_ACTIVE"
+            )
+        if int(current["revision"]) != expected_revision:
+            raise PlatformConflictError(
+                "building revision is stale", code="STALE_BUILDING"
+            )
+        locked = self.session.execute(
+            text("""
+                SELECT kind FROM house_numbering.address_numbers
+                WHERE organization_id=:org AND project_id=:project
+                  AND building_id=:building AND retired_at IS NULL
+                  AND kind IN ('submitted','approved','reserved')
+                LIMIT 1
+            """),
+            {"org": self.org_id, "project": self.project_id, "building": building_id},
+        ).scalar_one_or_none()
+        if locked is not None:
+            raise PlatformConflictError(
+                "building with an official number must use the split/merge or approval workflow",
+                code="BUILDING_OFFICIAL_NUMBER_LOCKED",
+            )
+        now = datetime.now(UTC)
+        self.session.execute(
+            text("""
+                UPDATE house_numbering.buildings
+                SET state='removed',
+                    plaque_status=CASE WHEN plaque_status='not_planned' THEN plaque_status ELSE 'removed' END,
+                    plaque_updated_at=CASE WHEN plaque_status='not_planned' THEN plaque_updated_at ELSE :now END,
+                    revision=revision+1,updated_by_actor_id=:actor,updated_at=:now
+                WHERE organization_id=:org AND project_id=:project AND id=:id
+            """),
+            {
+                "now": now,
+                "actor": self.actor_id,
+                "org": self.org_id,
+                "project": self.project_id,
+                "id": building_id,
+            },
+        )
+        self.audit(
+            "house_numbering.building.retire",
+            "house_numbering_building",
+            building_id,
+            {
+                "snapshot": {
+                    "route_id": str(current["route_id"])
+                    if current["route_id"]
+                    else None,
+                    "area_id": str(current["area_id"]) if current["area_id"] else None,
+                    "parcel_ref": current["parcel_ref"],
+                    "linked_source_id": str(current["linked_source_id"]),
+                    "linked_feature_id": current["linked_feature_id"],
+                    "revision": int(current["revision"]),
+                }
+            },
+        )
+
     def set_building_eligibility(
         self,
         building_id: UUID,
@@ -610,6 +939,334 @@ class HouseNumberingRepository:
             {"eligibility": eligibility},
         )
         return row
+
+    def inspection_context(
+        self, building_id: UUID | None, route_id: UUID
+    ) -> dict[str, Any]:
+        self.prepare("read")
+        if building_id is None:
+            return {"building": None, "evidence": []}
+        building = (
+            self.session.execute(
+                text("""
+                    SELECT b.id,b.parcel_ref,b.linked_source_id,b.linked_feature_id,
+                           f.attributes AS core_feature_attributes
+                    FROM house_numbering.buildings b
+                    LEFT JOIN spatial.reference_features f
+                      ON f.organization_id=b.organization_id
+                     AND f.project_id=b.project_id
+                     AND f.source_id=b.linked_source_id
+                     AND f.feature_id=b.linked_feature_id
+                    WHERE b.organization_id=:org AND b.project_id=:project
+                      AND b.id=:building AND b.route_id=:route
+                """),
+                {
+                    "org": self.org_id,
+                    "project": self.project_id,
+                    "building": building_id,
+                    "route": route_id,
+                },
+            )
+            .mappings()
+            .first()
+        )
+        if building is None:
+            raise PlatformNotFoundError("building is not on the inspected route")
+        evidence = (
+            self.session.execute(
+                text("""
+                    SELECT id,origin,raw_number,source_reference,evidence_date,
+                           confidence,created_at
+                    FROM house_numbering.evidence
+                    WHERE organization_id=:org AND project_id=:project
+                      AND (building_id=:building OR (
+                          building_id IS NULL AND route_id=:route
+                      ))
+                    ORDER BY evidence_date NULLS LAST,created_at,id
+                """),
+                {
+                    "org": self.org_id,
+                    "project": self.project_id,
+                    "building": building_id,
+                    "route": route_id,
+                },
+            )
+            .mappings()
+            .all()
+        )
+        return {"building": dict(building), "evidence": [dict(row) for row in evidence]}
+
+    def set_plaque_status(
+        self,
+        building_id: UUID,
+        *,
+        expected_revision: int,
+        status: str,
+    ) -> RowMapping:
+        self.prepare("manage")
+        if status not in {"not_planned", "planned", "installed", "replaced", "removed"}:
+            raise PlatformValidationError("invalid plaque status", code="PLAQUE_STATUS")
+        current = (
+            self.session.execute(
+                text("""
+                    SELECT * FROM house_numbering.buildings
+                    WHERE organization_id=:org AND project_id=:project AND id=:id
+                    FOR UPDATE
+                """),
+                {"org": self.org_id, "project": self.project_id, "id": building_id},
+            )
+            .mappings()
+            .first()
+        )
+        if current is None:
+            raise PlatformNotFoundError("building not found")
+        if int(current["revision"]) != expected_revision:
+            raise PlatformConflictError(
+                "building revision is stale", code="STALE_BUILDING"
+            )
+        if status in {"installed", "replaced"}:
+            approved = self.session.execute(
+                text("""
+                    SELECT id FROM house_numbering.address_numbers
+                    WHERE organization_id=:org AND project_id=:project
+                      AND building_id=:building AND kind='approved'
+                      AND retired_at IS NULL
+                    LIMIT 1
+                """),
+                {
+                    "org": self.org_id,
+                    "project": self.project_id,
+                    "building": building_id,
+                },
+            ).scalar_one_or_none()
+            if approved is None:
+                raise PlatformConflictError(
+                    "plaque installation requires an approved house number",
+                    code="PLAQUE_REQUIRES_APPROVED_NUMBER",
+                )
+        now = datetime.now(UTC)
+        row = (
+            self.session.execute(
+                text("""
+                    UPDATE house_numbering.buildings
+                    SET plaque_status=:status,plaque_updated_at=:now,
+                        revision=revision+1,updated_by_actor_id=:actor,updated_at=:now
+                    WHERE organization_id=:org AND project_id=:project AND id=:id
+                    RETURNING *
+                """),
+                {
+                    "status": status,
+                    "now": now,
+                    "actor": self.actor_id,
+                    "org": self.org_id,
+                    "project": self.project_id,
+                    "id": building_id,
+                },
+            )
+            .mappings()
+            .one()
+        )
+        self.audit(
+            "house_numbering.building.plaque_status",
+            "house_numbering_building",
+            building_id,
+            {"old_status": current["plaque_status"], "new_status": status},
+        )
+        return row
+
+    def record_building_lineage(
+        self,
+        *,
+        relation_kind: str,
+        operation_id: UUID,
+        predecessor_ids: list[UUID],
+        successor_ids: list[UUID],
+        expected_revisions: dict[UUID, int],
+    ) -> list[RowMapping]:
+        self.prepare("manage")
+        if relation_kind not in {"split", "merge"}:
+            raise PlatformValidationError("lineage relation must be split or merge")
+        predecessors = set(predecessor_ids)
+        successors = set(successor_ids)
+        if relation_kind == "split" and (len(predecessors) != 1 or len(successors) < 2):
+            raise PlatformValidationError(
+                "split requires one predecessor and at least two successors"
+            )
+        if relation_kind == "merge" and (len(predecessors) < 2 or len(successors) != 1):
+            raise PlatformValidationError(
+                "merge requires at least two predecessors and one successor"
+            )
+        if predecessors & successors:
+            raise PlatformValidationError(
+                "lineage predecessor and successor sets must be disjoint"
+            )
+        all_ids = predecessors | successors
+        if set(expected_revisions) != all_ids:
+            raise PlatformValidationError(
+                "expected_revisions must cover every lineage building",
+                code="LINEAGE_REVISION_SET",
+            )
+
+        existing = (
+            self.session.execute(
+                text("""
+                    SELECT * FROM house_numbering.building_lineage
+                    WHERE organization_id=:org AND project_id=:project
+                      AND operation_id=:operation
+                    ORDER BY predecessor_building_id,successor_building_id
+                """),
+                {
+                    "org": self.org_id,
+                    "project": self.project_id,
+                    "operation": operation_id,
+                },
+            )
+            .mappings()
+            .all()
+        )
+        if existing:
+            existing_kind = {str(row["relation_kind"]) for row in existing}
+            existing_pre = {
+                UUID(str(row["predecessor_building_id"])) for row in existing
+            }
+            existing_succ = {
+                UUID(str(row["successor_building_id"])) for row in existing
+            }
+            if (
+                existing_kind == {relation_kind}
+                and existing_pre == predecessors
+                and existing_succ == successors
+            ):
+                return existing
+            raise PlatformConflictError(
+                "lineage operation_id was already used with different participants",
+                code="LINEAGE_OPERATION_CONFLICT",
+            )
+
+        rows = (
+            self.session.execute(
+                text("""
+                    SELECT * FROM house_numbering.buildings
+                    WHERE organization_id=:org AND project_id=:project
+                      AND id = ANY(:ids)
+                    ORDER BY id
+                    FOR UPDATE
+                """),
+                {
+                    "org": self.org_id,
+                    "project": self.project_id,
+                    "ids": sorted(all_ids, key=str),
+                },
+            )
+            .mappings()
+            .all()
+        )
+        by_id = {UUID(str(row["id"])): row for row in rows}
+        if set(by_id) != all_ids:
+            raise PlatformNotFoundError("one or more lineage buildings were not found")
+        for building_id, expected_revision in expected_revisions.items():
+            row = by_id[building_id]
+            if int(row["revision"]) != expected_revision:
+                raise PlatformConflictError(
+                    f"building {building_id} revision is stale",
+                    code="STALE_BUILDING",
+                )
+            if row["state"] != "active":
+                raise PlatformConflictError(
+                    f"building {building_id} is not active",
+                    code="BUILDING_NOT_ACTIVE",
+                )
+
+        now = datetime.now(UTC)
+        for predecessor in predecessors:
+            self.session.execute(
+                text("""
+                    UPDATE house_numbering.buildings
+                    SET state='removed',
+                        plaque_status=CASE
+                            WHEN plaque_status='not_planned' THEN plaque_status
+                            ELSE 'removed'
+                        END,
+                        plaque_updated_at=CASE
+                            WHEN plaque_status='not_planned' THEN plaque_updated_at
+                            ELSE :now
+                        END,
+                        revision=revision+1,updated_by_actor_id=:actor,updated_at=:now
+                    WHERE organization_id=:org AND project_id=:project AND id=:id
+                """),
+                {
+                    "now": now,
+                    "actor": self.actor_id,
+                    "org": self.org_id,
+                    "project": self.project_id,
+                    "id": predecessor,
+                },
+            )
+
+        inserted: list[RowMapping] = []
+        for predecessor in sorted(predecessors, key=str):
+            for successor in sorted(successors, key=str):
+                inserted.append(
+                    self.session.execute(
+                        text("""
+                            INSERT INTO house_numbering.building_lineage (
+                                id,organization_id,project_id,operation_id,relation_kind,
+                                predecessor_building_id,successor_building_id,
+                                created_by_actor_id,created_at
+                            ) VALUES (
+                                :id,:org,:project,:operation,:kind,:predecessor,:successor,
+                                :actor,:now
+                            ) RETURNING *
+                        """),
+                        {
+                            "id": uuid4(),
+                            "org": self.org_id,
+                            "project": self.project_id,
+                            "operation": operation_id,
+                            "kind": relation_kind,
+                            "predecessor": predecessor,
+                            "successor": successor,
+                            "actor": self.actor_id,
+                            "now": now,
+                        },
+                    )
+                    .mappings()
+                    .one()
+                )
+        self.audit(
+            "house_numbering.building.lineage",
+            "house_numbering_building_lineage",
+            operation_id,
+            {
+                "relation_kind": relation_kind,
+                "predecessor_ids": [
+                    str(value) for value in sorted(predecessors, key=str)
+                ],
+                "successor_ids": [str(value) for value in sorted(successors, key=str)],
+            },
+        )
+        return inserted
+
+    def list_building_lineage(self, building_id: UUID) -> list[RowMapping]:
+        self.prepare("read")
+        self.get_building(building_id)
+        return (
+            self.session.execute(
+                text("""
+                    SELECT * FROM house_numbering.building_lineage
+                    WHERE organization_id=:org AND project_id=:project
+                      AND (predecessor_building_id=:building OR successor_building_id=:building)
+                    ORDER BY created_at,id
+                """),
+                {
+                    "org": self.org_id,
+                    "project": self.project_id,
+                    "building": building_id,
+                },
+            )
+            .mappings()
+            .all()
+        )
 
     def route_geometry(self, route_id: UUID) -> dict[str, Any]:
         self.prepare("read")
@@ -1099,6 +1756,81 @@ class HouseNumberingRepository:
                     "proposal contains ineligible or stale items",
                     code="INVALID_PROPOSAL_ITEM",
                 )
+            route_ids = sorted(
+                {
+                    UUID(str(item["route_id"]))
+                    for item in items
+                    if item["route_id"] is not None
+                },
+                key=str,
+            )
+            if route_ids:
+                self.session.execute(
+                    text("""
+                        SELECT id FROM house_numbering.routes
+                        WHERE organization_id=:org AND project_id=:project
+                          AND id = ANY(:routes)
+                        ORDER BY id
+                        FOR UPDATE
+                    """),
+                    {
+                        "org": self.org_id,
+                        "project": self.project_id,
+                        "routes": route_ids,
+                    },
+                ).all()
+            duplicate = self.session.execute(
+                text("""
+                    SELECT n.route_id,n.number_text
+                    FROM house_numbering.proposal_items i
+                    JOIN house_numbering.address_numbers n
+                      ON n.organization_id=i.organization_id
+                     AND n.project_id=i.project_id
+                     AND n.id=i.source_number_id
+                    WHERE i.organization_id=:org AND i.project_id=:project
+                      AND i.proposal_id=:proposal
+                    GROUP BY n.route_id,n.number_text
+                    HAVING count(*) > 1
+                    LIMIT 1
+                """),
+                {
+                    "org": self.org_id,
+                    "project": self.project_id,
+                    "proposal": proposal_id,
+                },
+            ).first()
+            occupied = self.session.execute(
+                text("""
+                    SELECT n.route_id,n.number_text
+                    FROM house_numbering.proposal_items i
+                    JOIN house_numbering.address_numbers n
+                      ON n.organization_id=i.organization_id
+                     AND n.project_id=i.project_id
+                     AND n.id=i.source_number_id
+                    JOIN house_numbering.address_numbers existing
+                      ON existing.organization_id=n.organization_id
+                     AND existing.project_id=n.project_id
+                     AND existing.route_id=n.route_id
+                     AND existing.number_text=n.number_text
+                     AND existing.id<>n.id
+                     AND existing.retired_at IS NULL
+                     AND existing.kind IN ('submitted','approved','reserved')
+                    WHERE i.organization_id=:org AND i.project_id=:project
+                      AND i.proposal_id=:proposal
+                    LIMIT 1
+                """),
+                {
+                    "org": self.org_id,
+                    "project": self.project_id,
+                    "proposal": proposal_id,
+                },
+            ).first()
+            if duplicate is not None or occupied is not None:
+                conflict = duplicate or occupied
+                raise PlatformConflictError(
+                    f"number {conflict[1]!r} is already occupied on this route",
+                    code="NUMBER_OCCUPIED",
+                )
             self.session.execute(
                 text("""
                     UPDATE house_numbering.address_numbers n SET kind='submitted',revision=revision+1,
@@ -1117,6 +1849,31 @@ class HouseNumberingRepository:
                 },
             )
             new_state, submitted_at, decided_at = "submitted", now, None
+        elif action == "withdraw" and state == "submitted" and not reviewer:
+            if not comment or not comment.strip():
+                raise PlatformValidationError("withdrawal requires a reason")
+            self.session.execute(
+                text("""
+                    UPDATE house_numbering.address_numbers n
+                    SET kind='proposed',revision=revision+1,
+                        updated_by_actor_id=:actor,updated_at=:now
+                    FROM house_numbering.proposal_items i
+                    WHERE i.organization_id=:org AND i.project_id=:project
+                      AND i.proposal_id=:proposal
+                      AND n.organization_id=i.organization_id
+                      AND n.project_id=i.project_id
+                      AND n.id=i.source_number_id
+                      AND n.kind='submitted'
+                """),
+                {
+                    "actor": self.actor_id,
+                    "now": now,
+                    "org": self.org_id,
+                    "project": self.project_id,
+                    "proposal": proposal_id,
+                },
+            )
+            new_state, submitted_at, decided_at = "draft", None, now
         elif action == "reject" and state == "submitted" and reviewer:
             if not comment or not comment.strip():
                 raise PlatformValidationError("rejection requires a reason")
