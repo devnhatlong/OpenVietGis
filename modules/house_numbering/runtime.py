@@ -98,6 +98,30 @@ class RouteCreate(BaseModel):
         return stripped
 
 
+class RouteImportLayer(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    source_id: UUID
+    mapping: dict[Literal["name", "code", "parent_code", "prefix", "route_type"], str]
+    default_type: Literal["street", "alley"] = "street"
+    direction_state: Literal["forward", "reverse"] = "forward"
+
+
+class RouteImportOverride(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    parent_code: str = Field(max_length=200)
+    prefix: str = Field(max_length=100)
+
+
+class RouteImportBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    layers: list[RouteImportLayer] = Field(min_length=1, max_length=20)
+    overrides: dict[str, RouteImportOverride] = Field(default_factory=dict, max_length=5000)
+
+
+class RouteImportApply(RouteImportBody):
+    preview_token: str = Field(pattern=r"^[a-f0-9]{64}$")
+
+
 class RouteUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
     expected_revision: PositiveInt
@@ -276,6 +300,39 @@ def create_route(
 ) -> dict[str, object]:
     return _service(organization_id, project_id, auth, session).create_route(
         **body.model_dump()
+    )
+
+
+@router.post(f"{_PROJ}/route-import/preview")
+def preview_route_import(
+    organization_id: UUID,
+    project_id: UUID,
+    body: RouteImportBody,
+    auth: Annotated[AuthenticatedRequest, Depends(require_csrf)],
+    session: Annotated[Session, Depends(get_db_session, scope="function")],
+) -> dict[str, Any]:
+    from modules.house_numbering.route_import import RouteTreeImporter
+    service = _service(organization_id, project_id, auth, session)
+    return RouteTreeImporter(service.repo).preview(
+        [layer.model_dump() for layer in body.layers],
+        {key: value.model_dump() for key, value in body.overrides.items()},
+    )
+
+
+@router.post(f"{_PROJ}/route-import/apply", status_code=201)
+def apply_route_import(
+    organization_id: UUID,
+    project_id: UUID,
+    body: RouteImportApply,
+    auth: Annotated[AuthenticatedRequest, Depends(require_csrf)],
+    session: Annotated[Session, Depends(get_db_session, scope="function")],
+) -> dict[str, Any]:
+    from modules.house_numbering.route_import import RouteTreeImporter
+    service = _service(organization_id, project_id, auth, session)
+    return RouteTreeImporter(service.repo).apply(
+        [layer.model_dump() for layer in body.layers],
+        {key: value.model_dump() for key, value in body.overrides.items()},
+        body.preview_token,
     )
 
 
