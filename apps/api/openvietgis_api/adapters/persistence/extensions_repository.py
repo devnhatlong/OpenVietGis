@@ -37,6 +37,7 @@ from openvietgis_api.domains.extensions.domain import (
     manifest_contract,
     validate_manifest_contract,
     validate_record_against_schema,
+    validate_stored_manifest_for_mutation,
     verify_transition,
 )
 from openvietgis_api.domains.platform_errors import (
@@ -253,6 +254,7 @@ class SqlExtensionsRepository:
         )
         if mrow is None:
             raise PlatformNotFoundError("extension manifest not found")
+        validate_stored_manifest_for_mutation(self._manifest(context, manifest_id))
 
         existing = self._session.execute(
             text("""
@@ -417,8 +419,14 @@ class SqlExtensionsRepository:
     ) -> ExtensionManifestRecord:
         row = self._activation_row(context, extension_key)
         manifest = self._manifest(context, row["manifest_id"])
-        if row["status"] != "active" or not manifest.enabled or manifest.api_compatibility != "1.x":
+        if (
+            row["status"] != "active"
+            or manifest.extension_key != extension_key
+            or not manifest.enabled
+            or manifest.api_compatibility != "1.x"
+        ):
             raise PlatformNotFoundError("extension is not active and compatible in this project")
+        validate_stored_manifest_for_mutation(manifest)
         return manifest
 
     def _append_activation_event(
@@ -479,6 +487,8 @@ class SqlExtensionsRepository:
             )
         old = self._manifest(context, expected_manifest_id)
         target = self._manifest(context, target_manifest_id)
+        validate_stored_manifest_for_mutation(old)
+        validate_stored_manifest_for_mutation(target)
         verify_transition(old, target)
         now = datetime.now(UTC)
         row = (

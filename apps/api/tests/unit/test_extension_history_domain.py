@@ -14,6 +14,7 @@ from openvietgis_api.domains.extensions.domain import (
     canonical_bytes,
     validate_manifest_contract,
     validate_record_against_schema,
+    validate_stored_manifest_for_mutation,
     verify_transition,
 )
 from openvietgis_api.domains.platform_errors import PlatformConflictError, PlatformValidationError
@@ -139,3 +140,18 @@ def test_manifest_does_not_accept_executable_or_conflicting_contributions():
     ]:
         with pytest.raises(PlatformValidationError):
             validate_manifest_contract(**{**args, **change})
+
+
+def test_retained_legacy_manifest_requires_revalidation_for_mutation():
+    current = sample()
+    validate_stored_manifest_for_mutation(current)
+    legacy = replace(current, commands=[{"id": "read", "label": "Read"}])
+    for bad in (
+        legacy,
+        replace(current, commands=[{**current.commands[0], "script": "untrusted"}]),
+        replace(current, permissions=["project.manage"]),
+        replace(current, version="legacy"),
+    ):
+        with pytest.raises(PlatformConflictError) as error:
+            validate_stored_manifest_for_mutation(bad)
+        assert error.value.code == "EXTENSION_MANIFEST_REVALIDATION_REQUIRED"

@@ -76,6 +76,92 @@ def test_extension_lifecycle_scope_and_retained_records(migrated_database):
         assert reactivate.status_code == 201 and reactivate.json()["id"] == aid
 
 
+def test_legacy_manifest_mutation_block_preserves_authorized_retained_data(migrated_database):
+    world = seed_access_world()
+    other = seed_access_world()
+    org = f"/api/v1/organizations/{world.organization_id}"
+    base = f"{org}/projects/{world.project_id}/extensions"
+    payload = {
+        "extension_key": "retained_notes",
+        "version": "1.0.0",
+        "display_name": "Retained notes",
+        "permissions": ["ext.retained_notes.read"],
+        "commands": [
+            {"id": "read", "label": "Read", "required_permission": "ext.retained_notes.read"}
+        ],
+        "entity_schemas": {"note": {"fields": {"text": {"type": "text", "required": True}}}},
+    }
+    record = {"entity_name": "note", "payload": {"text": "retained"}}
+    with _client(world.owner_user_id) as owner, _client(other.owner_user_id) as outsider:
+        registered = owner.post(f"{org}/extensions/manifests", json=payload)
+        assert registered.status_code == 201, registered.text
+        mid = registered.json()["id"]
+        act = owner.post(f"{base}/activations", json={"manifest_id": mid})
+        assert act.status_code == 201, act.text
+        aid = act.json()["id"]
+        records = f"{base}/retained_notes/records"
+        made = owner.post(records, json=record)
+        assert made.status_code == 201, made.text
+        rid = made.json()["id"]
+        successor = owner.post(f"{org}/extensions/manifests", json={**payload, "version": "1.1.0"})
+        assert successor.status_code == 201, successor.text
+
+        # Synthetic legacy registration: pre-strict-contract versions could
+        # persist command metadata without required_permission. No execution.
+        with get_admin_engine().begin() as conn:
+            conn.execute(
+                text(
+                    "UPDATE extensions.manifests SET commands=CAST(:commands AS jsonb) "
+                    "WHERE organization_id=:org AND id=:id"
+                ),
+                {
+                    "commands": '[{"id":"read","label":"Read"}]',
+                    "org": world.organization_id,
+                    "id": mid,
+                },
+            )
+        before = owner.get(f"{records}/{rid}/history")
+        assert before.status_code == 200, before.text
+        export = owner.get(f"{base}/retained_notes/portable-export")
+        assert export.status_code == 200, export.text
+        for denied in (
+            owner.post(records, json=record),
+            owner.put(
+                f"{records}/{rid}",
+                json={
+                    "expected_revision": 1,
+                    "expected_manifest_id": mid,
+                    "payload": {"text": "changed"},
+                },
+            ),
+            owner.post(
+                f"{base}/retained_notes/portable-import",
+                json={**export.json(), "expected_manifest_id": mid},
+            ),
+            owner.post(
+                f"{base}/activations/{aid}/transition",
+                json={"expected_manifest_id": mid, "target_manifest_id": successor.json()["id"]},
+            ),
+        ):
+            assert denied.status_code == 409, denied.text
+            assert denied.json()["code"] == "EXTENSION_MANIFEST_REVALIDATION_REQUIRED"
+
+        # Command declarations are not an execution surface.
+        assert owner.post(f"{base}/retained_notes/commands/read").status_code in (404, 405)
+        assert owner.get(f"{records}/{rid}/history").json() == before.json()
+        assert owner.get(records).json()["items"] == [made.json()]
+        assert outsider.get(records).status_code in (403, 404)
+        assert owner.post(f"{base}/activations/{aid}/deactivate").status_code == 200
+        rejected = owner.post(f"{base}/activations", json={"manifest_id": mid})
+        assert rejected.status_code == 409, rejected.text
+        assert rejected.json()["code"] == "EXTENSION_MANIFEST_REVALIDATION_REQUIRED"
+        retained = owner.get(f"{base}/retained_notes/portable-export")
+        assert retained.status_code == 200, retained.text
+        assert retained.json()["bundle"]["activation_status"] == "disabled"
+        assert len(retained.json()["bundle"]["records"]) == 1
+        assert retained.json()["bundle"]["records"][0]["payload"] == record["payload"]
+
+
 def test_review_assignee_current_permission_and_immutable_decision(migrated_database):
     world = seed_access_world()
     org = f"/api/v1/organizations/{world.organization_id}"

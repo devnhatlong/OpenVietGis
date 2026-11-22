@@ -267,6 +267,30 @@ def manifest_contract(manifest: ExtensionManifestRecord) -> dict[str, Any]:
     }
 
 
+def validate_stored_manifest_for_mutation(manifest: ExtensionManifestRecord) -> None:
+    """Recheck retained metadata before a new mutation, never execute a contribution.
+
+    Older schema/registration versions preserved metadata that may not satisfy
+    today's contract. Keep data/history readable and exportable, but do not
+    activate or make new records under an unverified manifest.
+    """
+    try:
+        validate_manifest_contract(
+            extension_key=manifest.extension_key,
+            version=manifest.version,
+            api_compatibility=manifest.api_compatibility,
+            permissions=manifest.permissions,
+            commands=manifest.commands,
+            capabilities=manifest.capabilities,
+            entity_schemas=manifest.entity_schemas,
+        )
+    except (PlatformValidationError, TypeError, AttributeError) as exc:
+        raise PlatformConflictError(
+            "stored manifest no longer satisfies the metadata contract",
+            code="EXTENSION_MANIFEST_REVALIDATION_REQUIRED",
+        ) from exc
+
+
 def verify_transition(current: ExtensionManifestRecord, target: ExtensionManifestRecord) -> None:
     """A deliberately narrow, data-preserving metadata-only forward transition."""
     if (
