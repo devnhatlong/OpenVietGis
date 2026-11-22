@@ -139,8 +139,8 @@ test("M2+M3 end-to-end: R006 Editing, R007 Query, R008 Processing, R009 Cartogra
   await expect(collaboration).toBeVisible();
   const importedLayer = layers.items.find(layer => layer.source.kind === "imported_file");
   expect(importedLayer).toBeDefined();
-  await collaboration.getByLabel("Nguồn dữ liệu", {exact:true}).selectOption(importedLayer!.source_id);
-  const changed = collaboration.getByLabel("Bộ thay đổi", {exact:true});
+  await collaboration.getByRole("combobox", {name:"Nguồn dữ liệu",exact:true}).selectOption(importedLayer!.source_id);
+  const changed = collaboration.getByRole("combobox", {name:"Bộ thay đổi",exact:true});
   await expect(changed.getByRole("option")).toHaveCount(2);
   await changed.selectOption({index:1});
   await collaboration.getByRole("button", {name:"Chọn tài khoản của tôi"}).click();

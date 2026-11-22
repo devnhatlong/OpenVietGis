@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { createMapProject, mapSignIn } from "./map-fixtures";
+import { createMapProject, currentMap, mapSignIn } from "./map-fixtures";
 
 test.use({ viewport: { width: 1280, height: 900 }, trace: "off", screenshot: "off", video: "off" });
 
@@ -68,7 +68,9 @@ test("M1 end-to-end: import GeoJSON, view/select/save in Map Workspace, export f
 
   const shared = page.getByRole("region", { name: "Cấu hình bản đồ dùng chung" });
   await shared.getByRole("button", { name: "Lưu bản đồ", exact: true }).click();
-  await expect(page.getByTestId("map-save-status")).toContainText("phiên bản 1");
+  await expect(page.getByTestId("map-save-indicator")).toHaveAttribute("data-save-state", "saved");
+  await expect(page.getByTestId("map-save-status")).toContainText("phiên bản bản đồ 1");
+  expect((await currentMap(page, fixture)).configuration_revision).toBe(1);
 
   // 4. Return to Import & Export, preview and confirm lossless GeoPackage export of the fixed revision
   await page.goto(`${fixture.root}/transfers`);
