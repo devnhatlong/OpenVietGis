@@ -17,6 +17,8 @@ from openvietgis_api.adapters.http.security import (
     require_csrf,
 )
 from openvietgis_api.adapters.persistence.editing_repository import SqlEditingRepository
+from openvietgis_api.adapters.persistence.scope_helper import prepare_project_scope
+from openvietgis_api.domains.authorization.permissions import Permission
 from openvietgis_api.domains.editing.domain import (
     ChangesetOperationRecord,
     ChangesetRecord,
@@ -92,6 +94,7 @@ class PublicChangesetOperation(BaseModel):
 
 class CommitChangesetRequest(PublicChangesetOperation):
     base_content_revision: str
+    base_schema_revision: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
     summary: str = Field(default="Feature edit", max_length=500)
     operations: list[EditOperationRequest]
 
@@ -123,6 +126,7 @@ def commit_changeset(
         context=ctx,
         source_id=source_id,
         base_content_revision=body.base_content_revision,
+        base_schema_revision=body.base_schema_revision,
         operation_id=body.operation_id,
         summary=body.summary,
         operations=[
@@ -193,8 +197,10 @@ def compute_snap(
     project_id: UUID,
     body: SnapRequest,
     auth: Annotated[AuthenticatedRequest, Depends(require_csrf)],
+    session: Annotated[Session, Depends(get_db_session, scope="function")],
 ) -> dict[str, Any]:
-    _ = context_for(auth, organization_id=organization_id, project_id=project_id)
+    ctx = context_for(auth, organization_id=organization_id, project_id=project_id)
+    prepare_project_scope(session, ctx, permission=Permission.PROJECT_EDIT)
     return snap_point_to_candidates(
         target=body.target,
         vertices=body.vertices,

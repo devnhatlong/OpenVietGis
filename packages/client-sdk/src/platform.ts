@@ -112,6 +112,25 @@ export interface PrintLayout {
   created_at: string;
 }
 
+export interface PrintRevisionManifest {
+  layout_id: string;
+  layout_revision: string;
+  crs_code: number;
+  output_format: "png" | "pdf";
+  dpi: 150 | 300;
+  pixel_width: number;
+  pixel_height: number;
+  scale_denominator: number;
+  scale_accuracy_note: string;
+  effective_extent: { min_x: number; min_y: number; max_x: number; max_y: number };
+  layers: Array<{ layer_id: string; source_id: string; layer_revision: number; content_revision: string; schema_revision: string; style_revision: number }>;
+}
+
+export interface PrintExportPreview {
+  revision_manifest: PrintRevisionManifest;
+  revision_fingerprint: string;
+}
+
 export interface PrintExport {
   id: string;
   layout_id: string;
@@ -119,6 +138,7 @@ export interface PrintExport {
   dpi: number;
   scale_denominator: number;
   scale_accuracy_note: string;
+  revision_manifest: Record<string, unknown>;
   sha256: string;
   byte_size: number;
   created_at: string;
@@ -151,11 +171,22 @@ export interface ExternalConnection {
 
 export interface ProjectActivity {
   id: string;
+  actor_type: string;
+  actor_id: string;
   actor_display: string;
   event_kind: string;
+  resource_type: string;
+  resource_id: string;
   summary: string;
   revision_ref: string | null;
+  metadata: Record<string, unknown>;
   created_at: string;
+}
+
+export interface ProjectActivityPage {
+  items: ProjectActivity[];
+  cutoff: string;
+  next_cursor: string | null;
 }
 
 export interface ChangeReview {
@@ -349,6 +380,7 @@ export function commitChangeset(
   sourceId: string,
   body: {
     base_content_revision: string;
+    base_schema_revision?: string;
     operation_id: string;
     summary: string;
     operations: Array<{
@@ -526,12 +558,26 @@ export function createPrintLayout(
   });
 }
 
-export function exportPrintLayout(
+export function previewPrintExport(
   client: ApiClient,
   orgId: string,
   projectId: string,
   layoutId: string,
   body: { output_format: "png" | "pdf"; dpi: 150 | 300 },
+  csrf: string
+): Promise<PrintExportPreview> {
+  return client.request<PrintExportPreview>(
+    `${projBase(orgId, projectId)}/cartography/layouts/${encodeURIComponent(layoutId)}/exports/preview`,
+    { method: "POST", body: JSON.stringify(body), headers: csrfHeaders(csrf) }
+  );
+}
+
+export function exportPrintLayout(
+  client: ApiClient,
+  orgId: string,
+  projectId: string,
+  layoutId: string,
+  body: { output_format: "png" | "pdf"; dpi: 150 | 300; expected_revision_fingerprint: string },
   csrf: string
 ): Promise<PrintExport> {
   return client.request<PrintExport>(
@@ -650,6 +696,14 @@ export interface ExternalProviderPreview {
         allow_viewport: boolean;
         approved_bbox: [number, number, number, number];
       };
+  feature_result?: {
+    returned: number;
+    provider_reported_matched: number | null;
+    request_limit: number;
+    limit_reached: boolean;
+    coverage: "unknown" | "partial" | "provider_reported_complete";
+    continuation_available: false;
+  };
   feature_collection?: {
     type: "FeatureCollection";
     features: Array<{
@@ -699,10 +753,16 @@ export function previewExternalProviderViewport(
 export function listProjectActivities(
   client: ApiClient,
   orgId: string,
-  projectId: string
-): Promise<{ items: ProjectActivity[] }> {
-  return client.request<{ items: ProjectActivity[] }>(
-    `${projBase(orgId, projectId)}/collaboration/activities`
+  projectId: string,
+  options: { limit?: number; cursor?: string } = {}
+): Promise<ProjectActivityPage> {
+  const params = new URLSearchParams();
+  if (options.limit !== undefined) params.set("limit", String(options.limit));
+  if (options.cursor !== undefined) params.set("cursor", options.cursor);
+  const query = params.toString();
+  return client.request<ProjectActivityPage>(
+    `${projBase(orgId, projectId)}/collaboration/activities${query ? "?" + query : ""}`,
+    { cache: "no-store" }
   );
 }
 
@@ -753,7 +813,7 @@ export function listReviewComments(
 
 export function addReviewComment(
   client: ApiClient, orgId: string, projectId: string, reviewId: string,
-  body: { body: string; feature_id: string | null }, csrf: string
+  body: { body: string; feature_id: string | null; operation_id?: string }, csrf: string
 ): Promise<ReviewComment> {
   return client.request<ReviewComment>(
     `${projBase(orgId, projectId)}/collaboration/reviews/${encodeURIComponent(reviewId)}/comments`,
@@ -904,6 +964,14 @@ export function offlinePackageDownloadUrl(
   return `/api/v1${projBase(orgId, projectId)}/field/packages/${encodeURIComponent(packageId)}/download`;
 }
 
+export interface OfflineOperationReceipt {
+  client_operation_id: string;
+  local_feature_id: string;
+  core_feature_id: string | null;
+  status: "applied" | "not_applied";
+  changeset_id: string | null;
+}
+
 export function syncOfflineOutbox(
   client: ApiClient,
   orgId: string,
@@ -911,7 +979,7 @@ export function syncOfflineOutbox(
   packageId: string,
   body: { operation_id: string; operations: Array<Record<string, unknown>> },
   csrf: string
-): Promise<{ id: string; status: string; applied_changeset_ids: string[]; conflicts: unknown[] }> {
+): Promise<{ id: string; status: string; applied_changeset_ids: string[]; conflicts: unknown[]; operation_receipts?: OfflineOperationReceipt[] }> {
   return client.request(
     `${projBase(orgId, projectId)}/field/packages/${encodeURIComponent(packageId)}/sync`,
     { method: "POST", body: JSON.stringify(body), headers: csrfHeaders(csrf) }

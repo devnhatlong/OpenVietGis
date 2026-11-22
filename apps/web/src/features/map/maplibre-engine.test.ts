@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { RenderLayer, MapEngine } from "./engine";
+import { BASEMAP_OPTIONS, isBasemapAvailable, LOCAL_BASEMAP, ONLINE_BASEMAP_UNAVAILABLE, type RenderLayer, type MapEngine } from "./engine";
 import { createMapLibreEngine } from "./maplibre-engine";
 
 const fake = vi.hoisted(() => {
@@ -52,6 +52,29 @@ describe("MapLibre renderer invalidation and bounded work",()=>{
     ready.mockClear();
   });
   afterEach(()=>{engine.destroy();vi.unstubAllGlobals();});
+
+  it("permits only the local grid and cannot construct remote raster sources even through a direct adapter call",()=>{
+    expect(LOCAL_BASEMAP).toBe("grid");
+    expect(BASEMAP_OPTIONS.filter(option=>option.available).map(option=>option.id)).toEqual(["grid"]);
+    expect(ONLINE_BASEMAP_UNAVAILABLE).toContain("chưa được cấu hình/phê duyệt");
+    for(const option of BASEMAP_OPTIONS.filter(option=>option.id!=="grid")){
+      expect(isBasemapAvailable(option.id)).toBe(false);
+      engine.setBasemap(option.id);
+    }
+    expect(fake.addSource).not.toHaveBeenCalled();
+    // A call before native load must not store an unapproved provider for
+    // the load callback to activate later either.
+    engine.destroy();
+    engine=createMapLibreEngine({querySelector:()=>null} as unknown as HTMLElement,{
+      viewport:vi.fn(),pick:vi.fn(),ready,error:vi.fn()
+    });
+    engine.setBasemap("google-hybrid");
+    fake.handlers.get("load")?.();
+    expect(fake.addSource).not.toHaveBeenCalled();
+    engine.setLayers([point("p")]);
+    expect(fake.addSource).toHaveBeenCalledTimes(1);
+    expect(fake.addSource).toHaveBeenCalledWith(expect.stringMatching(/^project-data-/),expect.objectContaining({type:"geojson"}));
+  });
 
   it("loads three geometry sources once and leaves an identical settled frame alone",()=>{
     engine.setLayers([point("p"),line("l"),polygon("a")]);

@@ -87,3 +87,59 @@ test("a delayed detail result cannot replace a new layer selection and reconnect
     await viewerContext.close();
   }
 });
+
+test("one mismatched metadata response is concealed without blocking the other authorized references", async ({page})=>{
+  test.setTimeout(180_000);
+  await mapSignIn(page);
+  const fixture=await createMapProject(page,Date.now().toString()+"-bad-metadata");
+  await registerMapReferences(page,fixture);
+  await saveFixtureMap(page,fixture);
+  const points=fixture.layers.find(layer=>layer.name==="Points")!;
+  const lines=fixture.layers.find(layer=>layer.name==="Lines")!;
+  const isPoints=(url:URL)=>url.pathname===fixture.api+"/layers/"+points.id;
+  let altered=false,pointViewportRequested=false;
+  page.on("request",request=>{
+    if(new URL(request.url()).pathname===fixture.api+"/layers/"+points.id+"/viewport")pointViewportRequested=true;
+  });
+  // Fetch a real, authorized payload, then model a wrong layer in a successful
+  // response; neither its name nor geometry may be treated as the requested layer.
+  await page.route(isPoints,async route=>{
+    const actual=await route.fetch();
+    expect(actual.status()).toBe(200);
+    const payload=await actual.json();
+    expect(payload.id).toBe(points.id);
+    altered=true;
+    await route.fulfill({response:actual,json:{...payload,id:lines.id,name:"WRONG RESPONSE NAME"}});
+  });
+  await openFixtureMap(page,fixture);
+  expect(altered).toBe(true);
+  expect(pointViewportRequested).toBe(false);
+  const unavailable=page.getByTestId("map-layer-"+points.id);
+  await expect(unavailable).toContainText("Không khả dụng");
+  await expect(unavailable).not.toContainText("WRONG RESPONSE NAME");
+  await page.getByText("Tìm nhanh lệnh", {exact:true}).click();
+  await page.getByRole("textbox",{name:"Tìm lệnh bản đồ"}).fill("Mở lớp");
+  await expect(page.getByRole("button",{name:"Mở lớp: WRONG RESPONSE NAME",exact:true})).toHaveCount(0);
+  await page.getByRole("button",{name:"Mở lớp: Lines",exact:true}).click();
+  await expect(page.getByTestId("accessible-map-summary")).toContainText("Lớp hiện hành: Lines");
+  const table=page.getByRole("table",{name:"Bảng thuộc tính theo phiên bản"});
+  await table.getByRole("button",{name:"line-000001",exact:true}).click();
+  await expect(page.getByTestId("map-inspector")).toHaveAttribute("data-feature-id","line-000001");
+  await page.unroute(isPoints);
+  await page.getByRole("button",{name:"Kiểm tra lại quyền truy cập",exact:true}).click();
+  await expect(unavailable).toContainText("Points");
+  await expect(page.getByTestId("map-engine-ready")).toHaveAttribute("data-ready","true");
+
+  // A settled wrong outer map scope must not mount the workspace or leave a
+  // misleading indefinite loading state.
+  await page.route(url=>url.pathname===fixture.api+"/map",async route=>{
+    const actual=await route.fetch();
+    expect(actual.status()).toBe(200);
+    const payload=await actual.json();
+    expect(payload.project_id).toBe(fixture.projectId);
+    await route.fulfill({response:actual,json:{...payload,project_id:"wrong-project"}});
+  });
+  await page.reload();
+  await expect(page.getByRole("alert").filter({hasText:"Không thể xác nhận phạm vi dữ liệu và quyền truy cập bản đồ dự án này"})).toBeVisible();
+  await expect(page.getByTestId("map-workspace")).toHaveCount(0);
+});

@@ -166,6 +166,7 @@ class SqlEditingRepository:
         summary: str,
         operations: Sequence[EditOperationInput],
         reverted_from_changeset_id: UUID | None = None,
+        base_schema_revision: str | None = None,
     ) -> ChangesetRecord:
         self._prepare(context, permission=Permission.PROJECT_EDIT)
         assert context.organization_id is not None and context.project_id is not None
@@ -182,7 +183,24 @@ class SqlEditingRepository:
             summary=clean_summary,
             operations=operations,
             reverted_from_changeset_id=reverted_from_changeset_id,
+            base_schema_revision=base_schema_revision,
         )
+        # Serialize replay lookup with source mutation so concurrent identical
+        # retries observe the winner's receipt instead of a stale-revision error.
+        src_row = (
+            self._session.execute(
+                text("""
+                SELECT * FROM spatial.data_sources
+                WHERE organization_id = :org AND project_id = :proj AND id = :src
+                FOR UPDATE
+            """),
+                {"org": org_id, "proj": project_id, "src": source_id},
+            )
+            .mappings()
+            .first()
+        )
+        if src_row is None:
+            raise PlatformNotFoundError("data source not found")
         # The immutable audit row binds the exact request; legacy rows without a
         # digest cannot safely be re-acknowledged from a different payload.
         existing = (
@@ -217,21 +235,6 @@ class SqlEditingRepository:
             raise PlatformValidationError(
                 "changeset requires at least one operation", code="EMPTY_CHANGESET"
             )
-        # Lock source row for short atomic revision-checked commit
-        src_row = (
-            self._session.execute(
-                text("""
-                SELECT * FROM spatial.data_sources
-                WHERE organization_id = :org AND project_id = :proj AND id = :src
-                FOR UPDATE
-            """),
-                {"org": org_id, "proj": project_id, "src": source_id},
-            )
-            .mappings()
-            .first()
-        )
-        if src_row is None:
-            raise PlatformNotFoundError("data source not found")
         source = _source_from_row(src_row)
         if source.lifecycle != Lifecycle.ACTIVE or source.validation_state != ValidationState.READY:
             raise PlatformValidationError("source is not active and ready", code="SOURCE_NOT_READY")
@@ -254,7 +257,22 @@ class SqlEditingRepository:
                 },
             )
 
+        if base_schema_revision is not None and source.schema_revision != base_schema_revision:
+            raise PlatformConflictError(
+                "stale schema revision; refresh and review field identities before reapplying",
+                code="STALE_SCHEMA_REVISION",
+                details={
+                    "expected_schema_revision": base_schema_revision,
+                    "current_schema_revision": source.schema_revision,
+                    "draft_preserved": True,
+                },
+            )
         fields = self._load_fields(org_id, project_id, source_id)
+        if any(field.schema_revision != source.schema_revision for field in fields):
+            raise PlatformConflictError(
+                "source field schema does not match its current revision",
+                code="STALE_SCHEMA_REVISION",
+            )
         now = datetime.now(UTC)
 
         # Snapshot and validate every operation before mutating
@@ -356,6 +374,16 @@ class SqlEditingRepository:
                     }
                 )
                 fingerprint.append({"op": "delete", "fid": fid})
+
+        if all(
+            item["op_type"] == "update"
+            and item["before_wkb"] == item["after_wkb"]
+            and item["before_props"] == item["after_props"]
+            for item in prepared_ops
+        ):
+            raise PlatformConflictError(
+                "changeset does not contain a material change", code="NO_MATERIAL_CHANGE"
+            )
 
         new_content_rev = compute_content_revision(source_id, source.content_revision, fingerprint)
         new_catalog_rev = source.catalog_revision + 1
@@ -501,6 +529,8 @@ class SqlEditingRepository:
                 "request_sha256": request_digest,
                 "operation_count": len(prepared_ops),
                 "base_content_revision": source.content_revision,
+                "base_schema_revision": source.schema_revision,
+                "submitted_schema_revision": base_schema_revision,
                 "resulting_content_revision": new_content_rev,
             },
             created_at=now,

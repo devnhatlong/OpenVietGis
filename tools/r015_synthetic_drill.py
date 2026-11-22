@@ -1,9 +1,9 @@
-"""Opt-in isolated R015 recovery drill using the synthetic v2 checkpoint.
+"""Opt-in isolated R015 schema 0019 recovery drill from the pinned synthetic v2 checkpoint.
 
-Run only on the dedicated remediation Docker container with the baseline test
-backup. Creates four new synthetic databases and new private directories; does
-not change the original fixture, source DB, cluster roles, or production. Leaves
-synthetic targets for inspection. No runtime CONNECT privilege is granted.
+Run only on the new disposable, explicitly labeled loopback Docker container.
+Creates four new synthetic databases and private directories; never changes the
+original fixture, pre-existing databases, or production. Leaves synthetic targets
+for inspection. No runtime CONNECT privilege is granted.
 """
 
 from __future__ import annotations
@@ -14,6 +14,7 @@ import os
 import secrets
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 from uuid import uuid4
 
@@ -28,11 +29,18 @@ from tools.backup_restore import (
     backup_docker_postgres_and_artifacts,
     verify_isolated_restore_docker,
 )
+from tools.r015_extension_oracle import (
+    REVISION,
+    fingerprint,
+    seed,
+    verify_denied,
+    verify_http,
+)
 
-CONTAINER = "ovg-next018-postgres"
+CONTAINER = "ovg-r015-head-postgres"
 DB_USER = "openvietgis"
 # Explicitly disposable credentials and loopback for the dedicated drill only.
-ADMIN_URL = "postgresql+psycopg://openvietgis:openvietgis@127.0.0.1:54334/"
+ADMIN_URL = "postgresql+psycopg://openvietgis:openvietgis@127.0.0.1:54341/"
 FIXTURE = Path("/opt/openvietgis-remediation-018/dist/remediation018/backup-v2-run1")
 
 
@@ -99,6 +107,22 @@ def _session(engine, user, issue_session_token):
 def main() -> None:
     if os.environ.get("OPENVIETGIS_R015_SYNTHETIC_DRILL") != "confirmed":
         raise RuntimeError("Confirm dedicated synthetic R015 drill explicitly")
+    # Explicit identity/port gate: reject even a same-name accidental target.
+    binding = subprocess.check_output(
+        [
+            "docker",
+            "inspect",
+            "--format",
+            '{{index .Config.Labels "org.openvietgis.purpose"}} {{json .HostConfig.PortBindings}}',
+            CONTAINER,
+        ],
+        text=True,
+    ).strip()
+    label, port_json = binding.split(" ", 1)
+    assert label == "r015-head-synthetic"
+    assert json.loads(port_json) == {
+        "5432/tcp": [{"HostIp": "127.0.0.1", "HostPort": "54341"}]
+    }
     # Only the exact parent checkpoint's independently hashed synthetic input.
     fixture_manifest = FIXTURE / "backup-manifest.json"
     assert _digest(fixture_manifest)["sha256"] == (
@@ -125,7 +149,7 @@ def main() -> None:
         {
             "OPENVIETGIS_ENVIRONMENT": "test",
             "OPENVIETGIS_DATABASE_URL": ADMIN_URL + reconciled,
-            "OPENVIETGIS_RUNTIME_DATABASE_URL": "postgresql+psycopg://openvietgis_runtime:synthetic@127.0.0.1:54334/"
+            "OPENVIETGIS_RUNTIME_DATABASE_URL": "postgresql+psycopg://openvietgis_runtime:synthetic@127.0.0.1:54341/"
             + reconciled,
             "OPENVIETGIS_ARTIFACT_STORE_DIR": str(
                 (root / "reconciled-artifacts").resolve()
@@ -134,6 +158,28 @@ def main() -> None:
             "OPENVIETGIS_CSRF_SECRET": "synthetic-r015-csrf",
             "OPENVIETGIS_BOOTSTRAP_SECRET": "synthetic-r015-bootstrap",
         }
+    )
+    # Migrate the exact pinned 0018 fixture, before any 0019 data is written.
+    migration_env = os.environ.copy() | {
+        "OPENVIETGIS_DATABASE_URL": ADMIN_URL + source,
+        "OPENVIETGIS_MIGRATION_DATABASE_URL": ADMIN_URL + source,
+    }
+    subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "alembic",
+            "-c",
+            "apps/api/alembic.ini",
+            "upgrade",
+            "head",
+        ],
+        env=migration_env,
+        check=True,
+    )
+    assert (
+        _sql(CONTAINER, DB_USER, source, "SELECT version_num FROM alembic_version")
+        == REVISION
     )
     from fastapi.testclient import TestClient
     from openvietgis_api.adapters.http.security import get_db_session
@@ -274,6 +320,17 @@ def main() -> None:
         )
     old_owner_session = _session(source_engine, owner, issue_session_token)
     old_member_session = _session(source_engine, member, issue_session_token)
+    extension_proof = seed(
+        source_engine,
+        ADMIN_URL + source,
+        org,
+        project,
+        owner,
+        member,
+        old_owner_session,
+        old_member_session,
+    )
+    extension_before = fingerprint(source_engine, extension_proof)
     source_engine.dispose()
 
     # A test-only key independent of the snapshot and both restored artifact roots.
@@ -283,7 +340,7 @@ def main() -> None:
         os.open(signing_key, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600), "wb"
     ) as out:
         out.write(secrets.token_bytes(32))
-    provenance = "synthetic-r015-drill"
+    provenance = "synthetic-r015-head-0019-drill"
     snapshot = backup_docker_postgres_and_artifacts(
         container_name=CONTAINER,
         db_user=DB_USER,
@@ -404,6 +461,11 @@ def main() -> None:
             == "f"
         )
 
+    for db in (quarantine, reconciled):
+        ext_engine = create_engine(ADMIN_URL + db)
+        assert fingerprint(ext_engine, extension_proof) == extension_before
+        ext_engine.dispose()
+
     # Exercise actual application storage reader with every required restored object.
     store = LocalObjectStore(root / "reconciled-artifacts")
     for ref in snapshot["references"]:
@@ -419,6 +481,9 @@ def main() -> None:
     # This fresh verified-identity test session proves a revoked project membership
     # cannot gain old grant authority even after authentication succeeds.
     member_token = _session(target_engine, member, issue_session_token)
+    outsider_token = _session(
+        target_engine, extension_proof["outsider"], issue_session_token
+    )
     runtime_engine = create_engine(ADMIN_URL + reconciled)
 
     @event.listens_for(runtime_engine, "connect")
@@ -456,6 +521,10 @@ def main() -> None:
         client.cookies.set("ovg_session", member_token)
         assert client.get("/api/v1/me").status_code == 200
         assert client.get(download).status_code in (403, 404)
+        verify_denied(client, extension_proof)
+        client.cookies.set("ovg_session", outsider_token)
+        assert client.get("/api/v1/me").status_code == 200
+        verify_denied(client, extension_proof)
         client.cookies.set("ovg_session", owner_token)
         response = client.get(download)
         assert response.status_code == 200, response.text[:200]
@@ -467,12 +536,14 @@ def main() -> None:
         csrf = client.get("/api/v1/auth/csrf")
         assert csrf.status_code == 200
         client.headers["X-OpenVietGIS-CSRF"] = csrf.json()["token"]
+        verify_http(client, extension_proof)
         p_response = client.post(f"{url}/processing/jobs/{processing_id}/retry")
         assert p_response.status_code == 409, p_response.text
         assert p_response.json()["code"] == "RECOVERY_QUARANTINED"
         t_response = client.post(f"{url}/jobs/{transfer_id}/retry")
         assert t_response.status_code == 409, t_response.text
     runtime_engine.dispose()
+    assert fingerprint(target_engine, extension_proof) == extension_before
     target_engine.dispose()
     checks_after = _inventory(CONTAINER, DB_USER, reconciled)[1]
     assert checks_after == snapshot["database_checks"]
@@ -481,6 +552,18 @@ def main() -> None:
         json.dumps(
             {
                 "drill_root": str(root),
+                "schema_revision": REVISION,
+                "extension_table_fingerprints": extension_before,
+                "extension_portable_export_sha256": extension_proof["export"]["sha256"],
+                "extension_replayed_receipt_id": extension_proof["receipt"],
+                "extension_checks": {
+                    "full_rows_original_quarantine_reconciled_and_post_replay_equal": True,
+                    "scoped_ownership_core_geometry_pins_and_receipt_mapping_equal": True,
+                    "forced_rls_and_append_only_privileges": True,
+                    "legacy_baselines_preserved": True,
+                    "owner_history_export_receipt_replay_equal": True,
+                    "revoked_member_and_outsider_fresh_sessions_denied": True,
+                },
                 "closed_recovery": closed,
                 "reconciled_recovery": report,
                 "application_checks": {

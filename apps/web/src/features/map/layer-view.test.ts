@@ -67,6 +67,13 @@ describe("layer panel view", () => {
     ).toBe("unsupported");
   });
 
+  it("does not show stale or invented layer names after a denied or mismatched read", () => {
+    expect(buildLayerPanelItemView(ref, undefined, "permission", null, 0, 1))
+      .toMatchObject({ name: "Lớp không khả dụng", availability: "permission", canZoom: false });
+    expect(buildLayerPanelItemView(ref, undefined, "unavailable", null, 0, 1))
+      .toMatchObject({ name: "Lớp không khả dụng", availability: "unavailable", canZoom: false });
+  });
+
   it("preserves partial and stale states explicitly", () => {
     expect(
       buildLayerPanelItemView(ref, layerWith(), "partial — bounded", "layer-1", 0, 2)

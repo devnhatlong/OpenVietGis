@@ -108,11 +108,14 @@ function OpenPackage({ record, snapshot, online, save, sync, disabled }: {
       disabled={!canEdit} save={async d => { await save(queueDraft(record, d)); setSelection(d.feature_id); }}/>}
     <h3>Hàng đợi bản nháp · {record.drafts.length}</h3>
     <p>Bản nháp không phải dữ liệu đã xuất bản. Tất cả thay đổi dùng cùng mốc phiên bản.</p>
-    <ul>{record.drafts.map(d => <li key={d.feature_id}>
+    <ul>{record.drafts.map(d => {
+      const result = record.batch?.receipt?.operation_receipts?.find(r => r.client_operation_id === d.client_operation_id);
+      return <li key={d.feature_id}>
       {d.op_type === "create" ? "Tạo điểm" : "Sửa thuộc tính"} — {d.feature_id} — {record.batch?.receipt?.status ?? (record.batch?.attempted ? "đã gửi, chờ xác nhận" : "đang chờ")}
+      {result && <span> · Core: {result.core_feature_id ?? "Không xuất bản"}</span>}
       <button type="button" onClick={() => {setSelection(d.feature_id);setCompare(null);}}>Xem</button>
       {canEdit && <button type="button" onClick={() => {if (window.confirm("Bỏ bản nháp này?")) void save({...record, drafts: record.drafts.filter(x => x.feature_id !== d.feature_id)});}}>Bỏ nháp</button>}
-    </li>)}</ul>
+    </li>;})}</ul>
     <button type="button" disabled={!online || disabled || !record.drafts.length || Boolean(record.batch?.receipt)} onClick={() => {if (window.confirm("Gửi toàn bộ nhóm thay đổi để máy chủ kiểm tra quyền và phiên bản?")) void sync();}}>
       {record.batch?.attempted ? "Thử lại đúng nhóm đã gửi" : "Đồng bộ nhóm bản nháp"}
     </button>

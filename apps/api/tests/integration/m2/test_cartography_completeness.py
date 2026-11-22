@@ -36,7 +36,7 @@ def test_print_export_rejects_incomplete_layout(migrated_database):
         created = client.post(f"{base}/cartography/layouts", json=layout)
         assert created.status_code == 201, created.text
         export = client.post(
-            f"{base}/cartography/layouts/{created.json()['id']}/exports",
+            f"{base}/cartography/layouts/{created.json()['id']}/exports/preview",
             json={"output_format": "png", "dpi": 150},
         )
         assert export.status_code == 422, export.text

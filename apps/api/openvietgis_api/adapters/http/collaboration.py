@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Annotated, Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Response
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
@@ -19,6 +19,7 @@ from openvietgis_api.adapters.http.security import (
 from openvietgis_api.adapters.persistence.collaboration_repository import (
     SqlCollaborationRepository,
 )
+from openvietgis_api.domains.collaboration.activity_cursor import CURSOR_MAX_LENGTH
 from openvietgis_api.domains.collaboration.domain import (
     ActivityRecord,
     ChangeReviewRecord,
@@ -92,6 +93,7 @@ class AddCommentRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     body: str
     feature_id: str | None = None
+    operation_id: UUID | None = None
 
 
 class ConflictRebaseRequest(BaseModel):
@@ -106,11 +108,22 @@ def list_activities(
     project_id: UUID,
     auth: Annotated[AuthenticatedRequest, Depends(authenticate_request)],
     session: Annotated[Session, Depends(get_db_session, scope="function")],
+    response: Response,
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
+    cursor: Annotated[str | None, Query(min_length=1, max_length=CURSOR_MAX_LENGTH)] = None,
 ) -> dict[str, Any]:
     ctx = context_for(auth, organization_id=organization_id, project_id=project_id)
-    items = SqlCollaborationRepository(session).list_activities(context=ctx, limit=limit)
-    return {"items": [_act_wire(a) for a in items]}
+    items, cutoff, next_cursor = SqlCollaborationRepository(session).list_activities(
+        context=ctx,
+        limit=limit,
+        cursor=cursor,
+    )
+    response.headers["Cache-Control"] = "no-store"
+    return {
+        "items": [_act_wire(a) for a in items],
+        "cutoff": cutoff.isoformat(),
+        "next_cursor": next_cursor,
+    }
 
 
 @router.post(f"{_BASE}/collaboration/reviews", status_code=201)
@@ -181,6 +194,7 @@ def add_comment(
             review_id=review_id,
             body=body.body,
             feature_id=body.feature_id,
+            operation_id=body.operation_id,
         )
     )
 

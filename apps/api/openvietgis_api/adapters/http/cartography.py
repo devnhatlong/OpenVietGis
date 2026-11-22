@@ -7,7 +7,7 @@ from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Response
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
 from openvietgis_api.adapters.http.authorization import context_for
@@ -105,10 +105,14 @@ class CreateLayoutRequest(BaseModel):
     extent: dict[str, float] | None = None
 
 
-class ExportLayoutRequest(BaseModel):
+class PreviewLayoutExportRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     output_format: PrintFormat = PrintFormat.PNG
     dpi: int = 150
+
+
+class ExportLayoutRequest(PreviewLayoutExportRequest):
+    expected_revision_fingerprint: str = Field(pattern=r"^[0-9a-f]{64}$")
 
 
 @router.put(f"{_BASE}/cartography/layers/{{layer_id}}/style")
@@ -181,6 +185,21 @@ def list_layouts(
     return {"items": [_layout_wire(lo) for lo in _repo(session).list_layouts(context=ctx)]}
 
 
+@router.post(f"{_BASE}/cartography/layouts/{{layout_id}}/exports/preview")
+def preview_layout_export(
+    organization_id: UUID,
+    project_id: UUID,
+    layout_id: UUID,
+    body: PreviewLayoutExportRequest,
+    auth: Annotated[AuthenticatedRequest, Depends(require_csrf)],
+    session: Annotated[Session, Depends(get_db_session, scope="function")],
+) -> dict[str, Any]:
+    ctx = context_for(auth, organization_id=organization_id, project_id=project_id)
+    return _repo(session).preview_export(
+        context=ctx, layout_id=layout_id, output_format=body.output_format, dpi=body.dpi
+    )
+
+
 @router.post(f"{_BASE}/cartography/layouts/{{layout_id}}/exports", status_code=201)
 def export_layout(
     organization_id: UUID,
@@ -196,6 +215,7 @@ def export_layout(
         layout_id=layout_id,
         output_format=body.output_format,
         dpi=body.dpi,
+        expected_revision_fingerprint=body.expected_revision_fingerprint,
     )
     return _export_wire(rec)
 

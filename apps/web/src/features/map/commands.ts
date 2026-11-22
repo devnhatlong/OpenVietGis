@@ -7,7 +7,12 @@ export type MapCommandId =
   | "map.save"
   | "map.set-default-viewpoint"
   | "map.zoom-in"
-  | "map.zoom-out";
+  | "map.zoom-out"
+  | "map.open-projects"
+  | "map.open-catalog"
+  | "map.open-transfers"
+  | "map.open-access"
+  | `map.open-layer:${string}`;
 
 export type LayerCommandId =
   | "layer.zoom"
@@ -41,6 +46,10 @@ export interface CommandContext {
   canSave: boolean;
   busy: boolean;
   canAddData?: boolean;
+  navigation?: {
+    canManageAccess: boolean;
+    layers: readonly { id: string; name: string }[];
+  };
 }
 
 export interface LayerCommandContext {
@@ -105,6 +114,22 @@ export function createCommands(
     ["map.zoom-out", "Thu nhỏ (-)", true, ""]
   ];
 
+  if (context.navigation) {
+    definitions.push(
+      ["map.open-projects", "Mở danh sách dự án", true, ""],
+      ["map.open-catalog", "Mở danh mục lớp dữ liệu", true, ""],
+      ["map.open-transfers", "Mở Nhập / Xuất dữ liệu", true, ""]
+    );
+    // Omit unauthorized management and unknown layer names rather than
+    // disclosing capabilities or metadata from stale/denied reads.
+    if (context.navigation.canManageAccess) {
+      definitions.push(["map.open-access", "Mở Thành viên & Phân quyền", true, ""]);
+    }
+    for (const layer of context.navigation.layers) {
+      definitions.push([`map.open-layer:${layer.id}`, "Mở lớp: " + layer.name, true, ""]);
+    }
+  }
+
   return definitions.map(([id, label, enabled, reason]) => ({
     id,
     label,
@@ -116,6 +141,11 @@ export function createCommands(
         : reason,
     execute: () => run(id)
   }));
+}
+
+/** Navigation and per-layer activation are search actions, not canvas context tools. */
+export function isCanvasCommand(command: MapCommand): boolean {
+  return !command.id.startsWith("map.open-");
 }
 
 export function createLayerCommands(

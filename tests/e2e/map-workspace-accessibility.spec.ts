@@ -126,4 +126,43 @@ test("supports keyboard and textual alternatives across the GIS workspace", asyn
     });
   expect(focusStyle.outlineStyle).not.toBe("none");
   expect(focusStyle.outlineWidth).not.toBe("0px");
+
+  // Search activates an exact currently authorized map layer and exposes the
+  // observed (not inferred) content/schema pins only in the secondary inspector.
+  async function searchCommand(label: string) {
+    await page.getByText("Tìm nhanh lệnh", { exact: true }).click();
+    await page.getByRole("textbox", { name: "Tìm lệnh bản đồ" }).fill(label);
+    await page.getByRole("button", { name: label, exact: true }).click();
+  }
+  await searchCommand("Mở lớp: Points");
+  await expect(page.getByTestId("accessible-map-summary")).toContainText("Lớp hiện hành: Points");
+  await page.getByRole("button", { name: "point-000001", exact: true }).click();
+  const revision = page.getByTestId("inspector-observed-revision");
+  await expect(revision).toBeVisible();
+  expect(await revision.getAttribute("open")).toBeNull();
+  await revision.getByText("Phiên bản dữ liệu đã đọc").click();
+  const pointSource = fixture.layers.find(layer => layer.name === "Points")!.source;
+  await expect(revision).toContainText(pointSource.content_revision);
+  await expect(revision).toContainText(pointSource.schema_revision);
+
+  // Search navigation must use the same router blocker as header links; the
+  // non-drag reorder above deliberately left the map unsaved.
+  await searchCommand("Mở Nhập / Xuất dữ liệu");
+  const blocker = page.getByRole("dialog", { name: "Có thay đổi bản đồ chưa lưu" });
+  await expect(blocker).toBeVisible();
+  await blocker.getByRole("button", { name: "Ở lại" }).click();
+  await expect(page.getByTestId("map-workspace")).toBeVisible();
+  await searchCommand("Mở Nhập / Xuất dữ liệu");
+  await blocker.getByRole("button", { name: "Rời đi và bỏ thay đổi" }).click();
+  await expect(page).toHaveURL(new RegExp(fixture.root + "/transfers$"));
+
+  for (const [label, path] of [
+    ["Mở danh mục lớp dữ liệu", fixture.root + "/spatial"],
+    ["Mở Thành viên & Phân quyền", "/app/organizations/" + fixture.organizationId + "/membership"],
+    ["Mở danh sách dự án", "/app/organizations/" + fixture.organizationId + "/projects"]
+  ] as const) {
+    await openFixtureMap(page, fixture);
+    await searchCommand(label);
+    await expect(page).toHaveURL(new RegExp(path + "$"));
+  }
 });

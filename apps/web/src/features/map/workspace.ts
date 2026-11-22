@@ -21,6 +21,12 @@ export function previewMove(layers:MapLayerReference[],id:string,direction:numbe
  const result=[...layers];[result[from],result[to]]=[result[to]!,result[from]!];return result;
 }
 export function mapResponseMatches(org:string,project:string,value:{organization_id:string;project_id:string}):boolean{return value.organization_id===org&&value.project_id===project;}
+/** An outer gate that failed scope validation must not spin forever after the
+ * protected observers settle. Never interpret its stale payload as authorized. */
+export function blockedMapGateStatus(results: readonly { error: unknown; fetchStatus: "idle" | "fetching" | "paused" }[]): "loading" | "error" | "invalid" {
+ if(results.some(result=>result.error!=null))return "error";
+ return results.some(result=>result.fetchStatus==="fetching")?"loading":"invalid";
+}
 export function viewportMatches(scope:SelectionScope,context:SpatialFeatureReadContext|{organization_id:string;project_id:string;layer_id:string;source_id:string;content_revision:string;schema_revision:string;geometry_included:boolean;response_crs:{authority:string;code:number;coordinate_order:string;unit:string;x_axis:string;y_axis:string}|null}):boolean {
  const crs=context.response_crs;
  return context.organization_id===scope.organizationId&&context.project_id===scope.projectId&&context.layer_id===scope.layerId&&context.source_id===scope.sourceId&&context.content_revision===scope.contentRevision&&context.schema_revision===scope.schemaRevision&&context.geometry_included&&crs?.authority==="EPSG"&&crs.code===4326&&crs.coordinate_order==="xy"&&crs.x_axis==="longitude"&&crs.y_axis==="latitude"&&crs.unit==="degree";

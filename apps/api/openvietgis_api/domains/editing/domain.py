@@ -212,12 +212,18 @@ def changeset_request_digest(
     summary: str,
     operations: Sequence[EditOperationInput],
     reverted_from_changeset_id: UUID | None,
+    base_schema_revision: str | None = None,
 ) -> str:
-    """Canonical request identity, independent of current source state."""
+    """Canonical request identity; legacy omitted schema preserves its exact digest."""
     try:
         payload = json.dumps(
             {
                 "base": base_content_revision,
+                **(
+                    {"base_schema": base_schema_revision}
+                    if base_schema_revision is not None
+                    else {}
+                ),
                 "summary": summary,
                 "reverted_from": str(reverted_from_changeset_id)
                 if reverted_from_changeset_id

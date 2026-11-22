@@ -1,14 +1,17 @@
 from __future__ import annotations
 
+import json
 from urllib.parse import parse_qs, urlparse
 from uuid import uuid4
 
 import pytest
+from authlib.integrations.starlette_client import StarletteOAuth2App
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session
 from tools.test_database import assert_safe_test_target
 
+from openvietgis_api.adapters.http.security import get_db_session
 from openvietgis_api.adapters.persistence.audit_repository import SqlAuditRepository
 from openvietgis_api.adapters.persistence.identity_repository import SqlIdentityRepository
 from openvietgis_api.adapters.persistence.rls import set_request_context
@@ -22,28 +25,80 @@ from openvietgis_api.domains.identity.service import (
 from openvietgis_api.main import create_app
 
 
-def test_oidc_authorization_redirect_contains_state_nonce_and_pkce() -> None:
-    with TestClient(create_app()) as client:
-        response = client.get(
-            "/api/v1/auth/login/keycloak",
-            params={"return_to": "/organizations"},
-            follow_redirects=False,
-        )
+def _assert_configured_login_redirect(client: TestClient) -> None:
+    settings = get_settings()
+    provider = settings.oidc_providers["keycloak"]
+    expected = urlparse(provider.issuer.rstrip("/") + "/protocol/openid-connect/auth")
+    response = client.get(
+        "/api/v1/auth/login/keycloak",
+        params={"return_to": "/organizations"},
+        follow_redirects=False,
+    )
 
     assert response.status_code in {302, 307}
     location = response.headers["location"]
     parsed = urlparse(location)
     query = parse_qs(parsed.query)
 
-    assert parsed.netloc == "127.0.0.1:18080"
-    assert parsed.path.endswith("/protocol/openid-connect/auth")
-    assert query["client_id"] == ["openvietgis-web"]
-    assert query["redirect_uri"] == ["http://127.0.0.1:8000/api/v1/auth/callback/keycloak"]
+    assert (parsed.scheme, parsed.netloc, parsed.path) == (
+        expected.scheme,
+        expected.netloc,
+        expected.path,
+    )
+    assert query["client_id"] == [provider.client_id]
+    assert query["redirect_uri"] == [
+        settings.api_public_base_url.rstrip("/") + "/api/v1/auth/callback/keycloak"
+    ]
     assert query["state"][0]
     assert query["nonce"][0]
     assert query["code_challenge"][0]
     assert query["code_challenge_method"] == ["S256"]
     assert "ovg_oidc_state" in response.cookies
+
+
+def test_oidc_authorization_redirect_contains_state_nonce_and_pkce() -> None:
+    # Exercise actual configured provider discovery; no fixed shared port.
+    with TestClient(create_app()) as client:
+        _assert_configured_login_redirect(client)
+
+
+@pytest.mark.parametrize("oidc_port,api_port", [(18080, 8000), (18086, 18085)])
+def test_redirect_fixture_supports_isolated_loopback_profiles(
+    monkeypatch: pytest.MonkeyPatch, oidc_port: int, api_port: int
+) -> None:
+    # Pure variant: only external provider discovery is replaced. Authlib's real
+    # redirect, state, nonce, PKCE and cookie code still runs; no service/DB needed.
+    issuer = f"http://127.0.0.1:{oidc_port}/realms/openvietgis"
+    monkeypatch.setenv("OPENVIETGIS_API_PUBLIC_BASE_URL", f"http://127.0.0.1:{api_port}")
+    monkeypatch.setenv(
+        "OPENVIETGIS_OIDC_PROVIDERS",
+        json.dumps(
+            {
+                "keycloak": {
+                    "issuer": issuer,
+                    "client_id": "isolated-test",
+                    "display_name": "Fixture",
+                }
+            }
+        ),
+    )
+    get_settings.cache_clear()
+
+    async def discovery(client):
+        assert client._server_metadata_url == issuer + "/.well-known/openid-configuration"
+        return {
+            "issuer": issuer,
+            "authorization_endpoint": issuer + "/protocol/openid-connect/auth",
+        }
+
+    monkeypatch.setattr(StarletteOAuth2App, "load_server_metadata", discovery)
+    app = create_app()
+    app.dependency_overrides[get_db_session] = lambda: None
+    try:
+        with TestClient(app) as client:
+            _assert_configured_login_redirect(client)
+    finally:
+        get_settings.cache_clear()
 
 
 def test_identity_link_conflict_and_link_unlink_are_audited(

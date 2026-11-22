@@ -54,6 +54,14 @@ function availabilityFrom(
     };
   }
   if (!layer) {
+    if (state === "permission") {
+      return {
+        availability: "permission",
+        availabilityLabel: "Không đủ quyền",
+        canZoom: false,
+        disabledReason: "Tài khoản hiện tại không thể đọc thông tin lớp."
+      };
+    }
     return state.startsWith("unavailable")
       ? {
           availability: "unavailable",
@@ -146,7 +154,7 @@ export function buildLayerPanelItemView(
   const availability = availabilityFrom(layer, state, reference.visible);
   return {
     layerId: reference.layer_id,
-    name: layer?.name ?? "Lớp đang tải",
+    name: layer?.name ?? (state === "loading" ? "Lớp đang tải" : "Lớp không khả dụng"),
     visible: reference.visible,
     active: activeLayerId === reference.layer_id,
     order,

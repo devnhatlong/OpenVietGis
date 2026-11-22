@@ -25,6 +25,8 @@ function CollaborationWorkbench({ organizationId, projectId, accountId }: {
   const [anchor, setAnchor] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
+  const [activityCursor, setActivityCursor] = useState<string | undefined>();
+  const pendingComment = useRef<{ intent: string; operationId: string } | null>(null);
   const inFlight = useRef(false);
   const projectQ = useQuery({
     queryKey: [...prefix, "project"], queryFn: () => getProject(apiClient, organizationId, projectId),
@@ -46,7 +48,9 @@ function CollaborationWorkbench({ organizationId, projectId, accountId }: {
     enabled: readable, ...protectedQueryOptions
   });
   const actsQ = useQuery({
-    queryKey: [...prefix, "activity"], queryFn: () => listProjectActivities(apiClient, organizationId, projectId),
+    queryKey: [...prefix, "activity", activityCursor],
+    queryFn: () => listProjectActivities(apiClient, organizationId, projectId,
+      { limit: 50, ...(activityCursor ? { cursor: activityCursor } : {}) }),
     enabled: readable, ...protectedQueryOptions
   });
   const layersQ = useQuery({
@@ -88,6 +92,7 @@ function CollaborationWorkbench({ organizationId, projectId, accountId }: {
     setMessage("");
     try {
       await fn(await loadCsrfToken(apiClient));
+      setActivityCursor(undefined);
       setMessage("Đã ghi nhận thành công.");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Không thể ghi nhận yêu cầu.");
@@ -148,8 +153,13 @@ function CollaborationWorkbench({ organizationId, projectId, accountId }: {
         <label>Nội dung bình luận<textarea maxLength={2000} value={comment} onChange={e => setComment(e.target.value)} /></label>
         <button type="button" disabled={!comment.trim() || Boolean(anchor && !matchingDetail?.operations.some(op => op.feature_id === anchor))}
           onClick={() => void act(async csrf => {
+            const intent = JSON.stringify([review.id, comment.trim(), anchor || null]);
+            if (pendingComment.current?.intent !== intent) {
+              pendingComment.current = { intent, operationId: crypto.randomUUID() };
+            }
             await addReviewComment(apiClient, organizationId, projectId, review.id,
-              { body: comment, feature_id: anchor || null }, csrf);
+              { body: comment, feature_id: anchor || null, operation_id: pendingComment.current.operationId }, csrf);
+            pendingComment.current = null;
             setComment("");
           })}>Gửi bình luận</button>
       </fieldset>
@@ -164,9 +174,22 @@ function CollaborationWorkbench({ organizationId, projectId, accountId }: {
     </section>}
     {message && <p role="status">{message}</p>}
     <h3>Dòng hoạt động dự án</h3>
-    {actsQ.isError && <p role="alert">Không thể tải hoạt động.</p>}
-    <ul>{(currentProtectedData(actsQ)?.items ?? []).map(item =>
-      <li key={item.id}>{item.actor_display}: {item.summary}</li>)}</ul>
+    {actsQ.isError && <p role="alert">Không thể tải hoạt động. Làm mới để mở danh sách hiện hành.</p>}
+    {currentProtectedData(actsQ) && <>
+      <p>Mốc ghi nhận: {currentProtectedData(actsQ)?.cutoff}</p>
+      <ul>{(currentProtectedData(actsQ)?.items ?? []).map(item =>
+        <li key={item.event_kind + ":" + item.id}>
+          {item.actor_display}: {item.summary} — {item.event_kind} · {item.created_at}
+          {item.revision_ref && <> · <code>{item.revision_ref}</code></>}
+        </li>)}</ul>
+    </>}
+    <button type="button" disabled={!currentProtectedData(actsQ)?.next_cursor} onClick={() => {
+      setActivityCursor(currentProtectedData(actsQ)?.next_cursor ?? undefined);
+    }}>Trang hoạt động tiếp theo</button>
+    <button type="button" onClick={() => {
+      setActivityCursor(undefined);
+      void qc.invalidateQueries({ queryKey: [...prefix, "activity"] });
+    }}>Làm mới hoạt động</button>
   </section>;
 }
 

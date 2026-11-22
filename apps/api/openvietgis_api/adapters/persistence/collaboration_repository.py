@@ -6,10 +6,11 @@ import json
 from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from typing import Any
-from uuid import UUID, uuid4
+from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
 from sqlalchemy import text
 from sqlalchemy.engine import RowMapping
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from openvietgis_api.adapters.persistence.scope_helper import prepare_project_scope
@@ -18,6 +19,12 @@ from openvietgis_api.domains.authorization.permissions import Permission
 from openvietgis_api.domains.authorization.roles import (
     ORGANIZATION_ROLE_PERMISSIONS,
     RESOURCE_ROLE_PERMISSIONS,
+)
+from openvietgis_api.domains.collaboration.activity_cursor import (
+    ActivityCursor,
+    cursor_scope,
+    decode_cursor,
+    encode_cursor,
 )
 from openvietgis_api.domains.collaboration.domain import (
     ActivityRecord,
@@ -29,6 +36,7 @@ from openvietgis_api.domains.collaboration.domain import (
 )
 from openvietgis_api.domains.platform_errors import (
     PlatformConflictError,
+    PlatformDomainError,
     PlatformForbiddenError,
     PlatformNotFoundError,
     PlatformValidationError,
@@ -87,6 +95,46 @@ def _comment_from_row(row: RowMapping) -> ReviewCommentRecord:
         author_display=str(row["author_display"]),
         created_at=row["created_at"],
     )
+
+
+# Keep both streams anchored to immutable editing history and the current
+# scoped source. Do not mirror a changeset into collaboration.activities:
+# projection avoids duplicate events on replay and covers legacy edits.
+_EDIT_ACTIVITY = """
+    SELECT cs.id, cs.organization_id, cs.project_id,
+        cs.actor_type, cs.actor_id, cs.actor_display_snapshot AS actor_display,
+        CASE WHEN cs.status='reverted' THEN 'changeset.reverted'
+             ELSE 'changeset.committed' END AS event_kind,
+        'changeset' AS resource_type, cs.id AS resource_id,
+        cs.resulting_content_revision AS revision_ref, cs.summary,
+        jsonb_build_object('source_id', cs.source_id,
+            'changeset_id', cs.id, 'base_content_revision', cs.base_content_revision,
+            'operation_count', cs.operation_count,
+            'reverted_from_changeset_id', cs.reverted_from_changeset_id) AS metadata,
+        cs.created_at, 1 AS stream
+    FROM editing.changesets cs
+    JOIN spatial.data_sources src ON src.organization_id=cs.organization_id
+        AND src.project_id=cs.project_id AND src.id=cs.source_id
+    WHERE cs.organization_id=:org AND cs.project_id=:proj
+        AND cs.status IN ('committed','reverted') AND cs.created_at<=:cutoff
+"""
+_REVIEW_ACTIVITY = """
+    SELECT a.*, 0 AS stream
+    FROM collaboration.activities a
+    JOIN collaboration.change_reviews r ON r.organization_id=a.organization_id
+        AND r.project_id=a.project_id AND r.id=a.resource_id
+        AND r.content_revision=a.revision_ref
+    JOIN editing.changesets cs ON cs.organization_id=r.organization_id
+        AND cs.project_id=r.project_id AND cs.id=r.changeset_id
+        AND cs.source_id=r.source_id AND cs.resulting_content_revision=r.content_revision
+    JOIN spatial.data_sources src ON src.organization_id=cs.organization_id
+        AND src.project_id=cs.project_id AND src.id=cs.source_id
+    WHERE a.organization_id=:org AND a.project_id=:proj
+        AND a.resource_type='change_review'
+        AND a.event_kind IN ('review.requested','review.commented',
+                             'review.approved','review.changes_requested')
+        AND a.created_at<=:cutoff
+"""
 
 
 class SqlCollaborationRepository:
@@ -328,6 +376,7 @@ class SqlCollaborationRepository:
         review_id: UUID,
         body: str,
         feature_id: str | None = None,
+        operation_id: UUID | None = None,
     ) -> ReviewCommentRecord:
         prepare_project_scope(self._session, context, permission=Permission.PROJECT_EDIT)
         assert context.organization_id is not None and context.project_id is not None
@@ -369,6 +418,55 @@ class SqlCollaborationRepository:
                     "feature comment must reference an operation in the reviewed changeset",
                     code="INVALID_REVIEW_ANCHOR",
                 )
+        # Reuse the immutable comment ID as a scoped idempotency receipt.
+        # Compatibility: requests without an operation ID still create a new
+        # comment. Scoped deterministic IDs cannot collide across actors,
+        # reviews or tenants for the same client-generated operation UUID.
+        comment_id = (
+            uuid4()
+            if operation_id is None
+            else uuid5(
+                NAMESPACE_URL,
+                "openvietgis:r011:comment:v1:"
+                + ":".join(
+                    str(value)
+                    for value in (
+                        context.organization_id,
+                        context.project_id,
+                        context.actor.actor_type,
+                        context.actor.actor_id,
+                        review_id,
+                        operation_id,
+                    )
+                ),
+            )
+        )
+        if operation_id is not None:
+            existing = (
+                self._session.execute(
+                    text("""
+                    SELECT * FROM collaboration.review_comments
+                    WHERE organization_id=:org AND project_id=:proj AND id=:id
+                """),
+                    {"org": context.organization_id, "proj": context.project_id, "id": comment_id},
+                )
+                .mappings()
+                .first()
+            )
+            if existing is not None:
+                if (
+                    existing["author_actor_id"] != context.actor.actor_id
+                    or existing["review_id"] != review_id
+                    or existing["body"] != clean_body
+                    or existing["feature_id"] != feature_id
+                    or existing["changeset_id"] != rev["changeset_id"]
+                    or existing["content_revision"] != rev["content_revision"]
+                ):
+                    raise PlatformConflictError(
+                        "comment operation_id already used for different intent",
+                        code="COMMENT_OPERATION_CONFLICT",
+                    )
+                return _comment_from_row(existing)
         now = datetime.now(UTC)
         row = (
             self._session.execute(
@@ -384,7 +482,7 @@ class SqlCollaborationRepository:
                 RETURNING *
             """),
                 {
-                    "id": uuid4(),
+                    "id": comment_id,
                     "org": context.organization_id,
                     "proj": context.project_id,
                     "rid": review_id,
@@ -407,7 +505,7 @@ class SqlCollaborationRepository:
             resource_id=review_id,
             revision_ref=str(rev["content_revision"]),
             summary=f"Commented on review {review_id}",
-            metadata={"feature_id": feature_id},
+            metadata={"feature_id": feature_id, "comment_id": str(comment_id)},
         )
         self._session.commit()
         return _comment_from_row(row)
@@ -448,28 +546,76 @@ class SqlCollaborationRepository:
         )
         return [_comment_from_row(r) for r in rows]
 
+    def _activity_rows(self, sql: str, params: dict[str, Any]) -> list[RowMapping]:
+        try:
+            self._session.execute(text("SELECT set_config('statement_timeout','2000ms',true)"))
+            return list(self._session.execute(text(sql), params).mappings().all())
+        except SQLAlchemyError:
+            self._session.rollback()
+            raise PlatformDomainError(
+                "activity read unavailable; refresh or retry safely",
+                code="ACTIVITY_READ_UNAVAILABLE",
+                status_code=503,
+            ) from None
+
     def list_activities(
-        self, *, context: AuthorizationContext, limit: int = 50
-    ) -> list[ActivityRecord]:
+        self, *, context: AuthorizationContext, limit: int = 50, cursor: str | None = None
+    ) -> tuple[list[ActivityRecord], datetime, str | None]:
+        # A shared project row lock waits for earlier edit/review commits;
+        # all supported writers take an exclusive project lock before creating
+        # their event timestamps. The first-page cutoff is after this lock.
         prepare_project_scope(self._session, context, permission=Permission.PROJECT_READ)
         assert context.organization_id is not None and context.project_id is not None
-        rows = (
-            self._session.execute(
-                text("""
-                SELECT * FROM collaboration.activities
-                WHERE organization_id = :org AND project_id = :proj
-                ORDER BY created_at DESC LIMIT :lim
-            """),
+        now = datetime.now(UTC)
+        scope = cursor_scope(context)
+        position = decode_cursor(cursor, scope, now) if cursor is not None else None
+        cutoff = position.cutoff if position else now
+        if type(limit) is not int or not 1 <= limit <= 200:
+            raise PlatformValidationError("activity limit must be 1..200")
+        params: dict[str, Any] = {
+            "org": context.organization_id,
+            "proj": context.project_id,
+            "cutoff": cutoff,
+            "lookahead": limit + 1,
+        }
+        edit_sql, review_sql = _EDIT_ACTIVITY, _REVIEW_ACTIVITY
+        if position:
+            params.update(
                 {
-                    "org": context.organization_id,
-                    "proj": context.project_id,
-                    "lim": max(1, min(200, limit)),
-                },
+                    "after_at": position.created_at,
+                    "after_id": position.id,
+                    "after_stream": position.stream,
+                }
             )
-            .mappings()
-            .all()
-        )
-        return [_act_from_row(r) for r in rows]
+            # Reject a stale/forged boundary if it is not currently visible.
+            # The token has no authority independent of actual scoped history.
+            boundary_sql = (
+                edit_sql + " AND cs.id=:after_id AND cs.created_at=:after_at"
+                if position.stream == 1
+                else review_sql + " AND a.id=:after_id AND a.created_at=:after_at"
+            )
+            if not self._activity_rows(
+                "SELECT 1 FROM (" + boundary_sql + ") AS boundary LIMIT 1", params
+            ):
+                raise PlatformValidationError(
+                    "activity continuation unavailable; refresh the activity list",
+                    code="INVALID_ACTIVITY_CURSOR",
+                )
+            edit_sql += " AND (cs.created_at,1,cs.id)<(:after_at,:after_stream,:after_id)"
+            review_sql += " AND (a.created_at,0,a.id)<(:after_at,:after_stream,:after_id)"
+        # Each branch returns only a bounded lookahead; the global merge is
+        # at most 2*(limit+1) rows. No aggregate counts or moving offsets.
+        order = " ORDER BY created_at DESC, stream DESC, id DESC LIMIT :lookahead"
+        query = "(" + edit_sql + order + ") UNION ALL (" + review_sql + order + ")" + order
+        rows = self._activity_rows(query, params)
+        page = rows[:limit]
+        next_cursor = None
+        if len(rows) > limit:
+            last = page[-1]
+            next_cursor = encode_cursor(
+                ActivityCursor(cutoff, last["created_at"], last["stream"], last["id"]), scope
+            )
+        return [_act_from_row(r) for r in page], cutoff, next_cursor
 
     def inspect_conflict_rebase(
         self,

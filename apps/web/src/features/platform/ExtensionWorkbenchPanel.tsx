@@ -234,7 +234,7 @@ function ExtensionWorkspace({ organizationId, projectId, accountId }: Scope & {a
   if (!authorized) return <p role="status">Chưa xác nhận quyền truy cập mô-đun của dự án.</p>;
   return <section className="ovg-card" data-testid="extension-workbench">
     <h2>Mô-đun mở rộng nội bộ</h2>
-    <p>Manifest mô tả cấu trúc và quyền; không cài mã thực thi hoặc cấp quyền ngoài Core. Không phải chứng nhận mô-đun hay SDK công khai.</p>
+    <p>Manifest chỉ mô tả cấu trúc, quyền yêu cầu và tên lệnh. Bản ghi dùng quyền đọc/sửa dự án của Core; chưa có cấp quyền riêng theo mô-đun hoặc thực thi lệnh. Kích hoạt chỉ áp dụng cho dữ liệu dự án, không phải phê duyệt cài đặt hay chứng nhận mô-đun/SDK công khai.</p>
     {error && <p role="alert">{error}</p>}
     {notice && <p role="status">{notice}</p>}
     {!keys.length && <p>Chưa thấy manifest được đăng ký trong tổ chức.</p>}

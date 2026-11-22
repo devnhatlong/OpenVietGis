@@ -3,18 +3,7 @@ import type {
   SpatialLayer
 } from "@openvietgis/client-sdk";
 
-import { formatFeatureValue } from "../spatial/feature-inspector";
-
-function geometryStateLabel(value: string): string {
-  return {
-    available: "Khả dụng",
-    present: "Có hình học",
-    empty: "Không có hình học",
-    unavailable: "Không khả dụng",
-    invalid: "Không hợp lệ",
-    omitted: "Không tải hình học"
-  }[value] ?? value;
-}
+import { geometryStateLabel, mapFeatureValue } from "./feature-presentation";
 
 export function AttributeTable({
   layer,
@@ -108,7 +97,7 @@ export function AttributeTable({
                     {fields.map((field) => (
                       <td key={field.field_id}>
                         <code>
-                          {formatFeatureValue(
+                          {mapFeatureValue(
                             feature.attributes[field.field_id]
                           )}
                         </code>

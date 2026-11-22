@@ -207,7 +207,7 @@ function EditingWorkbench({ organizationId, projectId, accountId }: { organizati
     try {
       const csrf = await loadCsrfToken(apiClient);
       const cs = await commitChangeset(apiClient, organizationId, projectId, request.pin.sourceId,
-        { base_content_revision: request.pin.content, operation_id: request.operationId,
+        { base_content_revision: request.pin.content, base_schema_revision: request.pin.schema, operation_id: request.operationId,
           summary: request.summary, operations: request.operations }, csrf);
       if (cs.source_id !== request.pin.sourceId || cs.operation_id !== request.operationId ||
           cs.base_content_revision !== request.pin.content) {

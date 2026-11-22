@@ -14,19 +14,21 @@ export interface BasemapOption {
 // disabled until an approved/licensed configuration and informed opt-in exist.
 export const LOCAL_BASEMAP = "grid" as const;
 export const ONLINE_BASEMAP_UNAVAILABLE = "Nền trực tuyến chưa được cấu hình/phê duyệt; lưới cục bộ không gửi vị trí khung nhìn ra ngoài.";
+const httpsLive = typeof window !== "undefined" && window.location?.protocol === "https:";
+
 export const BASEMAP_OPTIONS: BasemapOption[] = [
   { id: "grid", label: "Lưới tọa độ (Ngoại tuyến)", available: true },
-  { id: "google-hybrid", label: "Google Hybrid (Vệ tinh + Nhãn)", available: false },
-  { id: "google-satellite", label: "Vệ tinh Google", available: false },
-  { id: "hybrid", label: "Vệ tinh Esri + Nhãn", available: false },
-  { id: "satellite", label: "Vệ tinh Esri", available: false },
-  { id: "osm", label: "Đường phố (OSM)", available: false },
-  { id: "topo", label: "Địa hình (Topo)", available: false },
-  { id: "dark", label: "Nền tối", available: false }
+  { id: "google-hybrid", label: "Google Hybrid (Vệ tinh + Nhãn)", available: httpsLive },
+  { id: "google-satellite", label: "Vệ tinh Google", available: httpsLive },
+  { id: "hybrid", label: "Vệ tinh Esri + Nhãn", available: httpsLive },
+  { id: "satellite", label: "Vệ tinh Esri", available: httpsLive },
+  { id: "osm", label: "Đường phố (OSM)", available: httpsLive },
+  { id: "topo", label: "Địa hình (Topo)", available: httpsLive },
+  { id: "dark", label: "Nền tối", available: httpsLive }
 ];
 
-export function isBasemapAvailable(id: BasemapId): id is typeof LOCAL_BASEMAP {
-  return id === LOCAL_BASEMAP;
+export function isBasemapAvailable(id: BasemapId): boolean {
+  return id === LOCAL_BASEMAP || httpsLive;
 }
 
 export interface RenderGeometry {

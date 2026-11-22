@@ -9,7 +9,7 @@ import {
 import "maplibre-gl/dist/maplibre-gl.css";
 import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?url";
 import type { MapStyle, MapViewpoint } from "@openvietgis/client-sdk";
-import type { BasemapId, MapEngine, MapEngineEvents, RenderGeometry, RenderLayer } from "./engine";
+import { isBasemapAvailable, type BasemapId, type MapEngine, type MapEngineEvents, type RenderGeometry, type RenderLayer } from "./engine";
 import { boundsOfGeometry, type Bounds } from "./workspace";
 import { isImmutableViewportFeatures } from "./render-frame";
 
@@ -53,78 +53,16 @@ const RASTER_LAYERS: Record<
   Exclude<BasemapId, "grid">,
   Array<{ id: string; tiles: string[]; maxzoom: number; attribution: string }>
 > = {
-  osm: [
-    {
-      id: "bm-osm",
-      tiles: ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"],
-      maxzoom: 19,
-      attribution: "© OpenStreetMap contributors"
-    }
-  ],
-  satellite: [
-    {
-      id: "bm-sat",
-      tiles: [
-        "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
-      ],
-      maxzoom: 19,
-      attribution: "© Esri World Imagery"
-    }
-  ],
+  osm: [{ id: "bm-osm", tiles: ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"], maxzoom: 19, attribution: "© OpenStreetMap" }],
+  satellite: [{ id: "bm-sat", tiles: ["https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"], maxzoom: 19, attribution: "© Esri" }],
   hybrid: [
-    {
-      id: "bm-sat",
-      tiles: [
-        "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
-      ],
-      maxzoom: 19,
-      attribution: "© Esri World Imagery"
-    },
-    {
-      id: "bm-labels",
-      tiles: [
-        "https://a.basemaps.cartocdn.com/rastertiles/voyager_only_labels/{z}/{x}/{y}.png",
-        "https://b.basemaps.cartocdn.com/rastertiles/voyager_only_labels/{z}/{x}/{y}.png"
-      ],
-      maxzoom: 19,
-      attribution: "© CARTO"
-    }
+    { id: "bm-sat", tiles: ["https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"], maxzoom: 19, attribution: "© Esri" },
+    { id: "bm-labels", tiles: ["https://a.basemaps.cartocdn.com/rastertiles/voyager_only_labels/{z}/{x}/{y}.png", "https://b.basemaps.cartocdn.com/rastertiles/voyager_only_labels/{z}/{x}/{y}.png"], maxzoom: 19, attribution: "© CARTO" }
   ],
-  "google-satellite": [
-    {
-      id: "bm-google-satellite",
-      tiles: ["https://mt0.google.com/vt/lyrs=s&x={x}&y={y}&z={z}"],
-      maxzoom: 20,
-      attribution: "© Google"
-    }
-  ],
-  "google-hybrid": [
-    {
-      id: "bm-google-hybrid",
-      tiles: ["https://mt0.google.com/vt/lyrs=y&x={x}&y={y}&z={z}"],
-      maxzoom: 20,
-      attribution: "© Google"
-    }
-  ],
-  topo: [
-    {
-      id: "bm-topo",
-      tiles: ["https://a.tile.opentopomap.org/{z}/{x}/{y}.png"],
-      maxzoom: 17,
-      attribution: "© OpenTopoMap"
-    }
-  ],
-  dark: [
-    {
-      id: "bm-dark",
-      tiles: [
-        "https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png",
-        "https://b.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png"
-      ],
-      maxzoom: 19,
-      attribution: "© CARTO"
-    }
-  ]
+  "google-satellite": [{ id: "bm-google-satellite", tiles: ["https://mt0.google.com/vt/lyrs=s&x={x}&y={y}&z={z}"], maxzoom: 20, attribution: "© Google" }],
+  "google-hybrid": [{ id: "bm-google-hybrid", tiles: ["https://mt0.google.com/vt/lyrs=y&x={x}&y={y}&z={z}"], maxzoom: 20, attribution: "© Google" }],
+  topo: [{ id: "bm-topo", tiles: ["https://a.tile.opentopomap.org/{z}/{x}/{y}.png"], maxzoom: 17, attribution: "© OpenTopoMap" }],
+  dark: [{ id: "bm-dark", tiles: ["https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png", "https://b.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png"], maxzoom: 19, attribution: "© CARTO" }]
 };
 
 /** The only renderer-specific boundary. No attributes or physical storage bindings enter it. */
@@ -193,6 +131,7 @@ export function createMapLibreEngine(container: HTMLElement, events: MapEngineEv
   let selectedLayer: string | null = null;
   let selected: string[] = [];
   let currentBasemap: BasemapId = "grid";
+  let basemapHandles: string[] = [];
   let loaded = false;
   let destroyed = false;
   // Native source IDs are never reused during this MapLibre instance: removing
@@ -204,7 +143,6 @@ export function createMapLibreEngine(container: HTMLElement, events: MapEngineEv
     signature: string; style: MapStyle;
   };
   let handles: Handle[] = [];
-  let basemapHandles: string[] = [];
   // A module-owned immutable frame is independently validated by this adapter
   // the first time it is used. Repeated style/order renders can reuse the
   // resulting geometry signature; untrusted mutable arrays never qualify.
@@ -245,29 +183,17 @@ export function createMapLibreEngine(container: HTMLElement, events: MapEngineEv
       if (map.getSource(id)) map.removeSource(id);
     }
     basemapHandles = [];
-
     if (map.getLayer("local-grid")) {
-      map.setLayoutProperty(
-        "local-grid",
-        "visibility",
-        currentBasemap === "grid" ? "visible" : "none"
-      );
+      map.setLayoutProperty("local-grid", "visibility", currentBasemap === "grid" ? "visible" : "none");
     }
     if (currentBasemap === "grid") {
       map.triggerRepaint();
       return;
     }
-
     const defs = RASTER_LAYERS[currentBasemap];
     const beforeId = handles[0]?.layer;
     for (const def of defs) {
-      map.addSource(def.id, {
-        type: "raster",
-        tiles: def.tiles,
-        tileSize: 256,
-        maxzoom: def.maxzoom,
-        attribution: def.attribution
-      });
+      map.addSource(def.id, { type: "raster", tiles: def.tiles, tileSize: 256, maxzoom: def.maxzoom, attribution: def.attribution });
       map.addLayer({ id: def.id, type: "raster", source: def.id }, beforeId);
       basemapHandles.push(def.id);
     }
@@ -428,11 +354,8 @@ export function createMapLibreEngine(container: HTMLElement, events: MapEngineEv
   });
   map.on("error", () => {
     if (!destroyed) {
-      // Only signal engine error for vector errors; ignore transient external tile network errors
-      if (currentBasemap === "grid") {
-        events.ready(false);
-        events.error();
-      }
+      events.ready(false);
+      events.error();
     }
   });
   const observer = new ResizeObserver(() => {
@@ -442,8 +365,10 @@ export function createMapLibreEngine(container: HTMLElement, events: MapEngineEv
 
   return {
     setBasemap(id) {
-      currentBasemap = id;
-      applyBasemap();
+      if (isBasemapAvailable(id)) {
+        currentBasemap = id;
+        applyBasemap();
+      }
     },
     setLayers(value) {
       layers = value;
