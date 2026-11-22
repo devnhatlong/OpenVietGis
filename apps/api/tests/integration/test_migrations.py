@@ -11,7 +11,7 @@ from openvietgis_api.config import get_settings
 ROOT = Path(__file__).resolve().parents[4]
 
 
-def test_migrations_apply_from_zero_to_head() -> None:
+def test_migrations_apply_from_zero_to_head(destructive_migration_database: None) -> None:
     assert_safe_test_target(get_settings().database_url)
     config = Config(str(ROOT / "apps" / "api" / "alembic.ini"))
     command.downgrade(config, "base")

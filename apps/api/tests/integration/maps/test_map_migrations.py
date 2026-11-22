@@ -144,8 +144,7 @@ def test_direct_configuration_write_without_matching_next_evidence_cannot_commit
                 {
                     "project": world.project_id,
                     "viewpoint": (
-                        '{"longitude":106,"latitude":11,"zoom":8,'
-                        '"bearing":0,"pitch":0,"crs":4326}'
+                        '{"longitude":106,"latitude":11,"zoom":8,"bearing":0,"pitch":0,"crs":4326}'
                     ),
                 },
             )
@@ -204,7 +203,9 @@ def test_database_configuration_validator_rejects_closed_shape_and_type_violatio
         )
 
 
-def test_map_schema_downgrade_upgrade_preserves_identity_catalog_and_reopens_cleanly():
+def test_map_schema_downgrade_upgrade_preserves_identity_catalog_and_reopens_cleanly(
+    destructive_migration_database: None,
+):
     world = _saved_world()
     with get_admin_engine().connect() as connection:
         existing = connection.execute(

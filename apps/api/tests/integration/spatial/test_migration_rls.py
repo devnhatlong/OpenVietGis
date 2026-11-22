@@ -529,7 +529,7 @@ def test_project_guc_does_not_survive_pool_checkout_or_savepoint_rollback(
 
 
 def test_downgrade_to_0005_and_upgrade_preserves_r002_rows_and_policies(
-    migrated_database: None,
+    destructive_migration_database: None,
 ) -> None:
     assert_safe_test_target(get_settings().migration_db_url)
     world = seed_access_world()
