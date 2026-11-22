@@ -1,0 +1,2 @@
+FROM postgis/postgis:18-3.7
+COPY --chmod=755 infra/prod/001-runtime-role.sh /docker-entrypoint-initdb.d/001-runtime-role.sh

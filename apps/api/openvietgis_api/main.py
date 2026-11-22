@@ -48,13 +48,17 @@ def create_app() -> FastAPI:
     )
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=sorted(
-            {
-                "http://127.0.0.1:5173",
-                "http://localhost:5173",
-                "http://127.0.0.1:5178",
-                settings.web_base_url.rstrip("/"),
-            }
+        allow_origins=(
+            [settings.web_base_url.rstrip("/")]
+            if settings.environment == "production"
+            else sorted(
+                {
+                    "http://127.0.0.1:5173",
+                    "http://localhost:5173",
+                    "http://127.0.0.1:5178",
+                    settings.web_base_url.rstrip("/"),
+                }
+            )
         ),
         allow_credentials=True,
         allow_methods=["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],

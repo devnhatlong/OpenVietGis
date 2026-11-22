@@ -1,32 +1,50 @@
+# Proposed, unapproved small-team self-host fixture. See README.md.
+# No default production credentials or public plaintext HTTP listener.
+x-app-environment: &app-environment
+  OPENVIETGIS_ENVIRONMENT: production
+  OPENVIETGIS_DATABASE_URL: ${RUNTIME_DATABASE_URL:?set RUNTIME_DATABASE_URL}
+  OPENVIETGIS_RUNTIME_DATABASE_URL: ${RUNTIME_DATABASE_URL:?set RUNTIME_DATABASE_URL}
+  OPENVIETGIS_APPLICATION_SESSION_SECRET: ${SESSION_SECRET:?set SESSION_SECRET}
+  OPENVIETGIS_CSRF_SECRET: ${CSRF_SECRET:?set CSRF_SECRET}
+  OPENVIETGIS_BOOTSTRAP_SECRET: ${BOOTSTRAP_SECRET:?set BOOTSTRAP_SECRET}
+  OPENVIETGIS_SESSION_COOKIE_SECURE: "true"
+  OPENVIETGIS_WEB_BASE_URL: ${PUBLIC_HTTPS_ORIGIN:?set PUBLIC_HTTPS_ORIGIN}
+  OPENVIETGIS_API_PUBLIC_BASE_URL: ${PUBLIC_HTTPS_ORIGIN:?set PUBLIC_HTTPS_ORIGIN}
+  OPENVIETGIS_OIDC_PROVIDERS: ${OIDC_PROVIDERS_JSON:?configure independent HTTPS OIDC provider}
+  OPENVIETGIS_ARTIFACT_STORE_DIR: /var/lib/openvietgis/artifacts
+
 services:
   postgres:
-    image: postgis/postgis:18-3.7
+    build:
+      context: ../..
+      dockerfile: infra/prod/Dockerfile.postgres
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-openvietgis}
       POSTGRES_USER: ${POSTGRES_USER:-openvietgis}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      RUNTIME_DB_PASSWORD: ${RUNTIME_DB_PASSWORD:?set RUNTIME_DB_PASSWORD}
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - pgdata:/var/lib/postgresql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-openvietgis} -d ${POSTGRES_DB:-openvietgis}"]
+      # TCP prevents the temporary initialization server from appearing healthy.
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U ${POSTGRES_USER:-openvietgis} -d ${POSTGRES_DB:-openvietgis}"]
       interval: 10s
       timeout: 5s
       retries: 10
 
-  keycloak:
-    image: quay.io/keycloak/keycloak:26.8.2
-    restart: unless-stopped
-    command: ["start", "--http-enabled=true", "--hostname-strict=false"]
+  migrate:
+    build:
+      context: ../..
+      dockerfile: infra/prod/Dockerfile.api
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: ["/app/apps/api/.venv/bin/alembic", "-c", "/app/apps/api/alembic.ini", "upgrade", "head"]
     environment:
-      KC_BOOTSTRAP_ADMIN_USERNAME: ${KC_ADMIN_USER:-admin}
-      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KC_ADMIN_PASSWORD:?set KC_ADMIN_PASSWORD}
-      KC_PROXY_HEADERS: xforwarded
-    healthcheck:
-      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/8080"]
-      interval: 15s
-      timeout: 5s
-      retries: 10
+      <<: *app-environment
+      OPENVIETGIS_MIGRATION_DATABASE_URL: ${MIGRATION_DATABASE_URL:?set MIGRATION_DATABASE_URL}
+    restart: "no"
 
   api:
     build:
@@ -36,19 +54,13 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    environment:
-      OPENVIETGIS_ENVIRONMENT: production
-      OPENVIETGIS_MIGRATION_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-openvietgis}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-openvietgis}
-      OPENVIETGIS_RUNTIME_DATABASE_URL: postgresql+psycopg://openvietgis_runtime:${RUNTIME_DB_PASSWORD:?set RUNTIME_DB_PASSWORD}@postgres:5432/${POSTGRES_DB:-openvietgis}
-      OPENVIETGIS_APPLICATION_SESSION_SECRET: ${SESSION_SECRET:?set SESSION_SECRET}
-      OPENVIETGIS_CSRF_SECRET: ${CSRF_SECRET:?set CSRF_SECRET}
-      OPENVIETGIS_BOOTSTRAP_SECRET: ${BOOTSTRAP_SECRET:?set BOOTSTRAP_SECRET}
-      OPENVIETGIS_SESSION_COOKIE_SECURE: "true"
-      OPENVIETGIS_ARTIFACT_STORE_DIR: /var/lib/openvietgis/artifacts
+      migrate:
+        condition: service_completed_successfully
+    environment: *app-environment
     volumes:
       - artifacts:/var/lib/openvietgis/artifacts
     healthcheck:
-      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/ops/health/ready')\""]
+      test: ["CMD", "/app/apps/api/.venv/bin/python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/ops/health/ready')"]
       interval: 15s
       timeout: 5s
       retries: 5
@@ -62,7 +74,7 @@ services:
       api:
         condition: service_healthy
     ports:
-      - "${HTTP_PORT:-8080}:80"
+      - "127.0.0.1:${HTTP_PORT:-8080}:80"
 
 volumes:
   pgdata:

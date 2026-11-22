@@ -11,6 +11,8 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import secrets
+import shutil
 import subprocess
 from pathlib import Path
 from uuid import uuid4
@@ -27,10 +29,10 @@ from tools.backup_restore import (
     verify_isolated_restore_docker,
 )
 
-CONTAINER = "ovg-remediation018-postgres"
+CONTAINER = "ovg-next018-postgres"
 DB_USER = "openvietgis"
 # Explicitly disposable credentials and loopback for the dedicated drill only.
-ADMIN_URL = "postgresql+psycopg://openvietgis:openvietgis@127.0.0.1:54332/"
+ADMIN_URL = "postgresql+psycopg://openvietgis:openvietgis@127.0.0.1:54334/"
 FIXTURE = Path("/opt/openvietgis-remediation-018/dist/remediation018/backup-v2-run1")
 
 
@@ -98,7 +100,11 @@ def main() -> None:
     if os.environ.get("OPENVIETGIS_R015_SYNTHETIC_DRILL") != "confirmed":
         raise RuntimeError("Confirm dedicated synthetic R015 drill explicitly")
     # Only the exact parent checkpoint's independently hashed synthetic input.
-    baseline = json.loads((FIXTURE / "backup-manifest.json").read_text())
+    fixture_manifest = FIXTURE / "backup-manifest.json"
+    assert _digest(fixture_manifest)["sha256"] == (
+        "aa415676b92db959c6844d12d6b60da83cab608b5907896344a48b818edd6a07"
+    )
+    baseline = json.loads(fixture_manifest.read_text())
     assert baseline["manifest_version"] == 2
     assert _digest(FIXTURE / "database.sql") == {
         "sha256": baseline["dump_sha256"],
@@ -119,7 +125,7 @@ def main() -> None:
         {
             "OPENVIETGIS_ENVIRONMENT": "test",
             "OPENVIETGIS_DATABASE_URL": ADMIN_URL + reconciled,
-            "OPENVIETGIS_RUNTIME_DATABASE_URL": "postgresql+psycopg://openvietgis_runtime:synthetic@127.0.0.1:54332/"
+            "OPENVIETGIS_RUNTIME_DATABASE_URL": "postgresql+psycopg://openvietgis_runtime:synthetic@127.0.0.1:54334/"
             + reconciled,
             "OPENVIETGIS_ARTIFACT_STORE_DIR": str(
                 (root / "reconciled-artifacts").resolve()
@@ -270,12 +276,22 @@ def main() -> None:
     old_member_session = _session(source_engine, member, issue_session_token)
     source_engine.dispose()
 
+    # A test-only key independent of the snapshot and both restored artifact roots.
+    # It is never printed, copied into backup, or committed.
+    signing_key = root / "synthetic-manifest.key"
+    with os.fdopen(
+        os.open(signing_key, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600), "wb"
+    ) as out:
+        out.write(secrets.token_bytes(32))
+    provenance = "synthetic-r015-drill"
     snapshot = backup_docker_postgres_and_artifacts(
         container_name=CONTAINER,
         db_user=DB_USER,
         db_name=source,
         artifact_dir=source_files,
         backup_dir=root / "snapshot",
+        manifest_key_file=signing_key,
+        provenance=provenance,
         quiesced=True,
     )
     _new_database(current, root / "snapshot" / "database.sql")
@@ -303,12 +319,50 @@ def main() -> None:
         "container_name": CONTAINER,
         "db_user": DB_USER,
         "backup_dir": root / "snapshot",
+        "manifest_key_file": signing_key,
+        "expected_provenance": provenance,
         "isolated_target_confirmed": True,
     }
+    # On a separate test copy only, replace BOTH dump and unsigned checksum
+    # fields; the external authentication key is not available to an attacker.
+    tampered_dir = root / "tampered-copy"
+    shutil.copytree(root / "snapshot", tampered_dir)
+    tampered_sql = tampered_dir / "database.sql"
+    tampered_sql.write_bytes(b"SELECT 42;")
+    tampered_manifest = tampered_dir / "backup-manifest.json"
+    changed = json.loads(tampered_manifest.read_text())
+    changed["dump_sha256"] = _digest(tampered_sql)["sha256"]
+    changed["dump_bytes"] = tampered_sql.stat().st_size
+    tampered_manifest.write_text(json.dumps(changed))
+    tampered_db = f"openvietgis_r015_tampered_{suffix}"
+    try:
+        verify_isolated_restore_docker(
+            **(base_args | {"backup_dir": tampered_dir}),
+            restore_db_name=tampered_db,
+            restore_artifact_dir=root / "tampered-artifacts",
+        )
+    except RuntimeError as error:
+        assert "manifest authentication failed" in str(error)
+    else:
+        raise AssertionError("Tampered snapshot was accepted")
+    assert (
+        _sql(
+            CONTAINER,
+            DB_USER,
+            "postgres",
+            f"SELECT NOT EXISTS (SELECT 1 FROM pg_database WHERE datname='{tampered_db}')",
+        )
+        == "t"
+    )
+    assert not (root / "tampered-artifacts").exists()
+
     closed = verify_isolated_restore_docker(
         **base_args,
         restore_db_name=quarantine,
         restore_artifact_dir=root / "quarantine-artifacts",
+    )
+    assert (
+        closed["manifest_authenticated"] and closed["backup_provenance"] == provenance
     )
     assert not closed["authorization_reconciled"] and closed["authority_quarantined"]
     assert closed["quarantine_report"]["active_users"] == 0
@@ -321,6 +375,10 @@ def main() -> None:
         restore_artifact_dir=root / "reconciled-artifacts",
         current_authority=(CONTAINER, DB_USER, current),
         current_authority_confirmed=True,
+    )
+    assert (
+        report["manifest_authenticated"]
+        and report["manifest_key_id"] == snapshot["key_id"]
     )
     assert report["authorization_reconciled"] and not report["production_ready"]
     for key in (
@@ -426,6 +484,7 @@ def main() -> None:
                 "closed_recovery": closed,
                 "reconciled_recovery": report,
                 "application_checks": {
+                    "tampered_dump_and_manifest_denied_before_db_creation": True,
                     "old_sessions_denied": 2,
                     "old_service_credential_denied": True,
                     "revoked_grant_fresh_session_denied": True,

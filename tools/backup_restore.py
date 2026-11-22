@@ -8,15 +8,18 @@ a separately attested current authority source. This tool never activates a runt
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
 import os
 import re
 import shutil
+import stat
 import subprocess
+import tempfile
 import time
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, BinaryIO
 
 from tools.recovery_authority import (
     AUTHORITY_QUERY,
@@ -170,6 +173,140 @@ def _finish_manifest(root: Path, manifest: dict[str, Any]) -> None:
         os.close(descriptor)
 
 
+_MANIFEST_VERSION = 4
+_MANIFEST_CONTEXT = b"OpenVietGIS recovery manifest v4\x00"
+_KEY_CONTEXT = b"OpenVietGIS recovery key identity v4"
+_MANIFEST_MAX_BYTES = 64 * 1024 * 1024
+
+
+def _load_manifest_key(key_file: Path, *data_roots: Path) -> bytes:
+    """Read an independent, operator-managed 256-bit key, never backup material."""
+    for root in data_roots:
+        _disjoint(key_file, root)
+    # A path inside the backup (or a symlink to a key) may not choose its trust root.
+    try:
+        descriptor = os.open(key_file, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        with os.fdopen(descriptor, "rb") as stream:
+            info = os.fstat(stream.fileno())
+            if (
+                not stat.S_ISREG(info.st_mode)
+                or info.st_uid != os.geteuid()
+                or info.st_mode & 0o077
+                or info.st_nlink != 1
+            ):
+                raise RuntimeError(
+                    "Manifest key must be a private operator-owned regular file"
+                )
+            key = stream.read(33)
+    except OSError:
+        raise RuntimeError(
+            "Independent manifest key is unavailable or unsafe"
+        ) from None
+    if len(key) != 32:
+        raise RuntimeError("Manifest key must contain exactly 32 random bytes")
+    return key
+
+
+def _validate_provenance(provenance: str) -> None:
+    if not isinstance(provenance, str) or not re.fullmatch(
+        r"[a-z0-9][a-z0-9_.-]{0,127}", provenance
+    ):
+        raise RuntimeError("Explicit trusted backup provenance identifier required")
+
+
+def _key_id(key: bytes) -> str:
+    return hmac.digest(key, _KEY_CONTEXT, "sha256").hex()
+
+
+def _canonical_manifest(manifest: dict[str, Any]) -> bytes:
+    return json.dumps(
+        manifest,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=True,
+        allow_nan=False,
+    ).encode("ascii")
+
+
+def _authenticate_manifest(
+    manifest: dict[str, Any], key: bytes, provenance: str
+) -> dict:
+    _validate_provenance(provenance)
+    payload = manifest | {
+        "manifest_version": _MANIFEST_VERSION,
+        "provenance": provenance,
+        "key_id": _key_id(key),
+    }
+    return payload | {
+        "manifest_hmac_sha256": hmac.digest(
+            key, _MANIFEST_CONTEXT + _canonical_manifest(payload), "sha256"
+        ).hex()
+    }
+
+
+def _unique_json_object(pairs: list[tuple[str, Any]]) -> dict:
+    obj: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in obj:
+            raise RuntimeError("Duplicate member in backup manifest")
+        obj[key] = value
+    return obj
+
+
+def _read_authenticated_manifest(path: Path, key: bytes, provenance: str) -> dict:
+    _validate_provenance(provenance)
+    if path.is_symlink() or not path.is_file():
+        raise RuntimeError("Backup completion marker is missing or unsafe")
+    try:
+        with path.open("rb") as stream:
+            encoded = stream.read(_MANIFEST_MAX_BYTES + 1)
+        if len(encoded) > _MANIFEST_MAX_BYTES:
+            raise RuntimeError("Backup manifest exceeds supported size")
+        manifest = json.loads(encoded, object_pairs_hook=_unique_json_object)
+        if (
+            not isinstance(manifest, dict)
+            or manifest.get("manifest_version") != _MANIFEST_VERSION
+        ):
+            raise RuntimeError(
+                "Incomplete or unsupported backup format; create a signed v4 snapshot"
+            )
+        mac = manifest.pop("manifest_hmac_sha256", None)
+        expected = hmac.digest(
+            key, _MANIFEST_CONTEXT + _canonical_manifest(manifest), "sha256"
+        ).hex()
+    except (ValueError, TypeError, UnicodeError):
+        raise RuntimeError("Invalid backup manifest") from None
+    if not isinstance(mac, str) or not re.fullmatch(r"[0-9a-f]{64}", mac):
+        raise RuntimeError("Missing or invalid backup manifest authentication")
+    if not hmac.compare_digest(mac, expected):
+        raise RuntimeError("Backup manifest authentication failed")
+    if (
+        manifest.get("key_id") != _key_id(key)
+        or manifest.get("provenance") != provenance
+    ):
+        raise RuntimeError("Backup key or provenance mismatch")
+    return manifest
+
+
+def _stage_verified_dump(path: Path, target: BinaryIO, manifest: dict) -> None:
+    """Verify the exact private copy that will be interpreted by privileged psql."""
+    if path.is_symlink() or not path.is_file():
+        raise RuntimeError("Backup SQL dump missing or unsafe")
+    sha = hashlib.sha256()
+    size = 0
+    with path.open("rb") as source:
+        for chunk in iter(lambda: source.read(1024 * 1024), b""):
+            size += len(chunk)
+            if size > manifest["dump_bytes"]:
+                raise RuntimeError("Backup SQL dump integrity mismatch")
+            sha.update(chunk)
+            target.write(chunk)
+    if sha.hexdigest() != manifest["dump_sha256"] or size != manifest["dump_bytes"]:
+        raise RuntimeError("Backup SQL dump integrity mismatch")
+    target.flush()
+    target.seek(0)
+
+
 def _validate_db_identifier(name: str) -> None:
     if not re.fullmatch(r"[a-z][a-z0-9_]{0,62}", name):
         raise RuntimeError(
@@ -267,6 +404,8 @@ def backup_docker_postgres_and_artifacts(
     db_name: str,
     artifact_dir: Path,
     backup_dir: Path,
+    manifest_key_file: Path,
+    provenance: str,
     quiesced: bool = False,
 ) -> dict[str, Any]:
     """Create a recoverable set; a completed manifest is written last."""
@@ -275,6 +414,8 @@ def backup_docker_postgres_and_artifacts(
             "Quiesce all database/artifact writers and expiry cleanup first"
         )
     _disjoint(artifact_dir, backup_dir)
+    _validate_provenance(provenance)
+    key = _load_manifest_key(manifest_key_file, backup_dir, artifact_dir)
     _validate_db_identifier(db_user)
     _validate_db_identifier(db_name)
     started = datetime.now(UTC)
@@ -302,7 +443,6 @@ def backup_docker_postgres_and_artifacts(
         raise RuntimeError("Artifact store changed during backup")
     digest = _digest(dump)
     meta = {
-        "manifest_version": 3,
         "created_at": started.isoformat(),
         "consistency": "operator-attested-quiesced",
         "database": db_name,
@@ -318,8 +458,14 @@ def backup_docker_postgres_and_artifacts(
         ).hexdigest(),
         "authorization_reconciled": False,
     }
-    _finish_manifest(backup_dir, meta)
-    return meta
+    authenticated = _authenticate_manifest(meta, key, provenance)
+    if (
+        len(json.dumps(authenticated, indent=2, sort_keys=True).encode("utf-8"))
+        > _MANIFEST_MAX_BYTES
+    ):
+        raise RuntimeError("Backup manifest exceeds supported size")
+    _finish_manifest(backup_dir, authenticated)
+    return authenticated
 
 
 def verify_isolated_restore_docker(
@@ -329,6 +475,8 @@ def verify_isolated_restore_docker(
     restore_db_name: str,
     backup_dir: Path,
     restore_artifact_dir: Path,
+    manifest_key_file: Path,
+    expected_provenance: str,
     isolated_target_confirmed: bool = False,
     current_authority: tuple[str, str, str] | None = None,
     current_authority_confirmed: bool = False,
@@ -345,13 +493,12 @@ def verify_isolated_restore_docker(
             "Confirm a dedicated isolated instance, not an application runtime"
         )
     _disjoint(backup_dir, restore_artifact_dir)
-    manifest_file = backup_dir / "backup-manifest.json"
-    _digest(manifest_file)
-    manifest = json.loads(manifest_file.read_text(encoding="utf-8"))
-    if manifest.get("manifest_version") != 3:
-        raise RuntimeError(
-            "Incomplete or unsupported backup format; create a v3 snapshot"
-        )
+    if backup_dir.is_symlink() or not backup_dir.is_dir():
+        raise RuntimeError("Backup root missing or unsafe")
+    key = _load_manifest_key(manifest_key_file, backup_dir, restore_artifact_dir)
+    manifest = _read_authenticated_manifest(
+        backup_dir / "backup-manifest.json", key, expected_provenance
+    )
     if (current_authority is not None) != current_authority_confirmed:
         raise RuntimeError("Explicitly confirm an independent current authority source")
     _validate_db_identifier(db_user)
@@ -377,12 +524,6 @@ def verify_isolated_restore_docker(
         raise RuntimeError("Invalid backup consistency timestamp")
     if manifest.get("dump_file") != "database.sql":
         raise RuntimeError("Invalid dump file")
-    dump = backup_dir / "database.sql"
-    if _digest(dump) != {
-        "sha256": manifest["dump_sha256"],
-        "byte_size": manifest["dump_bytes"],
-    }:
-        raise RuntimeError("Backup SQL dump integrity mismatch")
     files = manifest["artifacts"]
     if manifest["artifact_count"] != len(files):
         raise RuntimeError("Backup artifact count mismatch")
@@ -391,20 +532,47 @@ def verify_isolated_restore_docker(
         raise RuntimeError("Restore artifact target already exists")
     if compute_artifact_manifest(backup_dir / "artifacts") != files:
         raise RuntimeError("Backup artifact integrity mismatch")
-    # createdb fails if target already exists. Never DROP an existing database.
-    subprocess.run(
-        [
-            "docker",
-            "exec",
-            container_name,
-            "createdb",
-            "-U",
-            db_user,
-            "--template=template0",
-            restore_db_name,
-        ],
-        check=True,
-        capture_output=True,
+    # Never pass a path from mutable backup storage to privileged psql after
+    # verification. Stage exact authenticated bytes in a private anonymous file.
+    with tempfile.TemporaryFile(mode="w+b") as verified_sql:
+        _stage_verified_dump(backup_dir / "database.sql", verified_sql, manifest)
+        return _restore_verified(
+            container_name=container_name,
+            db_user=db_user,
+            restore_db_name=restore_db_name,
+            backup_dir=backup_dir,
+            restore_artifact_dir=restore_artifact_dir,
+            current_authority=current_authority,
+            current_authority_confirmed=current_authority_confirmed,
+            manifest=manifest,
+            verified_sql=verified_sql,
+            created_at=created_at,
+            started=started,
+        )
+
+
+def _restore_verified(
+    *,
+    container_name: str,
+    db_user: str,
+    restore_db_name: str,
+    backup_dir: Path,
+    restore_artifact_dir: Path,
+    current_authority: tuple[str, str, str] | None,
+    current_authority_confirmed: bool,
+    manifest: dict,
+    verified_sql: BinaryIO,
+    created_at: datetime,
+    started: float,
+) -> dict[str, Any]:
+    files = manifest["artifacts"]
+    # Create atomically closed to all connections, then revoke runtime/PUBLIC
+    # before opening for the restore owner. Existing names fail, never DROP.
+    _sql(
+        container_name,
+        db_user,
+        "postgres",
+        f'CREATE DATABASE "{restore_db_name}" TEMPLATE template0 ALLOW_CONNECTIONS false;',
     )
     try:
         _sql(
@@ -423,26 +591,31 @@ def verify_isolated_restore_docker(
             != "f"
         ):
             raise RuntimeError("Runtime role still has database CONNECT privilege")
-        with dump.open("rb") as raw:
-            subprocess.run(
-                [
-                    "docker",
-                    "exec",
-                    "-i",
-                    container_name,
-                    "psql",
-                    "-X",
-                    "-U",
-                    db_user,
-                    "-d",
-                    restore_db_name,
-                    "-v",
-                    "ON_ERROR_STOP=1",
-                ],
-                stdin=raw,
-                check=True,
-                capture_output=True,
-            )
+        _sql(
+            container_name,
+            db_user,
+            "postgres",
+            f'ALTER DATABASE "{restore_db_name}" ALLOW_CONNECTIONS true;',
+        )
+        subprocess.run(
+            [
+                "docker",
+                "exec",
+                "-i",
+                container_name,
+                "psql",
+                "-X",
+                "-U",
+                db_user,
+                "-d",
+                restore_db_name,
+                "-v",
+                "ON_ERROR_STOP=1",
+            ],
+            stdin=verified_sql,
+            check=True,
+            capture_output=True,
+        )
         references, checks = _inventory(container_name, db_user, restore_db_name)
         if (
             references != manifest["references"]
@@ -491,6 +664,9 @@ def verify_isolated_restore_docker(
         return {
             "restored_alembic_revision": checks["revision"],
             "database_checks": checks,
+            "manifest_authenticated": True,
+            "manifest_key_id": manifest["key_id"],
+            "backup_provenance": manifest["provenance"],
             "dump_sha256_verified": True,
             "restored_artifact_count": len(files),
             "artifact_references_verified": len(references),
