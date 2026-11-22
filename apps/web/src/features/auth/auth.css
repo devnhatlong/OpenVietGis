@@ -5,7 +5,7 @@ body{margin:0;background:#f6f9fb}
 .ovg-landing a{text-decoration:none}
 .ovg-landing-header{height:76px;max-width:1240px;margin:0 auto;padding:0 28px;display:flex;align-items:center;justify-content:space-between}
 .ovg-brand{display:flex;gap:11px;align-items:center;color:#123047}
-.ovg-brand-mark,.ovg-login-logo{display:grid;place-items:center;width:42px;height:42px;border-radius:11px;background:#0b5f58;color:white;font-weight:850;letter-spacing:.06em;box-shadow:0 8px 18px #0b5f5822}
+.ovg-login-logo{display:grid;place-items:center;width:42px;height:42px;border-radius:11px;background:#0b5f58;color:white;font-weight:850;letter-spacing:.06em;box-shadow:0 8px 18px #0b5f5822}
 .ovg-brand strong{display:block;font-size:16px}
 .ovg-brand small{display:block;color:#6d8190;font-size:11px;margin-top:2px}
 .ovg-landing-header nav{display:flex;gap:26px;align-items:center}

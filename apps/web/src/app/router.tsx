@@ -23,6 +23,10 @@ const routerBasename =
     ? "/dev"
     : undefined;
 
+function RouteLoading() {
+  return <main className="ovg-session-bootstrap" role="status" aria-busy="true">Đang tải màn hình…</main>;
+}
+
 function AuthenticatedLayout() {
   return (
     <SessionBoundary>
@@ -63,16 +67,18 @@ export const router = createBrowserRouter(
   [
     {
       path: "/",
+      hydrateFallbackElement: <RouteLoading />,
       lazy: async () => uxPreviewMode
         ? { Component: (await import("../features/preview/FrontendPreviewPage")).FrontendPreviewPage }
         : { Component: (await import("../features/landing/LandingPage")).LandingPage }
     },
-    { path: "/landing", lazy: async () => ({ Component: (await import("../features/landing/LandingPage")).LandingPage }) },
-    { path: "/login", lazy: async () => ({ Component: (await import("../features/auth/LoginPage")).LoginPage }) },
-    { path: "/offline-field/:organizationId/:projectId", lazy: async () => ({ Component: (await import("../features/offline/OfflineFieldPage")).OfflineFieldPage }) },
+    { path: "/landing", hydrateFallbackElement: <RouteLoading />, lazy: async () => ({ Component: (await import("../features/landing/LandingPage")).LandingPage }) },
+    { path: "/login", hydrateFallbackElement: <RouteLoading />, lazy: async () => ({ Component: (await import("../features/auth/LoginPage")).LoginPage }) },
+    { path: "/offline-field/:organizationId/:projectId", hydrateFallbackElement: <RouteLoading />, lazy: async () => ({ Component: (await import("../features/offline/OfflineFieldPage")).OfflineFieldPage }) },
 
     {
       path: "/app",
+      hydrateFallbackElement: <RouteLoading />,
       element: <AuthenticatedLayout />,
       children: [
         { index: true, lazy: async () => ({ Component: (await import("../features/dashboard/AppDashboard")).AppDashboard }) },
