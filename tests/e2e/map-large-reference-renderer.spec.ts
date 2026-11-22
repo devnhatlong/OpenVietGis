@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { isDeepStrictEqual } from "node:util";
 import type { MapViewport, MapSaveReceipt, SaveMapInput, SpatialFeatureDetail, SpatialLayerList } from "../../packages/client-sdk/src";
 import {
   createMapProject, currentMap, expectUsableMap, fixtureConfiguration, mapMutation, mapRead, mapSignIn,
@@ -38,7 +39,7 @@ test("three real 10000-feature reference layers settle and pick a real rendered 
   expect(fixture.sources.every(s=>s.validation_state==="ready"&&s.stored_crs?.code===4326)).toBe(true);
 
   const current=await currentMap(page,fixture), configuration=fixtureConfiguration(fixture);
-  if(JSON.stringify(current.configuration)!==JSON.stringify(configuration)){
+  if(!isDeepStrictEqual(current.configuration,configuration)){
     const input:SaveMapInput={operation_id:crypto.randomUUID(),expected_revision:current.configuration_revision,
       layers:configuration.layers,basemap:"grid",default_viewpoint:{mode:"set",value:normalMapViewpoint}};
     const saved=await mapMutation<MapSaveReceipt>(page,fixture.api+"/map","PUT",input);
@@ -114,7 +115,14 @@ test("three real 10000-feature reference layers settle and pick a real rendered 
     content_revision:points.source.content_revision,schema_revision:points.source.schema_revision});
   expect(record.feature.feature_id).toBe("point-000001");
   await expect(page.getByTestId("map-inspector")).toHaveAttribute("data-feature-id","point-000001");
+  const extentDetail=page.waitForResponse(r=>new URL(r.url()).pathname===fixture.api+"/layers/"+points.id+"/features/point-000001");
+  const selectedViewport=page.waitForResponse(r=>new URL(r.url()).pathname===fixture.api+"/layers/"+points.id+"/viewport");
   await page.getByRole("button",{name:"Thu phóng vùng chọn",exact:true}).click();
+  expect((await extentDetail).status()).toBe(200);
+  const selectedFrame=await selectedViewport;
+  expect(selectedFrame.status()).toBe(200);
+  const selectedGeometry=await selectedFrame.json() as MapViewport;
+  expect(selectedGeometry.items.some(item=>item.feature_id==="point-000001")).toBe(true);
   await expect(page.getByTestId("map-engine-ready")).toHaveAttribute("data-ready","true");
   await page.keyboard.press("Escape");
   await expect(page.getByTestId("map-inspector")).not.toHaveAttribute("data-feature-id","point-000001");
