@@ -182,6 +182,21 @@ export function ExternalSourcePreview({ connection, organizationId, projectId }:
           {preview.feature_collection && preview.capabilities.feature_read && (
             <>
               <p>Đối tượng trong mẫu: {preview.feature_collection.features.length}</p>
+              {preview.feature_result ? (
+                <div role="status">
+                  <p>Giới hạn yêu cầu: {preview.feature_result.request_limit} đối tượng.
+                    {" "}Tổng khớp do nguồn báo: {preview.feature_result.provider_reported_matched ?? "chưa biết"}.</p>
+                  {preview.feature_result.coverage === "partial" ? (
+                    <p>Kết quả một phần — nhà cung cấp báo còn đối tượng chưa trả về.</p>
+                  ) : preview.feature_result.coverage === "provider_reported_complete" ? (
+                    <p>Nhà cung cấp báo đủ trong phạm vi mẫu yêu cầu; không xác nhận toàn bộ nguồn hoặc phiên bản bất biến.</p>
+                  ) : (
+                    <p>Chưa xác định độ đầy đủ của kết quả; không suy ra đã nhận hết dữ liệu.</p>
+                  )}
+                  {preview.feature_result.limit_reached && <p>Đã chạm giới hạn yêu cầu.</p>}
+                  <p>Không hỗ trợ truy vấn trang tiếp theo trong hồ sơ mẫu này.</p>
+                </div>
+              ) : <p>Chưa xác định độ đầy đủ của mẫu.</p>}
               <details>
                 <summary>Xem dữ liệu GeoJSON đã xác minh</summary>
                 <pre style={{ maxHeight: 300, overflow: "auto" }}>

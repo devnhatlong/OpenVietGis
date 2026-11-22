@@ -252,6 +252,65 @@ def test_wfs_real_bounded_read_and_query(fixture: FixtureProvider):
     assert len(fixture.requests) == 2
     assert result["attribution"] == ATTRIBUTION
     assert result["license_text"] == RIGHTS
+    assert result["feature_result"] == {
+        "returned": 1,
+        "provider_reported_matched": None,
+        "request_limit": 100,
+        "limit_reached": False,
+        "coverage": "unknown",
+        "continuation_available": False,
+    }
+
+
+@pytest.mark.parametrize(
+    ("counts", "matched", "coverage"),
+    [
+        ({"numberMatched": 1}, 1, "provider_reported_complete"),
+        ({"totalFeatures": 4}, 4, "partial"),
+        ({"totalFeatures": "unknown"}, None, "unknown"),
+        ({"numberMatched": 4, "totalFeatures": 4}, 4, "partial"),
+        ({"numberMatched": "unknown", "totalFeatures": 4}, 4, "partial"),
+    ],
+)
+def test_wfs_count_semantics(fixture, counts, matched, coverage):
+    fixture.features = json.dumps({**FEATURES, **counts}).encode()
+    result = provider_preview(WFS, transport.fetch_provider_bytes)
+    assert result["feature_collection"]["features"] == FEATURES["features"]
+    assert result["feature_result"]["provider_reported_matched"] == matched
+    assert result["feature_result"]["coverage"] == coverage
+    assert result["feature_result"]["returned"] == 1
+    assert not result["feature_result"]["continuation_available"]
+
+
+@pytest.mark.parametrize(
+    "counts",
+    [
+        {"numberMatched": 0},
+        {"totalFeatures": -1},
+        {"numberMatched": True},
+        {"numberMatched": 1.0},
+        {"totalFeatures": "1"},
+        {"numberMatched": 2**53},
+        {"numberMatched": 2, "totalFeatures": 3},
+        {"totalFeatures": None},
+    ],
+)
+def test_wfs_invalid_count_metadata_denied(fixture, counts):
+    fixture.features = json.dumps({**FEATURES, **counts}).encode()
+    with pytest.raises(ProviderUnavailable):
+        provider_preview(WFS, transport.fetch_provider_bytes)
+
+
+def test_wfs_limit_does_not_imply_complete(fixture):
+    features = [{**FEATURES["features"][0], "id": f"fixture-{i}"} for i in range(100)]
+    fixture.features = json.dumps(
+        {**FEATURES, "features": features, "numberReturned": 100}
+    ).encode()
+    result = provider_preview(WFS, transport.fetch_provider_bytes)
+    assert result["feature_result"]["returned"] == 100
+    assert result["feature_result"]["limit_reached"]
+    assert result["feature_result"]["coverage"] == "unknown"
+    assert len(fixture.requests) == 2  # no continuation egress
 
 
 def test_profile_default_denial_exact_match_rights_and_revocation(monkeypatch):

@@ -171,11 +171,22 @@ export interface ExternalConnection {
 
 export interface ProjectActivity {
   id: string;
+  actor_type: string;
+  actor_id: string;
   actor_display: string;
   event_kind: string;
+  resource_type: string;
+  resource_id: string;
   summary: string;
   revision_ref: string | null;
+  metadata: Record<string, unknown>;
   created_at: string;
+}
+
+export interface ProjectActivityPage {
+  items: ProjectActivity[];
+  cutoff: string;
+  next_cursor: string | null;
 }
 
 export interface ChangeReview {
@@ -671,6 +682,14 @@ export interface ExternalProviderPreview {
         allow_viewport: boolean;
         approved_bbox: [number, number, number, number];
       };
+  feature_result?: {
+    returned: number;
+    provider_reported_matched: number | null;
+    request_limit: number;
+    limit_reached: boolean;
+    coverage: "unknown" | "partial" | "provider_reported_complete";
+    continuation_available: false;
+  };
   feature_collection?: {
     type: "FeatureCollection";
     features: Array<{
@@ -720,10 +739,16 @@ export function previewExternalProviderViewport(
 export function listProjectActivities(
   client: ApiClient,
   orgId: string,
-  projectId: string
-): Promise<{ items: ProjectActivity[] }> {
-  return client.request<{ items: ProjectActivity[] }>(
-    `${projBase(orgId, projectId)}/collaboration/activities`
+  projectId: string,
+  options: { limit?: number; cursor?: string } = {}
+): Promise<ProjectActivityPage> {
+  const params = new URLSearchParams();
+  if (options.limit !== undefined) params.set("limit", String(options.limit));
+  if (options.cursor !== undefined) params.set("cursor", options.cursor);
+  const query = params.toString();
+  return client.request<ProjectActivityPage>(
+    `${projBase(orgId, projectId)}/collaboration/activities${query ? "?" + query : ""}`,
+    { cache: "no-store" }
   );
 }
 
@@ -774,7 +799,7 @@ export function listReviewComments(
 
 export function addReviewComment(
   client: ApiClient, orgId: string, projectId: string, reviewId: string,
-  body: { body: string; feature_id: string | null }, csrf: string
+  body: { body: string; feature_id: string | null; operation_id?: string }, csrf: string
 ): Promise<ReviewComment> {
   return client.request<ReviewComment>(
     `${projBase(orgId, projectId)}/collaboration/reviews/${encodeURIComponent(reviewId)}/comments`,

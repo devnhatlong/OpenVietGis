@@ -636,6 +636,20 @@ def _feature_collection(raw: bytes, profile: ProviderProfile) -> dict[str, Any]:
             type(data["numberReturned"]) is not int or data["numberReturned"] != len(features)
         ):
             raise ValueError("inconsistent feature count")
+        # Match totals are upstream claims about this approved request only.
+        # Missing or explicitly unknown totals cannot prove coverage, even
+        # when a provider returns fewer records than MAXFEATURES.
+        totals: set[int] = set()
+        for name in ("numberMatched", "totalFeatures"):
+            if name not in data or data[name] == "unknown":
+                continue
+            count = data[name]
+            if type(count) is not int or not len(features) <= count <= 2**53 - 1:
+                raise ValueError("invalid matched feature count")
+            totals.add(count)
+        if len(totals) > 1:
+            raise ValueError("contradictory matched feature counts")
+        matched = next(iter(totals), None)
         safe = []
         for feature in features:
             if not isinstance(feature, dict) or feature.get("type") != "Feature":
@@ -661,7 +675,23 @@ def _feature_collection(raw: bytes, profile: ProviderProfile) -> dict[str, Any]:
             ):
                 raise ValueError("invalid id")
             safe.append(feature)
-        return {"type": "FeatureCollection", "features": safe}
+        return {
+            "feature_collection": {"type": "FeatureCollection", "features": safe},
+            "feature_result": {
+                "returned": len(safe),
+                "provider_reported_matched": matched,
+                "request_limit": FEATURE_LIMIT,
+                "limit_reached": len(safe) == FEATURE_LIMIT,
+                "coverage": (
+                    "unknown"
+                    if matched is None
+                    else "partial"
+                    if matched > len(safe)
+                    else "provider_reported_complete"
+                ),
+                "continuation_available": False,
+            },
+        }
     except (ValueError, TypeError, RecursionError, UnicodeError) as exc:
         raise ProviderUnavailable() from exc
 
@@ -688,7 +718,7 @@ def _wfs_preview(profile: ProviderProfile, fetch: Fetch) -> dict[str, Any]:
         "json",
         GEOJSON_MAX,
     )
-    return {"feature_collection": _feature_collection(raw, profile)}
+    return _feature_collection(raw, profile)
 
 
 def provider_preview(
