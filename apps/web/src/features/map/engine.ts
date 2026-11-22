@@ -17,14 +17,14 @@ export const ONLINE_BASEMAP_UNAVAILABLE = "Nền trực tuyến chưa được c
 const httpsLive = typeof window !== "undefined" && window.location?.protocol === "https:";
 
 export const BASEMAP_OPTIONS: BasemapOption[] = [
-  { id: "grid", label: "Lưới tọa độ (Ngoại tuyến)", available: true },
+  { id: "osm", label: "Đường phố sáng (OSM)", available: httpsLive },
   { id: "google-hybrid", label: "Google Hybrid (Vệ tinh + Nhãn)", available: httpsLive },
   { id: "google-satellite", label: "Vệ tinh Google", available: httpsLive },
   { id: "hybrid", label: "Vệ tinh Esri + Nhãn", available: httpsLive },
   { id: "satellite", label: "Vệ tinh Esri", available: httpsLive },
-  { id: "osm", label: "Đường phố (OSM)", available: httpsLive },
   { id: "topo", label: "Địa hình (Topo)", available: httpsLive },
-  { id: "dark", label: "Nền tối", available: httpsLive }
+  { id: "dark", label: "Nền tối", available: httpsLive },
+  { id: "grid", label: "Lưới tọa độ (Ngoại tuyến)", available: true }
 ];
 
 export function isBasemapAvailable(id: BasemapId): boolean {

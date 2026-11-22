@@ -1235,3 +1235,219 @@
   color: var(--ovg-primary-fg) !important;
   text-decoration: none !important;
 }
+
+/* === Authentic AutoCAD Floating Command Line (Bottom-Center of Map Viewport) === */
+.acad-cmdline-wrap {
+  position: absolute;
+  left: 50%;
+  bottom: 12px;
+  transform: translateX(-50%);
+  width: min(560px, calc(100% - 290px));
+  min-width: 280px;
+  z-index: 12;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-family: var(--ovg-font-mono);
+}
+
+.acad-last-echo {
+  align-self: flex-start;
+  max-width: 100%;
+  padding: 2px 10px;
+  border-radius: 6px;
+  background: rgba(7, 19, 31, 0.72);
+  backdrop-filter: blur(8px);
+  color: #94a3b8;
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.acad-cmdline {
+  height: 36px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 6px 0 8px;
+  border-radius: 9px;
+  background: rgba(11, 21, 34, 0.92);
+  backdrop-filter: blur(14px);
+  border: 1px solid rgba(148, 163, 184, 0.32);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.42);
+  color: #f8fafc;
+  transition: border-color 0.14s ease, box-shadow 0.14s ease;
+}
+.acad-cmdline.is-focused {
+  border-color: #2dd4bf;
+  box-shadow: 0 0 0 2px rgba(45, 212, 191, 0.25), 0 12px 32px rgba(0, 0, 0, 0.5);
+}
+.acad-grip {
+  color: #475569;
+  font-size: 11px;
+  letter-spacing: -2px;
+  user-select: none;
+}
+.acad-prompt {
+  color: #2dd4bf;
+  font-size: 11.5px;
+  font-weight: 700;
+  white-space: nowrap;
+  user-select: none;
+}
+.acad-cmdline input {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 0 !important;
+  background: transparent !important;
+  color: #ffffff !important;
+  font-family: var(--ovg-font-mono) !important;
+  font-size: 12.5px !important;
+  padding: 4px 2px !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
+.acad-cmdline input::placeholder {
+  color: #94a3b8;
+  font-size: 11.5px;
+}
+.acad-bar-btn {
+  width: 24px;
+  height: 24px;
+  display: inline-grid;
+  place-items: center;
+  padding: 0 !important;
+  border-radius: 5px !important;
+  border: 0 !important;
+  background: transparent !important;
+  color: #94a3b8 !important;
+  font-size: 11px !important;
+  cursor: pointer;
+}
+.acad-bar-btn:hover {
+  background: rgba(255, 255, 255, 0.12) !important;
+  color: #ffffff !important;
+}
+
+.acad-autocomplete,
+.acad-history-panel {
+  border-radius: 10px;
+  background: rgba(11, 21, 34, 0.96);
+  backdrop-filter: blur(16px);
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.52);
+  color: #e2e8f0;
+  overflow: hidden;
+}
+.acad-popup-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  background: rgba(255, 255, 255, 0.04);
+  border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+  font-size: 10.5px;
+  color: #94a3b8;
+}
+.acad-popup-head button {
+  padding: 2px 6px !important;
+  font-size: 10px !important;
+  background: transparent !important;
+  color: #94a3b8 !important;
+  border-color: rgba(148, 163, 184, 0.28) !important;
+}
+.acad-autocomplete ul,
+.acad-history-panel ul {
+  list-style: none;
+  margin: 0;
+  padding: 5px;
+  max-height: 280px;
+  overflow-y: auto;
+  display: grid;
+  gap: 2px;
+}
+.acad-history-panel li {
+  padding: 4px 8px;
+  font-size: 11.5px;
+  color: #cbd5e1;
+}
+.acad-history-panel code {
+  background: transparent !important;
+  border: 0 !important;
+  color: inherit !important;
+  padding: 0 !important;
+}
+.acad-autocomplete button {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  text-align: left;
+  padding: 6px 8px !important;
+  border: 1px solid transparent !important;
+  border-radius: 6px !important;
+  background: transparent !important;
+  color: #e2e8f0 !important;
+  font-family: var(--ovg-font-sans) !important;
+  font-size: 12px !important;
+}
+.acad-autocomplete button.is-selected,
+.acad-autocomplete button:hover:enabled {
+  background: rgba(20, 184, 166, 0.22) !important;
+  border-color: rgba(45, 212, 191, 0.4) !important;
+  color: #ffffff !important;
+}
+.acad-alias {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(45, 212, 191, 0.16);
+  color: #5eead4;
+  font-family: var(--ovg-font-mono);
+  font-size: 11px;
+  font-weight: 700;
+}
+.acad-label {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  font-weight: 600;
+}
+.acad-label small {
+  font-size: 10px;
+  font-weight: 400;
+  color: #94a3b8;
+}
+.acad-group {
+  font-size: 10px;
+  color: #64748b;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* AutoCAD Command Line + Basemap Zero-Overlap Polish */
+.map-basemap-picker {
+  top: 12px !important;
+  left: 12px !important;
+  bottom: auto !important;
+}
+.map-basemap-menu {
+  top: calc(100% + 6px) !important;
+  bottom: auto !important;
+}
+.acad-cmdline-wrap {
+  width: min(580px, calc(100% - 120px)) !important;
+}
+.gis-workspace .acad-cmdline .acad-bar-btn {
+  background: transparent !important;
+  color: #94a3b8 !important;
+  border: 0 !important;
+}
+.gis-workspace .acad-cmdline .acad-bar-btn:hover {
+  background: rgba(255, 255, 255, 0.14) !important;
+  color: #ffffff !important;
+}

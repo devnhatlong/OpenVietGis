@@ -12,6 +12,7 @@ import { canonicalOrganizationPath,canonicalProjectPath } from "../../app/route-
 import { apiClient } from "../../app/api";
 import { currentProtectedData,protectedQueryOptions } from "../../app/protected-query";
 import { MapActivityRail } from "./MapActivityRail";
+import { MapCommandLine } from "./MapCommandLine";
 import { MapRibbon } from "./MapRibbon";
 import { MapToolDock,type ActiveModuleSummary,type MapDockToolId } from "./MapToolDock";
 import { FreshAccount } from "../auth/FreshAccount";
@@ -91,7 +92,7 @@ function Workspace({organizationId,projectId,accountId,project,initial,canEdit,c
  const [viewpointIntent,setViewpointIntent]=useState<SaveMapInput["default_viewpoint"]>({mode:"preserve"});
  const [pending,setPending]=useState<PendingSave|null>(null),[notice,setNotice]=useState(""),[working,setWorking]=useState(false);
  const [showHistory,setShowHistory]=useState(false),[historyCursor,setHistoryCursor]=useState<number|undefined>();
- const [contextMenu,setContextMenu]=useState(false),[addDataOpen,setAddDataOpen]=useState(false),[technicalDetailsOpen,setTechnicalDetailsOpen]=useState(false);
+ const [contextMenu,setContextMenu]=useState(false),[addDataOpen,setAddDataOpen]=useState(false),[technicalDetailsOpen,setTechnicalDetailsOpen]=useState(false),[cmdLineOpen,setCmdLineOpen]=useState(true);
  const [searchParams,setSearchParams]=useSearchParams();
  const rawTool=searchParams.get("tool");
  const activeTool=(rawTool as MapDockToolId|null)??null;
@@ -110,7 +111,7 @@ function Workspace({organizationId,projectId,accountId,project,initial,canEdit,c
   });
  })();
  const [layoutPreference,setLayoutPreference]=useState<WorkspaceLayoutPreference>(()=>loadWorkspaceLayoutPreference());
- const defaultBasemap:BasemapId=isBasemapAvailable("google-hybrid")?"google-hybrid":LOCAL_BASEMAP;
+ const defaultBasemap:BasemapId=isBasemapAvailable("osm")?"osm":LOCAL_BASEMAP;
  const [basemap,setBasemap]=useState<BasemapId>(defaultBasemap);
  useEffect(()=>{engine.current?.setBasemap(basemap);},[basemap]);
  const initialFit=useRef(false),fitGeneration=useRef(0);
@@ -356,6 +357,8 @@ function Workspace({organizationId,projectId,accountId,project,initial,canEdit,c
    onToggleTable={()=>updateLayoutPreference({...layoutPreference,attributeTableCollapsed:!layoutPreference.attributeTableCollapsed})}
    onSelectTool={setActiveTool}
    needsRecovery={pending?.status==="unresolved"||pending?.status==="conflict"}
+   cmdLineOpen={cmdLineOpen}
+   onToggleCmdLine={()=>setCmdLineOpen(v=>!v)}
    onOpenTechnical={()=>setTechnicalDetailsOpen(true)}
    onReloadShared={()=>void reloadShared()}
   />
@@ -388,6 +391,18 @@ function Workspace({organizationId,projectId,accountId,project,initial,canEdit,c
         {BASEMAP_OPTIONS.map(opt=><button key={opt.id} type="button" data-testid={"basemap-"+opt.id} disabled={!opt.available} aria-pressed={basemap===opt.id} title={opt.available?undefined:ONLINE_BASEMAP_UNAVAILABLE} className={basemap===opt.id?"is-selected":""} onClick={()=>{if(isBasemapAvailable(opt.id))setBasemap(opt.id);}}>{opt.label}</button>)}
        </div>
       </details>
+      <MapCommandLine
+       commands={commands}
+       activeModules={activeModules}
+       visible={cmdLineOpen}
+       onSelectTool={setActiveTool}
+       onToggleLeft={()=>updateLayoutPreference({...layoutPreference,leftPanelCollapsed:!layoutPreference.leftPanelCollapsed})}
+       onToggleRight={()=>updateLayoutPreference({...layoutPreference,rightPanelCollapsed:!layoutPreference.rightPanelCollapsed})}
+       onToggleTable={()=>updateLayoutPreference({...layoutPreference,attributeTableCollapsed:!layoutPreference.attributeTableCollapsed})}
+       onOpenTechnical={()=>setTechnicalDetailsOpen(true)}
+       onReloadShared={()=>void reloadShared()}
+       onHide={()=>setCmdLineOpen(false)}
+      />
       {contextMenu?<div className="map-context-menu" role="menu">{commands.filter(isCanvasCommand).map(c=><button role="menuitem" key={c.id} disabled={!c.enabled} title={c.reason??c.label} onClick={()=>invokeCommand(commands,c.id,"context")}>{c.label}</button>)}</div>:null}
      </section>}
      right={<FeatureInspector layer={activeLayer} detail={detail} focus={focus} count={selected.length} error={detailError}/>}

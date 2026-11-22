@@ -2,91 +2,54 @@ import { useEffect, useState } from "react";
 
 type Scheme = "light" | "dark";
 
-function systemScheme(): Scheme {
-  if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
+function readStoredScheme(): Scheme {
+  try {
+    return window.localStorage.getItem("color-scheme") === "dark" ? "dark" : "light";
+  } catch {
     return "light";
   }
-  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
 }
 
-function readStoredScheme(): Scheme | null {
-  try {
-    const value = window.localStorage.getItem("color-scheme");
-    return value === "light" || value === "dark" ? value : null;
-  } catch {
-    return null;
-  }
-}
-
-function applyMetaScheme(stored: Scheme | null) {
+function applyMetaScheme(scheme: Scheme) {
   const meta = document.querySelector<HTMLMetaElement>('meta[name="color-scheme"]');
   if (meta) {
-    meta.content = stored ?? "light dark";
+    meta.content = scheme;
   }
 }
 
 export function ThemeToggle() {
-  const [stored, setStored] = useState<Scheme | null>(() =>
-    typeof window === "undefined" ? null : readStoredScheme()
+  const [scheme, setScheme] = useState<Scheme>(() =>
+    typeof window === "undefined" ? "light" : readStoredScheme()
   );
-  const [resolved, setResolved] = useState<Scheme>(() => stored ?? systemScheme());
 
   useEffect(() => {
-    const nextResolved = stored ?? systemScheme();
-    setResolved(nextResolved);
-    applyMetaScheme(stored);
-  }, [stored]);
+    applyMetaScheme(scheme);
+  }, [scheme]);
 
   useEffect(() => {
     const onStorage = (event: StorageEvent) => {
       if (event.key === "color-scheme") {
         const next = readStoredScheme();
-        setStored(next);
+        setScheme(next);
         applyMetaScheme(next);
       }
     };
-    const media = window.matchMedia("(prefers-color-scheme: dark)");
-    const onMediaChange = () => {
-      const currentStored = readStoredScheme();
-      if (!currentStored) {
-        setResolved(systemScheme());
-      }
-    };
     window.addEventListener("storage", onStorage);
-    media.addEventListener("change", onMediaChange);
-    return () => {
-      window.removeEventListener("storage", onStorage);
-      media.removeEventListener("change", onMediaChange);
-    };
+    return () => window.removeEventListener("storage", onStorage);
   }, []);
 
   function handleToggle() {
-    const currentRendered = stored ?? systemScheme();
-    const target: Scheme = currentRendered === "dark" ? "light" : "dark";
-    const osScheme = systemScheme();
-
-    if (target === osScheme) {
-      try {
-        window.localStorage.removeItem("color-scheme");
-      } catch {
-        // Apply even when storage is blocked
-      }
-      setStored(null);
-      setResolved(osScheme);
-      applyMetaScheme(null);
-    } else {
-      try {
-        window.localStorage.setItem("color-scheme", target);
-      } catch {
-        // Apply even when storage is blocked
-      }
-      setStored(target);
-      setResolved(target);
-      applyMetaScheme(target);
+    const next: Scheme = scheme === "dark" ? "light" : "dark";
+    try {
+      window.localStorage.setItem("color-scheme", next);
+    } catch {
+      // Apply even when storage is blocked
     }
+    setScheme(next);
+    applyMetaScheme(next);
   }
 
-  const isDark = resolved === "dark";
+  const isDark = scheme === "dark";
   return (
     <button
       type="button"

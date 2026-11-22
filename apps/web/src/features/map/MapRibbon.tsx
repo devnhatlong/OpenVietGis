@@ -1,4 +1,3 @@
-import { useRef, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { ThemeToggle } from "../../app/shell/ThemeToggle";
@@ -16,6 +15,7 @@ interface MapRibbonProps {
   saveState: string;
   saveLabel: string;
   needsRecovery: boolean;
+  cmdLineOpen: boolean;
   commands: MapCommand[];
   activeTool: MapDockToolId | null;
   activeModules: ActiveModuleSummary[];
@@ -25,6 +25,7 @@ interface MapRibbonProps {
   onToggleLeft: () => void;
   onToggleRight: () => void;
   onToggleTable: () => void;
+  onToggleCmdLine: () => void;
   onSelectTool: (tool: MapDockToolId | null) => void;
   onOpenTechnical: () => void;
   onReloadShared: () => void;
@@ -38,25 +39,16 @@ export function MapRibbon({
   saveState,
   saveLabel,
   needsRecovery,
+  cmdLineOpen,
   commands,
   rightOpen,
   tableOpen,
   onToggleRight,
   onToggleTable,
+  onToggleCmdLine,
   onOpenTechnical,
   onReloadShared
 }: MapRibbonProps) {
-  const [search, setSearch] = useState("");
-  const searchMenu = useRef<HTMLDetailsElement>(null);
-
-  function executeSearch(id: string): void {
-    if (!invokeCommand(commands, id, "search")) return;
-    if (searchMenu.current) {
-      searchMenu.current.open = false;
-      searchMenu.current.querySelector("summary")?.focus();
-    }
-  }
-
   const addCmd = commands.find((c) => c.id === "map.add-data");
   const fitAllCmd = commands.find((c) => c.id === "map.fit-all");
   const saveCmd = commands.find((c) => c.id === "map.save");
@@ -144,60 +136,21 @@ export function MapRibbon({
         >
           Chi tiết
         </button>
-
-        <details ref={searchMenu} className="gis-cmd-dropdown">
-          <summary title="Tất cả lệnh bản đồ" aria-label="Menu lệnh bản đồ">⋯</summary>
-          <div className="gis-cmd-popover">
-            <label className="gis-cmd-search-label">
-              <span>Tìm lệnh bản đồ</span>
-              <input
-                aria-label="Tìm lệnh bản đồ"
-                placeholder="Gõ tên lệnh…"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-              />
-            </label>
-            <ul className="gis-cmd-list">
-              {commands
-                .filter((c) => c.label.toLowerCase().includes(search.toLowerCase()))
-                .map((c) => (
-                  <li key={c.id}>
-                    <button
-                      type="button"
-                      disabled={!c.enabled}
-                      title={c.reason ?? c.label}
-                      onClick={() => executeSearch(c.id)}
-                    >
-                      {c.label}
-                    </button>
-                    {!c.enabled && c.reason ? <small>{c.reason}</small> : null}
-                  </li>
-                ))}
-              <li>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (searchMenu.current) searchMenu.current.open = false;
-                    onOpenTechnical();
-                  }}
-                >
-                  Thông tin kỹ thuật & CRS
-                </button>
-              </li>
-              <li>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (searchMenu.current) searchMenu.current.open = false;
-                    onReloadShared();
-                  }}
-                >
-                  Tải lại bản đồ chung
-                </button>
-              </li>
-            </ul>
-          </div>
-        </details>
+        <button
+          type="button"
+          className={cmdLineOpen ? "is-on" : undefined}
+          title="Bật / Tắt dòng lệnh AutoCAD (phím /)"
+          onClick={onToggleCmdLine}
+        >
+          &gt;_ Lệnh
+        </button>
+        <button
+          type="button"
+          title="Thông tin kỹ thuật & CRS"
+          onClick={onOpenTechnical}
+        >
+          Kỹ thuật
+        </button>
 
         <ThemeToggle />
         <AccountMenu />

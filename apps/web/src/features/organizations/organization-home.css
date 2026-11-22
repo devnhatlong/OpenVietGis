@@ -22,3 +22,29 @@
 /* Tailwind Studio Full-Bleed Override */
 .org-page { width: 100%; max-width: none !important; margin: 0 !important; padding: 18px 20px 36px !important; background: var(--ovg-bg); color: var(--ovg-text); }
 .org-card { background: var(--ovg-surface) !important; border: 1px solid var(--ovg-border) !important; border-radius: 16px !important; color: var(--ovg-text) !important; }
+
+/* Fix OrganizationHome overlap & adaptive theme */
+.org-card-sub {
+  margin: 0 0 16px !important;
+  color: var(--ovg-text-muted) !important;
+}
+.org-shortcuts + .org-card-sub {
+  margin: 16px 0 0 !important;
+}
+.org-list li,
+.org-shortcut {
+  background: var(--ovg-surface-muted) !important;
+  border-color: var(--ovg-border) !important;
+  color: var(--ovg-text) !important;
+}
+.org-list li.is-active,
+.org-shortcut:hover {
+  border-color: var(--ovg-primary) !important;
+  background: var(--ovg-primary-soft) !important;
+}
+.org-list a { color: var(--ovg-text) !important; }
+.org-shortcut small { color: var(--ovg-text-muted) !important; }
+.org-role {
+  background: var(--ovg-primary-soft) !important;
+  color: var(--ovg-primary) !important;
+}
