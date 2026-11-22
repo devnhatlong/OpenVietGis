@@ -135,7 +135,7 @@ function OrganizationList({ organizationId, account }: { organizationId: string 
                     <small>Quản lý người dùng và quyền truy cập</small>
                   </Link>
                 </div>
-                <p className="org-card-sub" data-testid="active-organization">
+                <p className="mt-4 text-xs text-ink-muted" data-testid="active-organization">
                   Vai trò hiện tại: <strong>{organizationRoleLabel(activeOrganization.role)}</strong>
                 </p>
                 <details className="org-technical">

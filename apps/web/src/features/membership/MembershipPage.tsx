@@ -180,8 +180,8 @@ function MemberAdministration({ organizationId, userId, permissions }: {
         <section className="rounded-2xl border border-line bg-surface p-5 shadow-xs space-y-4">
           <h2 className="text-base font-bold text-ink">Phân quyền tài nguyên</h2>
           <form onSubmit={submitGrant} className="flex flex-wrap items-end gap-4 rounded-xl border border-line bg-surface-muted p-4">
-            <label>Thành viên
-              <select required value={availableMembers.some((member) => member.id === membershipId && member.status === "active") ? membershipId : ""} onChange={(event) => setMembershipId(event.target.value)}>
+            <label className="flex flex-col gap-1.5 text-xs font-semibold text-ink-secondary min-w-[240px]"><span>Thành viên</span>
+              <select required className="w-full" value={availableMembers.some((member) => member.id === membershipId && member.status === "active") ? membershipId : ""} onChange={(event) => setMembershipId(event.target.value)}>
                 <option value="">Chọn thành viên</option>
                 {availableMembers.filter((member) => member.status === "active").map((member) => (
                   <option key={member.id} value={member.id}>{member.user_id} — {membershipRoleLabel(member.role)}</option>
@@ -189,7 +189,7 @@ function MemberAdministration({ organizationId, userId, permissions }: {
               </select>
             </label>
             <ResourceScopeFields label="Cấp quyền truy cập tài nguyên" value={scope} onChange={setScope} workspaces={availableWorkspaces} projects={availableProjects} />
-            <button type="submit" disabled={grantAccess.isPending || !canSubmitGrant}>Cấp quyền</button>
+            <button type="submit" disabled={grantAccess.isPending || !canSubmitGrant} className="inline-flex items-center justify-center rounded-lg bg-brand px-4 py-2 text-sm font-bold text-brand-fg hover:bg-brand-strong disabled:opacity-50 cursor-pointer">Cấp quyền</button>
           </form>
           {grants.fetchStatus !== "idle" || grants.isPending ? <p>Đang tải phân quyền…</p> : null}
           {grants.error || members.error || workspaces.error || projects.error ? <p role="alert">Không thể tải tài nguyên phân quyền.</p> : null}

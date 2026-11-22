@@ -13,6 +13,7 @@ import { apiClient } from "../../app/api";
 import { currentProtectedData,protectedQueryOptions } from "../../app/protected-query";
 import { MapActivityRail } from "./MapActivityRail";
 import { MapCommandLine } from "./MapCommandLine";
+import { formatCoordinateInCrs,MapCrsPicker,VIETNAM_CRS_PRESETS,type DisplayCrsOption } from "./MapCrsPicker";
 import { MapRibbon } from "./MapRibbon";
 import { MapToolDock,type ActiveModuleSummary,type MapDockToolId } from "./MapToolDock";
 import { FreshAccount } from "../auth/FreshAccount";
@@ -93,6 +94,9 @@ function Workspace({organizationId,projectId,accountId,project,initial,canEdit,c
  const [pending,setPending]=useState<PendingSave|null>(null),[notice,setNotice]=useState(""),[working,setWorking]=useState(false);
  const [showHistory,setShowHistory]=useState(false),[historyCursor,setHistoryCursor]=useState<number|undefined>();
  const [contextMenu,setContextMenu]=useState(false),[addDataOpen,setAddDataOpen]=useState(false),[technicalDetailsOpen,setTechnicalDetailsOpen]=useState(false),[cmdLineOpen,setCmdLineOpen]=useState(true);
+ const [displayCrs,setDisplayCrs]=useState<DisplayCrsOption>(()=>{try{const savedCode=Number(window.localStorage.getItem("ovg-display-crs"));return VIETNAM_CRS_PRESETS.find(c=>c.code===savedCode)??VIETNAM_CRS_PRESETS[0]!;}catch{return VIETNAM_CRS_PRESETS[0]!;}});
+ const basemapDetailsRef=useRef<HTMLDetailsElement>(null);
+ useEffect(()=>{const close=(ev:PointerEvent)=>{if(basemapDetailsRef.current?.open&&!basemapDetailsRef.current.contains(ev.target as Node)){basemapDetailsRef.current.open=false;}};document.addEventListener("pointerdown",close);return()=>document.removeEventListener("pointerdown",close);},[]);
  const [searchParams,setSearchParams]=useSearchParams();
  const rawTool=searchParams.get("tool");
  const activeTool=(rawTool as MapDockToolId|null)??null;
@@ -385,10 +389,10 @@ function Workspace({organizationId,projectId,accountId,project,initial,canEdit,c
       <div className="map-stage-status" role="status"><strong data-testid="map-status" data-state={state}>{mapStateLabel(state)}</strong><span>{BASEMAP_OPTIONS.find(b=>b.id===basemap)?.label??"Lưới cục bộ"} · EPSG:3857 / EPSG:4326</span></div>
       {state==="empty"?<div className="map-blank-message"><h2>Bản đồ dự án</h2><p>{configuration.layers.length?"Không có hình học có thể đọc trong khung nhìn này.":"Hãy thêm một lớp dữ liệu từ bảng bên trái để bắt đầu."}</p></div>:null}
       {state==="partial"?<div className="map-partial" role="status">Khung nhìn đang hiển thị một phần dữ liệu. Hãy phóng to để xem chi tiết hơn. Bảng thuộc tính đọc độc lập các bản ghi đúng phiên bản.</div>:null}
-      <details className="map-basemap-picker">
+      <details ref={basemapDetailsRef} className="map-basemap-picker">
        <summary>Nền: {BASEMAP_OPTIONS.find(b=>b.id===basemap)?.label??"Lưới cục bộ"} ▾</summary>
        <div className="map-basemap-menu" role="group" aria-label="Bản đồ nền">
-        {BASEMAP_OPTIONS.map(opt=><button key={opt.id} type="button" data-testid={"basemap-"+opt.id} disabled={!opt.available} aria-pressed={basemap===opt.id} title={opt.available?undefined:ONLINE_BASEMAP_UNAVAILABLE} className={basemap===opt.id?"is-selected":""} onClick={()=>{if(isBasemapAvailable(opt.id))setBasemap(opt.id);}}>{opt.label}</button>)}
+        {BASEMAP_OPTIONS.map(opt=><button key={opt.id} type="button" data-testid={"basemap-"+opt.id} disabled={!opt.available} aria-pressed={basemap===opt.id} title={opt.available?undefined:ONLINE_BASEMAP_UNAVAILABLE} className={basemap===opt.id?"is-selected":""} onClick={(ev)=>{if(isBasemapAvailable(opt.id)){setBasemap(opt.id);ev.currentTarget.closest("details")?.removeAttribute("open");}}}>{opt.label}</button>)}
        </div>
       </details>
       <MapCommandLine
@@ -423,11 +427,20 @@ function Workspace({organizationId,projectId,accountId,project,initial,canEdit,c
   </div>
   <footer className="gis-statusbar" role="status" aria-label="Thanh trạng thái bản đồ">
    <span className="gis-sb-item is-live">● {mapStateLabel(state)}</span>
-   <span className="gis-sb-item">CRS: EPSG:3857 · EPSG:4326 (WGS84 / VN-2000)</span>
-   <span className="gis-sb-item">Nền: {BASEMAP_OPTIONS.find(b=>b.id===basemap)?.label??"Lưới cục bộ"}</span>
+   <span className="gis-sb-item">Tọa độ: {formatCoordinateInCrs(camera.longitude,camera.latitude,displayCrs)}</span>
+   <span className="gis-sb-item">Zoom: {camera.zoom.toFixed(2)}</span>
    <span className="gis-sb-item">Lớp: {configuration.layers.length}</span>
-   <span className="gis-sb-item">Đang chọn: {selected.length}</span>
-   {activeTool?<span className="gis-sb-item is-tool">Đang mở công cụ: {activeTool}</span>:null}
+   <span className="gis-sb-item">Chọn: {selected.length}</span>
+   {activeTool?<span className="gis-sb-item is-tool">Công cụ: {activeTool}</span>:null}
+   <div className="gis-sb-right">
+    <MapCrsPicker
+     organizationId={organizationId}
+     projectId={projectId}
+     selectedCode={displayCrs.code}
+     onSelect={(next)=>{setDisplayCrs(next);try{window.localStorage.setItem("ovg-display-crs",String(next.code));}catch{/* storage unavailable */}}}
+     onOpenFullCrsDock={()=>setActiveTool("spatial")}
+    />
+   </div>
   </footer>
   <TechnicalDetailsDrawer
    open={technicalDetailsOpen}

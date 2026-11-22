@@ -27,35 +27,57 @@ export function ResourceScopeFields({ label, value, onChange, workspaces, projec
   projects: Project[];
 }) {
   return (
-    <fieldset>
-      <legend>{label}</legend>
-      <label>Phạm vi
-        <select value={value.scope} onChange={(event) => onChange({
-          ...value, scope: event.target.value as ScopeSelection["scope"], resourceId: ""
-        })}>
-          <option value="organization">Tổ chức</option>
-          <option value="workspace">Không gian làm việc</option>
-          <option value="project">Dự án</option>
-        </select>
-      </label>
-      {value.scope !== "organization" ? (
-        <label>Tài nguyên
-          <select required value={(value.scope === "workspace" ? workspaces : projects).some((item) => item.id === value.resourceId && item.status === "active") ? value.resourceId : ""} onChange={(event) => onChange({ ...value, resourceId: event.target.value })}>
-            <option value="">Chọn tài nguyên</option>
-            {(value.scope === "workspace" ? workspaces : projects).filter((item) => item.status === "active").map((item) => (
-              <option key={item.id} value={item.id}>{item.name}</option>
-            ))}
+    <fieldset className="m-0 flex-1 min-w-[280px] rounded-xl border border-line bg-surface p-4">
+      <legend className="px-2 text-xs font-bold text-ink-secondary">{label}</legend>
+      <div className="mt-1 grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <label className="flex flex-col gap-1.5 text-xs font-semibold text-ink-secondary">
+          <span>Phạm vi</span>
+          <select
+            className="w-full"
+            value={value.scope}
+            onChange={(event) => onChange({
+              ...value,
+              scope: event.target.value as ScopeSelection["scope"],
+              resourceId: ""
+            })}
+          >
+            <option value="organization">Tổ chức</option>
+            <option value="workspace">Không gian làm việc</option>
+            <option value="project">Dự án</option>
           </select>
         </label>
-      ) : null}
-      <label>Vai trò trên tài nguyên
-        <select value={value.role} onChange={(event) => onChange({ ...value, role: event.target.value as ScopeSelection["role"] })}>
-          <option value="viewer">Người xem</option>
-          <option value="contributor">Cộng tác viên</option>
-          <option value="editor">Biên tập viên</option>
-          <option value="manager">Quản lý</option>
-        </select>
-      </label>
+        {value.scope !== "organization" ? (
+          <label className="flex flex-col gap-1.5 text-xs font-semibold text-ink-secondary">
+            <span>Tài nguyên</span>
+            <select
+              required
+              className="w-full"
+              value={(value.scope === "workspace" ? workspaces : projects).some((item) => item.id === value.resourceId && item.status === "active") ? value.resourceId : ""}
+              onChange={(event) => onChange({ ...value, resourceId: event.target.value })}
+            >
+              <option value="">Chọn tài nguyên</option>
+              {(value.scope === "workspace" ? workspaces : projects)
+                .filter((item) => item.status === "active")
+                .map((item) => (
+                  <option key={item.id} value={item.id}>{item.name}</option>
+                ))}
+            </select>
+          </label>
+        ) : null}
+        <label className="flex flex-col gap-1.5 text-xs font-semibold text-ink-secondary">
+          <span>Vai trò trên tài nguyên</span>
+          <select
+            className="w-full"
+            value={value.role}
+            onChange={(event) => onChange({ ...value, role: event.target.value as ScopeSelection["role"] })}
+          >
+            <option value="viewer">Người xem</option>
+            <option value="contributor">Cộng tác viên</option>
+            <option value="editor">Biên tập viên</option>
+            <option value="manager">Quản lý</option>
+          </select>
+        </label>
+      </div>
     </fieldset>
   );
 }
