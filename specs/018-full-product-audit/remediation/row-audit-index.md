@@ -67,4 +67,6 @@ Dispositions were calculated from each report's row class, not a score or test c
 7. R014 installation approval/dependencies/explicit namespaced module capability authorization; Core-only recoverability independently tested with modules absent.
 8. R015 approved self-host operational profile TLS/OIDC, resource and reliability targets and complete recovery drill of schema 0019 including extension histories.
 
+Follow-up engineering work and exact candidate evidence on `9be76f8`: [remaining row-gap remediation](remaining-row-gap-evidence.md). Baseline review dispositions above are intentionally retained; new passing sub-oracles are not full independent requirement acceptance.
+
 No production deployment, push, main promotion, independent service changes, fake human approval, or release-gate alteration authorized by this index.
