@@ -166,6 +166,7 @@ class SqlEditingRepository:
         summary: str,
         operations: Sequence[EditOperationInput],
         reverted_from_changeset_id: UUID | None = None,
+        base_schema_revision: str | None = None,
     ) -> ChangesetRecord:
         self._prepare(context, permission=Permission.PROJECT_EDIT)
         assert context.organization_id is not None and context.project_id is not None
@@ -182,6 +183,7 @@ class SqlEditingRepository:
             summary=clean_summary,
             operations=operations,
             reverted_from_changeset_id=reverted_from_changeset_id,
+            base_schema_revision=base_schema_revision,
         )
         # Serialize replay lookup with source mutation so concurrent identical
         # retries observe the winner's receipt instead of a stale-revision error.
@@ -255,7 +257,22 @@ class SqlEditingRepository:
                 },
             )
 
+        if base_schema_revision is not None and source.schema_revision != base_schema_revision:
+            raise PlatformConflictError(
+                "stale schema revision; refresh and review field identities before reapplying",
+                code="STALE_SCHEMA_REVISION",
+                details={
+                    "expected_schema_revision": base_schema_revision,
+                    "current_schema_revision": source.schema_revision,
+                    "draft_preserved": True,
+                },
+            )
         fields = self._load_fields(org_id, project_id, source_id)
+        if any(field.schema_revision != source.schema_revision for field in fields):
+            raise PlatformConflictError(
+                "source field schema does not match its current revision",
+                code="STALE_SCHEMA_REVISION",
+            )
         now = datetime.now(UTC)
 
         # Snapshot and validate every operation before mutating
@@ -512,6 +529,8 @@ class SqlEditingRepository:
                 "request_sha256": request_digest,
                 "operation_count": len(prepared_ops),
                 "base_content_revision": source.content_revision,
+                "base_schema_revision": source.schema_revision,
+                "submitted_schema_revision": base_schema_revision,
                 "resulting_content_revision": new_content_rev,
             },
             created_at=now,

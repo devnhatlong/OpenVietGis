@@ -94,6 +94,7 @@ class PublicChangesetOperation(BaseModel):
 
 class CommitChangesetRequest(PublicChangesetOperation):
     base_content_revision: str
+    base_schema_revision: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
     summary: str = Field(default="Feature edit", max_length=500)
     operations: list[EditOperationRequest]
 
@@ -125,6 +126,7 @@ def commit_changeset(
         context=ctx,
         source_id=source_id,
         base_content_revision=body.base_content_revision,
+        base_schema_revision=body.base_schema_revision,
         operation_id=body.operation_id,
         summary=body.summary,
         operations=[

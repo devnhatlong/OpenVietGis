@@ -335,6 +335,7 @@ export function commitChangeset(
   sourceId: string,
   body: {
     base_content_revision: string;
+    base_schema_revision?: string;
     operation_id: string;
     summary: string;
     operations: Array<{

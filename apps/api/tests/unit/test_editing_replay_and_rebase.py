@@ -17,18 +17,22 @@ from openvietgis_api.domains.platform_errors import PlatformValidationError
 
 
 def test_digest_is_exact_and_key_order_independent():
-    def digest(ops, summary="summary", reverted=None):
+    def digest(ops, summary="summary", reverted=None, schema=None):
         return changeset_request_digest(
             base_content_revision="a" * 64,
             summary=summary,
             operations=ops,
             reverted_from_changeset_id=reverted,
+            base_schema_revision=schema,
         )
 
     first = EditOperationInput(EditOpType.UPDATE, "feature", properties={"x": 1, "y": False})
     same = EditOperationInput(EditOpType.UPDATE, "feature", properties={"y": False, "x": 1})
     changed = EditOperationInput(EditOpType.UPDATE, "feature", properties={"x": 1, "y": True})
     assert digest([first]) == digest([same])
+    assert digest([first], schema="b" * 64) == digest([same], schema="b" * 64)
+    assert digest([first]) != digest([first], schema="b" * 64)
+    assert digest([first], schema="b" * 64) != digest([first], schema="c" * 64)
     assert digest([first]) != digest([changed])
     assert digest([first]) != digest([first], summary="changed")
     assert digest([first]) != digest([first], reverted=uuid4())
