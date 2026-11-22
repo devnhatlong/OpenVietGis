@@ -75,7 +75,7 @@ jobs:
       - name: Validate restricted-runtime integration, migration and performance
         run: >-
           uv run --project apps/api python -m tools.run_with_test_database
-          pytest apps/api/tests/integration apps/api/tests/performance --show-capture=no
+          pytest apps/api/tests/integration apps/api/tests/performance tests/modules --show-capture=no
 
       - name: Verify live synthetic Keycloak OIDC code and PKCE
         env:
