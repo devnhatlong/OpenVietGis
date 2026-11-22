@@ -615,10 +615,20 @@ def test_r007_r008_r009_query_processing_and_cartography(migrated_database: None
         assert layout.status_code == 201, layout.text
         layout_id = layout.json()["id"]
 
-        png_exp = client.post(
-            f"{base}/cartography/layouts/{layout_id}/exports",
-            json={"output_format": "png", "dpi": 150},
-        )
+        def confirmed_print(output_format, dpi):
+            path = f"{base}/cartography/layouts/{layout_id}/exports"
+            settings = {"output_format": output_format, "dpi": dpi}
+            preview = client.post(path + "/preview", json=settings)
+            assert preview.status_code == 200, preview.text
+            return client.post(
+                path,
+                json={
+                    **settings,
+                    "expected_revision_fingerprint": preview.json()["revision_fingerprint"],
+                },
+            )
+
+        png_exp = confirmed_print("png", 150)
         assert png_exp.status_code == 201, png_exp.text
         png_meta = png_exp.json()
         assert len(png_meta["revision_manifest"]["layers"]) == 2
@@ -628,10 +638,7 @@ def test_r007_r008_r009_query_processing_and_cartography(migrated_database: None
         img = Image.open(io.BytesIO(png_dl.content))
         assert img.format == "PNG" and img.width > 1000 and img.height > 800
 
-        pdf_exp = client.post(
-            f"{base}/cartography/layouts/{layout_id}/exports",
-            json={"output_format": "pdf", "dpi": 300},
-        )
+        pdf_exp = confirmed_print("pdf", 300)
         assert pdf_exp.status_code == 201, pdf_exp.text
         pdf_dl = client.get(f"{base}/cartography/exports/{pdf_exp.json()['id']}/download")
         assert pdf_dl.status_code == 200

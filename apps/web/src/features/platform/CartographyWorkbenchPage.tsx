@@ -6,10 +6,12 @@ import {
   listSpatialLayers,
   loadCsrfToken,
   printExportDownloadUrl,
+  previewPrintExport,
+  type PrintExportPreview,
   upsertLayerStyle
 } from "@openvietgis/client-sdk";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import { apiClient } from "../../app/api";
 import { ProjectToolbar } from "./ProjectToolbar";
@@ -25,6 +27,10 @@ export function CartographyWorkbenchPage() {
   const [orientation, setOrientation] = useState<"portrait" | "landscape">("landscape");
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [pending, setPending] = useState<{ org: string; project: string; layoutId: string; format: "png" | "pdf"; dpi: 150 | 300; preview: PrintExportPreview } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const generation = useRef(0);
+  const activePending = pending?.org === organizationId && pending.project === projectId ? pending : null;
 
   const layersQuery = useQuery({
     queryKey: ["r009", organizationId, projectId, "layers"],
@@ -94,22 +100,48 @@ export function CartographyWorkbenchPage() {
     }
   }
 
-  async function handleExport(layoutId: string, format: "png" | "pdf", dpi: 150 | 300): Promise<void> {
+  async function handleExportPreview(layoutId: string, format: "png" | "pdf", dpi: 150 | 300): Promise<void> {
+    const request = ++generation.current;
+    setError(null);
+    setNotice(null);
+    setPending(null);
+    setBusy(true);
+    try {
+      const csrf = await loadCsrfToken(apiClient);
+      const preview = await previewPrintExport(apiClient, organizationId, projectId, layoutId, { output_format: format, dpi }, csrf);
+      if (request === generation.current) setPending({ org: organizationId, project: projectId, layoutId, format, dpi, preview });
+    } catch (err) {
+      if (request === generation.current) setError(err instanceof Error ? err.message : "Không thể chuẩn bị bản in.");
+    } finally {
+      if (request === generation.current) setBusy(false);
+    }
+  }
+
+  async function confirmExport(): Promise<void> {
+    if (!activePending || busy) return;
+    const selection = activePending;
+    const request = ++generation.current;
+    setBusy(true);
     setError(null);
     try {
       const csrf = await loadCsrfToken(apiClient);
       const ex = await exportPrintLayout(
-        apiClient,
-        organizationId,
-        projectId,
-        layoutId,
-        { output_format: format, dpi },
+        apiClient, organizationId, projectId, selection.layoutId,
+        { output_format: selection.format, dpi: selection.dpi, expected_revision_fingerprint: selection.preview.revision_fingerprint },
         csrf
       );
-      setNotice(`Đã xuất tệp ${ex.output_format.toUpperCase()} (${ex.dpi} DPI, 1:${ex.scale_denominator}).`);
+      if (request === generation.current) {
+        setPending(null);
+        setNotice(`Đã xuất tệp ${ex.output_format.toUpperCase()} (${ex.dpi} DPI, 1:${ex.scale_denominator}).`);
+      }
       await qc.invalidateQueries({ queryKey: ["r009", organizationId, projectId, "exports"] });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Xuất bản đồ không thành công.");
+      if (request === generation.current) {
+        setPending(null);
+        setError(err instanceof Error ? `${err.message} — Hãy chuẩn bị bản in lại.` : "Xuất bản đồ không thành công.");
+      }
+    } finally {
+      if (request === generation.current) setBusy(false);
     }
   }
 
@@ -211,14 +243,16 @@ export function CartographyWorkbenchPage() {
                     <button
                       type="button"
                       className="ovg-btn ovg-btn-secondary"
-                      onClick={() => void handleExport(lo.id, "png", 150)}
+                      disabled={busy}
+                      onClick={() => void handleExportPreview(lo.id, "png", 150)}
                     >
                       PNG 150 DPI
                     </button>
                     <button
                       type="button"
                       className="ovg-btn"
-                      onClick={() => void handleExport(lo.id, "pdf", 300)}
+                      disabled={busy}
+                      onClick={() => void handleExportPreview(lo.id, "pdf", 300)}
                     >
                       PDF 300 DPI
                     </button>
@@ -228,6 +262,17 @@ export function CartographyWorkbenchPage() {
             </tbody>
           </table>
 
+          {activePending && (
+            <section className="ovg-card" data-testid="print-revision-preview">
+              <h3>Xác nhận bản in đã ghim phiên bản</h3>
+              <p>{activePending.format.toUpperCase()} · {activePending.dpi} DPI · EPSG:{activePending.preview.revision_manifest.crs_code} · {activePending.preview.revision_manifest.pixel_width} × {activePending.preview.revision_manifest.pixel_height} px</p>
+              <p>Tỷ lệ 1:{activePending.preview.revision_manifest.scale_denominator} (xấp xỉ) · {activePending.preview.revision_manifest.layers.length} lớp</p>
+              <p>Phạm vi in thực tế: {Object.entries(activePending.preview.revision_manifest.effective_extent).map(([axis, value]) => `${axis}: ${value.toFixed(5)}`).join(" · ")}</p>
+              <p>Phiên bản <code>{activePending.preview.revision_fingerprint.slice(0, 12)}</code>. Nếu dữ liệu hoặc ký hiệu thay đổi, yêu cầu sẽ bị từ chối.</p>
+              <button type="button" className="ovg-btn" disabled={busy} onClick={() => void confirmExport()}>Xác nhận xuất {activePending.format.toUpperCase()}</button>
+              <button type="button" className="ovg-btn ovg-btn-secondary" disabled={busy} onClick={() => setPending(null)}>Hủy chuẩn bị</button>
+            </section>
+          )}
           <h3 style={{ marginTop: "1rem" }}>Tệp bản đồ đã xuất</h3>
           <ul>
             {(exportsQuery.data?.items ?? []).map((ex) => (

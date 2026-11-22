@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import math
+from dataclasses import dataclass
 from typing import Any
 
 from PIL import Image, ImageDraw
@@ -54,6 +55,120 @@ def _resolve_feature_color(
     return "#2563eb", "#1e3a8a"
 
 
+@dataclass(frozen=True, slots=True)
+class PrintFrameMetrics:
+    width: int
+    height: int
+    margin: int
+    map_x0: int
+    map_y0: int
+    map_x1: int
+    map_y1: int
+    map_w: int
+    map_h: int
+    min_x: float
+    min_y: float
+    scale_px: float
+    pad_x: float
+    pad_y: float
+    effective_extent: dict[str, float]
+    ground_width_m: float
+    scale_denominator: int
+    scale_accuracy_note: str
+
+
+def describe_print_frame(
+    *,
+    paper_size: PaperSize,
+    orientation: Orientation,
+    dpi: int,
+    crs_code: int,
+    show_legend: bool,
+    extent: dict[str, float],
+) -> PrintFrameMetrics:
+    """The same physical frame transform used by preview and actual output."""
+    width, height = paper_dimensions_px(paper_size, orientation, dpi)
+    margin = max(40, width // 25)
+    header_h = max(60, height // 14)
+    footer_h = max(70, height // 12)
+    legend_w = (width // 4) if show_legend else 0
+
+    map_x0 = margin
+    map_y0 = margin + header_h
+    map_x1 = width - margin - legend_w - (margin // 2 if show_legend else 0)
+    map_y1 = height - margin - footer_h
+    map_w = max(100, map_x1 - map_x0)
+    map_h = max(100, map_y1 - map_y0)
+
+    min_x = float(extent["min_x"])
+    min_y = float(extent["min_y"])
+    max_x = float(extent["max_x"])
+    max_y = float(extent["max_y"])
+    span_x = max(1e-6, max_x - min_x)
+    span_y = max(1e-6, max_y - min_y)
+    # Pad 8% around data
+    min_x -= span_x * 0.08
+    max_x += span_x * 0.08
+    min_y -= span_y * 0.08
+    max_y += span_y * 0.08
+    span_x = max_x - min_x
+    span_y = max_y - min_y
+
+    # Preserve aspect ratio
+    scale_px = min(map_w / span_x, map_h / span_y)
+    pad_x = (map_w - span_x * scale_px) / 2.0
+    pad_y = (map_h - span_y * scale_px) / 2.0
+
+    # Compute approximate scale denominator (meters on ground per meter on paper)
+    map_width_meters_paper = (map_w / float(dpi)) * 0.0254
+    # Use the actual aspect-preserving pixel transform, not the data span:
+    # a tall extent can occupy only a fraction of the frame horizontally.
+    frame_units = map_w / scale_px
+    if crs_code in (4326, 4756):
+        mid_lat = (min_y + max_y) / 2.0
+        meters_per_unit = 111_320.0 * max(0.001, abs(math.cos(math.radians(mid_lat))))
+        scale_reference = "approximate ground scale at extent center"
+    elif crs_code == 3857:
+        mid_y = (min_y + max_y) / 2.0
+        meters_per_unit = 1.0 / math.cosh(mid_y / 6378137.0)
+        scale_reference = "approximate ground scale at extent center (Web Mercator)"
+    else:
+        meters_per_unit = 1.0
+        scale_reference = "approximate projected grid scale, not ground distance"
+    ground_width_m = frame_units * meters_per_unit
+    scale_denom = max(1, int(round(ground_width_m / max(1e-4, map_width_meters_paper))))
+
+    scale_note = (
+        f"Scale 1:{scale_denom:,} in EPSG:{crs_code} ({dpi} DPI): {scale_reference}. "
+        "Cartographic output only; not survey-grade."
+    )
+    return PrintFrameMetrics(
+        width,
+        height,
+        margin,
+        map_x0,
+        map_y0,
+        map_x1,
+        map_y1,
+        map_w,
+        map_h,
+        min_x,
+        min_y,
+        scale_px,
+        pad_x,
+        pad_y,
+        {
+            "min_x": min_x - pad_x / scale_px,
+            "min_y": min_y - pad_y / scale_px,
+            "max_x": max_x + pad_x / scale_px,
+            "max_y": max_y + pad_y / scale_px,
+        },
+        ground_width_m,
+        scale_denom,
+        scale_note,
+    )
+
+
 def render_print_map(
     *,
     title: str,
@@ -70,21 +185,22 @@ def render_print_map(
     layers_payload: list[dict[str, Any]],
 ) -> tuple[bytes, int, str]:
     """Render an A4/A3 print-ready PNG or PDF with geometries, legend, scale bar & north arrow."""
-    width, height = paper_dimensions_px(paper_size, orientation, dpi)
+    frame = describe_print_frame(
+        paper_size=paper_size,
+        orientation=orientation,
+        dpi=dpi,
+        crs_code=crs_code,
+        show_legend=show_legend,
+        extent=extent,
+    )
+    width, height = frame.width, frame.height
+    margin = frame.margin
+    map_x0, map_y0, map_x1, map_y1 = frame.map_x0, frame.map_y0, frame.map_x1, frame.map_y1
+    map_w, map_h = frame.map_w, frame.map_h
+    min_x, min_y = frame.min_x, frame.min_y
+    scale_px, pad_x, pad_y = frame.scale_px, frame.pad_x, frame.pad_y
     img = Image.new("RGB", (width, height), (255, 255, 255))
     draw = ImageDraw.Draw(img, "RGBA")
-
-    margin = max(40, width // 25)
-    header_h = max(60, height // 14)
-    footer_h = max(70, height // 12)
-    legend_w = (width // 4) if show_legend else 0
-
-    map_x0 = margin
-    map_y0 = margin + header_h
-    map_x1 = width - margin - legend_w - (margin // 2 if show_legend else 0)
-    map_y1 = height - margin - footer_h
-    map_w = max(100, map_x1 - map_x0)
-    map_h = max(100, map_y1 - map_y0)
 
     # Outer border & title
     draw.rectangle(
@@ -106,25 +222,6 @@ def render_print_map(
         outline=(51, 65, 85, 255),
         width=2,
     )
-
-    min_x = float(extent["min_x"])
-    min_y = float(extent["min_y"])
-    max_x = float(extent["max_x"])
-    max_y = float(extent["max_y"])
-    span_x = max(1e-6, max_x - min_x)
-    span_y = max(1e-6, max_y - min_y)
-    # Pad 8% around data
-    min_x -= span_x * 0.08
-    max_x += span_x * 0.08
-    min_y -= span_y * 0.08
-    max_y += span_y * 0.08
-    span_x = max_x - min_x
-    span_y = max_y - min_y
-
-    # Preserve aspect ratio
-    scale_px = min(map_w / span_x, map_h / span_y)
-    pad_x = (map_w - span_x * scale_px) / 2.0
-    pad_y = (map_h - span_y * scale_px) / 2.0
 
     def to_px(x: float, y: float) -> tuple[float, float]:
         px = map_x0 + pad_x + (x - min_x) * scale_px
@@ -245,24 +342,8 @@ def render_print_map(
         )
         draw.text((nx - 12, ny - 44), "N (grid)", fill=(15, 23, 42, 255))
 
-    # Compute approximate scale denominator (meters on ground per meter on paper)
-    map_width_meters_paper = (map_w / float(dpi)) * 0.0254
-    # Use the actual aspect-preserving pixel transform, not the data span:
-    # a tall extent can occupy only a fraction of the frame horizontally.
-    frame_units = map_w / scale_px
-    if crs_code in (4326, 4756):
-        mid_lat = (min_y + max_y) / 2.0
-        meters_per_unit = 111_320.0 * max(0.001, abs(math.cos(math.radians(mid_lat))))
-        scale_reference = "approximate ground scale at extent center"
-    elif crs_code == 3857:
-        mid_y = (min_y + max_y) / 2.0
-        meters_per_unit = 1.0 / math.cosh(mid_y / 6378137.0)
-        scale_reference = "approximate ground scale at extent center (Web Mercator)"
-    else:
-        meters_per_unit = 1.0
-        scale_reference = "approximate projected grid scale, not ground distance"
-    ground_width_m = frame_units * meters_per_unit
-    scale_denom = max(1, int(round(ground_width_m / max(1e-4, map_width_meters_paper))))
+    ground_width_m = frame.ground_width_m
+    scale_denom = frame.scale_denominator
 
     # Scale bar
     if show_scale_bar:
@@ -313,10 +394,7 @@ def render_print_map(
             cy += 26
 
     # Footer attribution & accuracy disclosure
-    scale_note = (
-        f"Scale 1:{scale_denom:,} in EPSG:{crs_code} ({dpi} DPI): {scale_reference}. "
-        "Cartographic output only; not survey-grade."
-    )
+    scale_note = frame.scale_accuracy_note
     draw.text((map_x0, map_y1 + 14), f"Attribution: {attribution}", fill=(51, 65, 85, 255))
     draw.text((map_x0, map_y1 + 36), scale_note, fill=(100, 116, 139, 255))
 

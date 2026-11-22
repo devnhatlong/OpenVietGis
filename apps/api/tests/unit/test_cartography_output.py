@@ -8,7 +8,12 @@ import pytest
 from PIL import Image
 
 from openvietgis_api.adapters.rendering.map_renderer import render_print_map
-from openvietgis_api.domains.cartography.domain import Orientation, PaperSize, PrintFormat
+from openvietgis_api.domains.cartography.domain import (
+    Orientation,
+    PaperSize,
+    PrintFormat,
+    paper_dimensions_px,
+)
 from openvietgis_api.domains.platform_errors import PlatformValidationError
 
 
@@ -70,3 +75,17 @@ def test_legend_overflow_rejected_before_export():
     layers = [{"name": f"control-{i}", "features": []} for i in range(21)]
     with pytest.raises(PlatformValidationError, match="legend does not fit"):
         _render([], legend=True, layers=layers)
+
+
+@pytest.mark.parametrize(
+    "paper,portrait,landscape",
+    [
+        (PaperSize.A4, (210, 297), (297, 210)),
+        (PaperSize.A3, (297, 420), (420, 297)),
+    ],
+)
+@pytest.mark.parametrize("dpi", [150, 300])
+def test_all_supported_physical_page_dimensions(paper, portrait, landscape, dpi):
+    for orientation, mm in ((Orientation.PORTRAIT, portrait), (Orientation.LANDSCAPE, landscape)):
+        expected = tuple(round(size * dpi / 25.4) for size in mm)
+        assert paper_dimensions_px(paper, orientation, dpi) == expected

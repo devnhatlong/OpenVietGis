@@ -11,6 +11,8 @@ import {
   type ExtensionPortableBundle,
   getOpsReleaseCapabilities,
   printExportDownloadUrl,
+  previewPrintExport,
+  exportPrintLayout,
   offlinePackageDownloadUrl
 } from "../src";
 
@@ -82,5 +84,26 @@ describe("R014 portable extension contracts", () => {
     expect(calls[1]?.body).toEqual({expected_manifest_id:"old",target_manifest_id:"new"});
     expect(calls[2]?.body).toEqual({expected_manifest_id:"new",expected_revision:2,payload:{name:"test",value:0,flag:false}});
     expect(calls[3]?.body).toEqual({...bundle,expected_manifest_id:"new"});
+  });
+});
+
+
+describe("R009 confirmed print revisions", () => {
+  it("requests scoped preview and submits its exact output settings and digest", async () => {
+    const pin = "f".repeat(64);
+    const fetchMock = vi.fn().mockImplementation(async () =>
+      new Response(JSON.stringify({revision_fingerprint:pin,revision_manifest:{}}), {
+        status: 200, headers: {"content-type":"application/json"}
+      })
+    );
+    const client = new ApiClient({baseUrl:"http://127.0.0.1:8000/api/v1",fetchImpl:fetchMock});
+    const settings = {output_format:"png",dpi:150} as const;
+    const preview = await previewPrintExport(client,"org","project","layout",settings,"csrf");
+    await exportPrintLayout(client,"org","project","layout",{
+      ...settings,expected_revision_fingerprint:preview.revision_fingerprint
+    },"csrf");
+    expect(fetchMock.mock.calls[0]?.[0]).toBe("http://127.0.0.1:8000/api/v1/organizations/org/projects/project/cartography/layouts/layout/exports/preview");
+    expect(fetchMock.mock.calls[1]?.[0]).toBe("http://127.0.0.1:8000/api/v1/organizations/org/projects/project/cartography/layouts/layout/exports");
+    expect(JSON.parse(fetchMock.mock.calls[1]?.[1].body)).toEqual({...settings,expected_revision_fingerprint:pin});
   });
 });

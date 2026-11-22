@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 from uuid import UUID, uuid4
 
+from PIL import __version__ as pillow_version
 from sqlalchemy import text
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.orm import Session
@@ -19,7 +20,7 @@ from openvietgis_api.adapters.persistence.web_transform_guard import (
     require_web_domain,
     web_transform_sql,
 )
-from openvietgis_api.adapters.rendering.map_renderer import render_print_map
+from openvietgis_api.adapters.rendering.map_renderer import describe_print_frame, render_print_map
 from openvietgis_api.adapters.storage.local_object_store import LocalObjectStore
 from openvietgis_api.domains.authorization.context import AuthorizationContext
 from openvietgis_api.domains.authorization.permissions import Permission
@@ -31,9 +32,14 @@ from openvietgis_api.domains.cartography.domain import (
     PrintFormat,
     PrintLayoutRecord,
     StyleMode,
+    print_revision_fingerprint,
     validate_and_build_legend,
 )
-from openvietgis_api.domains.platform_errors import PlatformNotFoundError, PlatformValidationError
+from openvietgis_api.domains.platform_errors import (
+    PlatformConflictError,
+    PlatformNotFoundError,
+    PlatformValidationError,
+)
 
 
 def _validate_print_extent(extent: dict[str, float], crs_code: int) -> None:
@@ -141,6 +147,7 @@ class SqlCartographyRepository:
                 SELECT id, name, source_id FROM spatial.layers
                 WHERE organization_id = :org AND project_id = :proj AND id = :lid
                   AND lifecycle = 'active'
+                FOR UPDATE
             """),
                 {"org": org_id, "proj": project_id, "lid": layer_id},
             )
@@ -333,14 +340,14 @@ class SqlCartographyRepository:
         )
         return [_layout_from_row(r) for r in rows]
 
-    def export_layout(
+    def _prepare_print_snapshot(
         self,
         *,
         context: AuthorizationContext,
         layout_id: UUID,
         output_format: PrintFormat,
-        dpi: int = 150,
-    ) -> PrintExportRecord:
+        dpi: int,
+    ) -> tuple[PrintLayoutRecord, list[dict[str, Any]], dict[str, Any]]:
         self._prepare(context, permission=Permission.PROJECT_READ)
         assert context.organization_id is not None and context.project_id is not None
         assert context.actor.actor_id is not None
@@ -353,6 +360,7 @@ class SqlCartographyRepository:
                 text("""
                 SELECT * FROM cartography.print_layouts
                 WHERE organization_id = :org AND project_id = :proj AND id = :lid
+                FOR SHARE
             """),
                 {"org": org_id, "proj": project_id, "lid": layout_id},
             )
@@ -362,6 +370,12 @@ class SqlCartographyRepository:
         if lrow is None:
             raise PlatformNotFoundError("print layout not found")
         layout = _layout_from_row(lrow)
+        if (
+            not layout.layer_ids
+            or len(layout.layer_ids) != len(set(layout.layer_ids))
+            or len(layout.layer_ids) > 20
+        ):
+            raise PlatformValidationError("invalid layout layer set", code="LAYOUT_LAYER_LIMIT")
 
         layers_payload: list[dict[str, Any]] = []
         manifest_layers: list[dict[str, Any]] = []
@@ -370,14 +384,16 @@ class SqlCartographyRepository:
         max_x = float("-inf")
         max_y = float("-inf")
 
-        for lid_str in layout.layer_ids:
+        # Lock in stable order to coordinate style creation/update and data change.
+        # Restore the explicitly saved drawing order after reading each layer.
+        for lid_str in sorted(layout.layer_ids):
             lid = UUID(lid_str)
             meta = (
                 self._session.execute(
                     text("""
                     SELECT l.id AS layer_id, l.name AS layer_name, l.layer_revision,
                            s.id AS source_id, s.stored_crs, s.content_revision, s.schema_revision,
-                           s.extent
+                           s.extent, s.feature_count, s.geometry_family
                     FROM spatial.layers l
                     JOIN spatial.data_sources s
                       ON s.organization_id = l.organization_id
@@ -399,16 +415,21 @@ class SqlCartographyRepository:
             style_row = (
                 self._session.execute(
                     text("""
-                    SELECT mode, style_spec, label_field, legend_items, revision
+                    SELECT id AS style_id, mode, style_spec, label_field, legend_items, revision
                     FROM cartography.layer_styles
                     WHERE organization_id = :org AND project_id = :proj AND layer_id = :lid
+                    FOR SHARE
                 """),
                     {"org": org_id, "proj": project_id, "lid": lid},
                 )
                 .mappings()
                 .first()
             )
-            style_dict = dict(style_row) if style_row is not None else None
+            style_dict = (
+                {key: value for key, value in style_row.items() if key != "style_id"}
+                if style_row is not None
+                else None
+            )
 
             source_srid = int(meta["stored_crs"])
             geom_expr = "rf.geometry"
@@ -429,7 +450,13 @@ class SqlCartographyRepository:
                 self._session.execute(
                     text(f"""
                     SELECT rf.feature_id, rf.attributes,
-                           ST_AsGeoJSON({geom_expr})::jsonb AS geom,
+                           (rf.content_revision=:content_rev AND rf.schema_revision=:schema_rev
+                            AND rf.geometry_state='present' AND rf.geometry IS NOT NULL
+                            AND ST_SRID(rf.geometry)=:srid AND ST_Zmflag(rf.geometry)=0
+                            AND ST_GeometryType(rf.geometry)=:geometry_type
+                            AND NOT ST_IsEmpty(rf.geometry) AND ST_IsValid(rf.geometry)
+                            AND ST_NPoints(rf.geometry) BETWEEN 1 AND 4096) IS TRUE AS valid,
+                           ST_AsGeoJSON({geom_expr}, 15)::jsonb AS geom,
                            ST_XMin({geom_expr}) AS x0, ST_YMin({geom_expr}) AS y0,
                            ST_XMax({geom_expr}) AS x1, ST_YMax({geom_expr}) AS y1
                     FROM spatial.reference_features rf
@@ -442,6 +469,10 @@ class SqlCartographyRepository:
                         "org": org_id,
                         "proj": project_id,
                         "src": meta["source_id"],
+                        "content_rev": meta["content_revision"],
+                        "schema_rev": meta["schema_revision"],
+                        "srid": source_srid,
+                        "geometry_type": f"ST_{meta['geometry_family']}",
                         **transform_params,
                     },
                 )
@@ -453,6 +484,13 @@ class SqlCartographyRepository:
                 raise PlatformValidationError(
                     "print layer exceeds the supported 2500-feature limit; narrow the source",
                     code="PRINT_FEATURE_LIMIT",
+                )
+            if len(frows) != meta["feature_count"] or any(
+                not fr["valid"] or fr["geom"] is None for fr in frows
+            ):
+                raise PlatformValidationError(
+                    "print source does not match its ready revision",
+                    code="INVALID_PRINT_SOURCE",
                 )
             features = []
             for fr in frows:
@@ -487,9 +525,16 @@ class SqlCartographyRepository:
                     "source_crs": source_srid,
                     "transformation_operation": transform_operation,
                     "style_revision": int(style_row["revision"]) if style_row else 0,
+                    "style_id": str(style_row["style_id"]) if style_row else None,
+                    "style_fingerprint": print_revision_fingerprint(style_dict)
+                    if style_dict
+                    else None,
                 }
             )
 
+        order = {lid: index for index, lid in enumerate(layout.layer_ids)}
+        layers_payload.sort(key=lambda item: order[item["id"]])
+        manifest_layers.sort(key=lambda item: order[item["layer_id"]])
         if layout.extent is not None:
             _validate_print_extent(layout.extent, layout.crs_code)
             use_extent = layout.extent
@@ -506,6 +551,93 @@ class SqlCartographyRepository:
                 "layout has no spatial extent; supply an explicit extent", code="EMPTY_PRINT_EXTENT"
             )
 
+        frame = describe_print_frame(
+            paper_size=layout.paper_size,
+            orientation=layout.orientation,
+            dpi=dpi,
+            crs_code=layout.crs_code,
+            show_legend=layout.show_legend,
+            extent=use_extent,
+        )
+        layout_revision = {
+            "id": str(layout.id),
+            "name": layout.name,
+            "title": layout.title,
+            "paper_size": layout.paper_size.value,
+            "orientation": layout.orientation.value,
+            "crs_code": layout.crs_code,
+            "attribution": layout.attribution,
+            "show_north_arrow": layout.show_north_arrow,
+            "show_scale_bar": layout.show_scale_bar,
+            "show_legend": layout.show_legend,
+            "layer_ids": layout.layer_ids,
+            "extent": layout.extent,
+            "updated_at": layout.updated_at.isoformat(),
+        }
+        manifest = {
+            "organization_id": str(org_id),
+            "project_id": str(project_id),
+            "layout_id": str(layout.id),
+            "layout_revision": print_revision_fingerprint(layout_revision),
+            "layout": layout_revision,
+            "crs_code": layout.crs_code,
+            "paper_size": layout.paper_size.value,
+            "orientation": layout.orientation.value,
+            "dpi": dpi,
+            "output_format": output_format.value,
+            "extent": use_extent,
+            "effective_extent": frame.effective_extent,
+            "pixel_width": frame.width,
+            "pixel_height": frame.height,
+            "scale_denominator": frame.scale_denominator,
+            "scale_accuracy_note": frame.scale_accuracy_note,
+            "renderer_profile": {
+                "id": "local-pillow-print-v1",
+                "pillow": pillow_version,
+                "font": "Pillow default",
+            },
+            "layers": manifest_layers,
+        }
+        return layout, layers_payload, manifest
+
+    def preview_export(
+        self,
+        *,
+        context: AuthorizationContext,
+        layout_id: UUID,
+        output_format: PrintFormat,
+        dpi: int,
+    ) -> dict[str, Any]:
+        _, _, manifest = self._prepare_print_snapshot(
+            context=context, layout_id=layout_id, output_format=output_format, dpi=dpi
+        )
+        return {
+            "revision_manifest": manifest,
+            "revision_fingerprint": print_revision_fingerprint(manifest),
+        }
+
+    def export_layout(
+        self,
+        *,
+        context: AuthorizationContext,
+        layout_id: UUID,
+        output_format: PrintFormat,
+        dpi: int,
+        expected_revision_fingerprint: str,
+    ) -> PrintExportRecord:
+        layout, layers_payload, manifest = self._prepare_print_snapshot(
+            context=context, layout_id=layout_id, output_format=output_format, dpi=dpi
+        )
+        actual = print_revision_fingerprint(manifest)
+        if actual != expected_revision_fingerprint:
+            raise PlatformConflictError(
+                "print inputs changed since preview; preview again before confirming",
+                code="STALE_PRINT_REVISION",
+            )
+        assert context.organization_id is not None and context.project_id is not None
+        assert context.actor.actor_id is not None
+        org_id, project_id = context.organization_id, context.project_id
+        use_extent = manifest["extent"]
         raw_bytes, scale_denom, scale_note = render_print_map(
             title=layout.title,
             paper_size=layout.paper_size,
@@ -524,17 +656,19 @@ class SqlCartographyRepository:
         export_id = uuid4()
         storage_key = f"cartography/{org_id}/{project_id}/{export_id}.{output_format.value}"
         sha256_hex, byte_size = self._store.put_bytes(storage_key, raw_bytes)
+        # Verify stored immutable bytes before inserting the visible artifact.
+        # On a definite verification failure there is no published DB record.
+        try:
+            stored = self._store.get_bytes(storage_key, expected_sha256=sha256_hex)
+            if len(stored) != byte_size or stored != raw_bytes:
+                raise PlatformValidationError(
+                    "print object failed integrity verification", code="PRINT_ARTIFACT_INTEGRITY"
+                )
+        except Exception:
+            self._store.delete_object(storage_key)
+            raise
         now = datetime.now(UTC)
-        manifest = {
-            "layout_id": str(layout.id),
-            "crs_code": layout.crs_code,
-            "paper_size": layout.paper_size.value,
-            "orientation": layout.orientation.value,
-            "dpi": dpi,
-            "extent": use_extent,
-            "layers": manifest_layers,
-            "exported_at": now.isoformat(),
-        }
+        manifest = {**manifest, "revision_fingerprint": actual, "exported_at": now.isoformat()}
 
         erow = (
             self._session.execute(

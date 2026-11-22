@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import re
 from dataclasses import dataclass
 from datetime import datetime
@@ -88,6 +90,15 @@ class PrintExportRecord:
     byte_size: int
     created_by_actor_id: UUID
     created_at: datetime
+
+
+def print_revision_fingerprint(manifest: dict[str, Any]) -> str:
+    """Canonical content fingerprint, independent of object key order."""
+    return hashlib.sha256(
+        json.dumps(
+            manifest, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False
+        ).encode("utf-8")
+    ).hexdigest()
 
 
 def _check_color(val: Any, default: str = "#1f78b4") -> str:
@@ -181,7 +192,10 @@ def paper_dimensions_px(
     mm_w, mm_h = (210.0, 297.0) if paper_size == PaperSize.A4 else (297.0, 420.0)
     if orientation == Orientation.LANDSCAPE:
         mm_w, mm_h = mm_h, mm_w
-    # Compute exact print pixel dimensions for 150 or 300 DPI (clamped safely <= 3600px)
-    px_w = min(3600, int(round((mm_w / 25.4) * dpi)))
-    px_h = min(3600, int(round((mm_h / 25.4) * dpi)))
+    # The finite size/DPI profile is bounded to at most 4961 × 3508 pixels.
+    # Clamping an A3 300-DPI dimension changes physical page size.
+    if dpi not in (150, 300):
+        raise PlatformValidationError("dpi must be 150 or 300", code="INVALID_DPI")
+    px_w = int(round((mm_w / 25.4) * dpi))
+    px_h = int(round((mm_h / 25.4) * dpi))
     return px_w, px_h

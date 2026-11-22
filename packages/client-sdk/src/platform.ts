@@ -112,6 +112,25 @@ export interface PrintLayout {
   created_at: string;
 }
 
+export interface PrintRevisionManifest {
+  layout_id: string;
+  layout_revision: string;
+  crs_code: number;
+  output_format: "png" | "pdf";
+  dpi: 150 | 300;
+  pixel_width: number;
+  pixel_height: number;
+  scale_denominator: number;
+  scale_accuracy_note: string;
+  effective_extent: { min_x: number; min_y: number; max_x: number; max_y: number };
+  layers: Array<{ layer_id: string; source_id: string; layer_revision: number; content_revision: string; schema_revision: string; style_revision: number }>;
+}
+
+export interface PrintExportPreview {
+  revision_manifest: PrintRevisionManifest;
+  revision_fingerprint: string;
+}
+
 export interface PrintExport {
   id: string;
   layout_id: string;
@@ -119,6 +138,7 @@ export interface PrintExport {
   dpi: number;
   scale_denominator: number;
   scale_accuracy_note: string;
+  revision_manifest: Record<string, unknown>;
   sha256: string;
   byte_size: number;
   created_at: string;
@@ -513,12 +533,26 @@ export function createPrintLayout(
   });
 }
 
-export function exportPrintLayout(
+export function previewPrintExport(
   client: ApiClient,
   orgId: string,
   projectId: string,
   layoutId: string,
   body: { output_format: "png" | "pdf"; dpi: 150 | 300 },
+  csrf: string
+): Promise<PrintExportPreview> {
+  return client.request<PrintExportPreview>(
+    `${projBase(orgId, projectId)}/cartography/layouts/${encodeURIComponent(layoutId)}/exports/preview`,
+    { method: "POST", body: JSON.stringify(body), headers: csrfHeaders(csrf) }
+  );
+}
+
+export function exportPrintLayout(
+  client: ApiClient,
+  orgId: string,
+  projectId: string,
+  layoutId: string,
+  body: { output_format: "png" | "pdf"; dpi: 150 | 300; expected_revision_fingerprint: string },
   csrf: string
 ): Promise<PrintExport> {
   return client.request<PrintExport>(

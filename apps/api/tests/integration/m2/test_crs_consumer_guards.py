@@ -64,9 +64,17 @@ def _print(client, base, layer_id, crs):
         },
     )
     assert layout.status_code == 201, layout.text
+    path = f"{base}/cartography/layouts/{layout.json()['id']}/exports"
+    settings = {"output_format": "png", "dpi": 150}
+    preview = client.post(path + "/preview", json=settings)
+    if preview.status_code != 200:
+        return preview
     return client.post(
-        f"{base}/cartography/layouts/{layout.json()['id']}/exports",
-        json={"output_format": "png", "dpi": 150},
+        path,
+        json={
+            **settings,
+            "expected_revision_fingerprint": preview.json()["revision_fingerprint"],
+        },
     )
 
 

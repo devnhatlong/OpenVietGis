@@ -106,6 +106,8 @@ test("M2+M3 end-to-end: R006 Editing, R007 Query, R008 Processing, R009 Cartogra
     timeout: 10000
   });
   await page.getByRole("button", { name: "PNG 150 DPI" }).first().click();
+  await expect(page.getByTestId("print-revision-preview")).toBeVisible();
+  await page.getByRole("button", { name: "Xác nhận xuất PNG" }).click();
   await expect(page.getByText(/Đã xuất tệp PNG \(150 DPI/i)).toBeVisible({ timeout: 15000 });
 
   const pngUrl = await page.getByRole("link",{name:/Download PNG \(150 DPI/i}).first().getAttribute("href");
