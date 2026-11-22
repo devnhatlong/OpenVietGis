@@ -15,6 +15,7 @@ Status: **technical candidate verified; external release gate T007 remains open.
 - Module frontend typecheck: **PASS**.
 - Web typecheck/lint/production build: **PASS** (only the existing >500 kB Vite chunk warning).
 - Browser E2E: **PASS**, including isolated Core + official-module migrations, module activate/disable, all seven UI journeys, and 390×844 mobile viewport.
+- Public VPS HTTPS preview: **PASS** on https://vps1.gpcds.site:2087; root/health HTTP 200 and full public Keycloak + US1–US7 Playwright journey **1 passed in 40.0 s**.
 - Performance: see [performance.md](performance.md).
 - Recovery: see [recovery.md](recovery.md).
 
