@@ -66,6 +66,34 @@ describe("MapLibre renderer invalidation and bounded work",()=>{
     expect(ready).not.toHaveBeenCalled();
   });
 
+  it("installs all three sources directly in exact draw order, without redundant moves",()=>{
+    engine.setLayers([point("p"),line("l"),polygon("a")]);
+    expect(fake.layerIds).toEqual(["project-layer-1","project-layer-2","project-layer-3"]);
+    expect(fake.moveLayer).not.toHaveBeenCalled();
+    // Replacing a middle source with a fresh generation must insert at its
+    // existing draw position, not append and reshuffle every stable layer.
+    const changedLine=line("l");
+    changedLine.features[0]!.geometry.coordinates=[[105,10],[107,11]];
+    engine.setLayers([point("p"),changedLine,polygon("a")]);
+    expect(fake.layerIds).toEqual(["project-layer-1","project-layer-4","project-layer-3"]);
+    expect(fake.moveLayer).not.toHaveBeenCalled();
+    expect(fake.addSource).toHaveBeenCalledTimes(4);
+    expect(fake.removeSource).toHaveBeenCalledTimes(1);
+  });
+
+  it("detects in-place changes to untrusted mutable inputs rather than assuming identity is safe",()=>{
+    const p=point("p");
+    engine.setLayers([p]);
+    p.features[0]!.geometry.coordinates=[106,10];
+    engine.setLayers([p]);
+    expect(fake.addSource).toHaveBeenCalledTimes(2);
+    expect(fake.removeSource).toHaveBeenCalledTimes(1);
+    // Same coordinates under a different pinned scope are a new generation.
+    engine.setLayers([{...p,scopeKey:"new-authorized-pin"}]);
+    expect(fake.addSource).toHaveBeenCalledTimes(3);
+    expect(fake.removeSource).toHaveBeenCalledTimes(2);
+  });
+
   it("updates selected/cleared feature paint without reparsing any geometry source",()=>{
     engine.setLayers([point("p"),line("l"),polygon("a")]);
     engine.setSelection("p",["point-000001"]);

@@ -32,7 +32,7 @@ export interface RenderLayer {
   /** Current actor/tenant/layer/source/revision pin, retained only in the adapter. */
   scopeKey: string;
   style: MapStyle;
-  features: RenderFeature[];
+  features: readonly RenderFeature[];
 }
 export interface MapEngineEvents {
   viewport: (bounds: Bounds, camera: MapViewpoint) => void;

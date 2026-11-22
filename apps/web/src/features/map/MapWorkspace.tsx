@@ -28,6 +28,7 @@ import { buildLayerPanelItemView } from "./layer-view";
 import { createCommands,invokeCommand,type MapCommandId } from "./commands";
 import { BASEMAP_OPTIONS,type BasemapId,type MapEngine,type RenderLayer } from "./engine";
 import { loadMapEngine,type MapEngineFactory } from "./map-engine-loader";
+import { createViewportFramePreparer } from "./render-frame";
 import { beginSave,markUnresolved,receiptMatches,saveErrorState,type PendingSave } from "./save";
 import { buildSaveIndicatorView } from "./save-indicator";
 import { buildTechnicalDetailsView } from "./technical-details";
@@ -144,7 +145,8 @@ function Workspace({organizationId,projectId,accountId,project,initial,canEdit,c
   map.setBasemap(window.location.protocol==="https:"?"google-hybrid":"grid");map.setCamera(initial.configuration.default_viewpoint??defaultCamera);
   return ()=>{map.clear();map.destroy();engine.current=null;};
  },[]);
- const frames:RenderLayer[]=[];
+ const [prepareViewportFrame]=useState(createViewportFramePreparer);
+ const frames:RenderLayer[]=[],frameVersions:number[]=[];
  const states=configuration.layers.map((ref,index)=>{
   const layer=metadata[index],result=viewportQueries[index];
   if(!ref.visible)return "hidden";
@@ -156,19 +158,15 @@ function Workspace({organizationId,projectId,accountId,project,initial,canEdit,c
   const value=result&&currentProtectedData(result);
   if(!value)return "loading";
   const scope={accountId,organizationId,projectId,layerId:layer.id,sourceId:layer.source_id,contentRevision:layer.source.content_revision,schemaRevision:layer.source.schema_revision};
-  if(!viewportMatches(scope,value.context))return "unavailable — response context mismatch";
-  try {
-   const features=value.items.map(item=>{
-    if(!item.geometry||item.geometry.coordinate_reference.code!==4326||!["Point","LineString","Polygon"].includes(item.geometry.type))throw new Error("Invalid display geometry");
-    boundsOfGeometry(item.geometry);
-    return {feature_id:item.feature_id,geometry:{type:item.geometry.type as "Point"|"LineString"|"Polygon",coordinates:item.geometry.coordinates}};
-   });
-   frames.push({id:layer.id,scopeKey:key,style:ref.style,features});
-  }catch{return "unavailable — invalid display geometry";}
+  const prepared=prepareViewportFrame(scope,value,result.dataUpdatedAt);
+  if(prepared.status==="invalid-context")return "unavailable — response context mismatch";
+  if(prepared.status==="invalid-geometry")return "unavailable — invalid display geometry";
+  frames.push({id:layer.id,scopeKey:key,style:ref.style,features:prepared.features});
+  frameVersions.push(prepared.version);
   return !value.complete?"partial — "+value.limitation:value.items.length?"usable":"empty";
  });
  const busyData=states.some(s=>s==="loading");
- const frameKey=JSON.stringify([configuration.layers,bbox,frames.map(f=>f.scopeKey),metadataQueries.map(q=>[q.dataUpdatedAt,Boolean(q.error)]),viewportQueries.map(q=>[q.dataUpdatedAt,Boolean(q.error)]),blocked,activeBlocked,busyData]);
+ const frameKey=JSON.stringify([configuration.layers,bbox,frames.map((f,index)=>[f.scopeKey,frameVersions[index]]),metadataQueries.map(q=>[q.dataUpdatedAt,Boolean(q.error)]),viewportQueries.map(q=>[q.dataUpdatedAt,Boolean(q.error)]),blocked,activeBlocked,busyData]);
  useLayoutEffect(()=>{applyCurrentFrameSet(engine.current,frames,busyData);},[frameKey]);
  useLayoutEffect(()=>{engine.current?.setActiveLayer(configuration.layers.some(ref=>ref.layer_id===active&&ref.visible)&&!activeBlocked?active:null);engine.current?.setSelection(activeBlocked?null:active,selected);},[active,activeBlocked,selected.join(","),configuration.layers.map(ref=>ref.layer_id+ref.visible).join(",")]);
  const hasGeometry=frames.some(frame=>frame.features.length>0);

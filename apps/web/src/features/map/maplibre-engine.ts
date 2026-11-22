@@ -11,6 +11,7 @@ import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?url";
 import type { MapStyle, MapViewpoint } from "@openvietgis/client-sdk";
 import type { BasemapId, MapEngine, MapEngineEvents, RenderGeometry, RenderLayer } from "./engine";
 import { boundsOfGeometry, type Bounds } from "./workspace";
+import { isImmutableViewportFeatures } from "./render-frame";
 
 setWorkerUrl(workerUrl);
 setWorkerCount(1);
@@ -204,6 +205,10 @@ export function createMapLibreEngine(container: HTMLElement, events: MapEngineEv
   };
   let handles: Handle[] = [];
   let basemapHandles: string[] = [];
+  // A module-owned immutable frame is independently validated by this adapter
+  // the first time it is used. Repeated style/order renders can reuse the
+  // resulting geometry signature; untrusted mutable arrays never qualify.
+  const geometrySignatures = new WeakMap<RenderLayer["features"], { family: RenderGeometry["type"]; signature: string }>();
 
   function camera(): MapViewpoint {
     const center = map.getCenter();
@@ -296,29 +301,29 @@ export function createMapLibreEngine(container: HTMLElement, events: MapEngineEv
     handle.style={...style};
   }
 
-  function createHandle(layer:RenderLayer,family:RenderGeometry["type"],signature:string):Handle {
+  function createHandle(layer:RenderLayer,family:RenderGeometry["type"],signature:string,before?:Handle):Handle {
     const generation=++serial,source="project-data-"+generation,id="project-layer-"+generation;
     const features=layer.features.map(item=>({
       type:"Feature",id:item.feature_id,properties:{feature_id:item.feature_id},geometry:item.geometry
     }));
     const handle:Handle={layer:id,source,logical:layer.id,family,signature,style:{...layer.style}};
     // Register before mutation so the fail-closed cleanup also covers partial creation.
-    handles.push(handle);
+    handles.splice(before ? handles.indexOf(before) : handles.length,0,handle);
     map.addSource(source,{type:"geojson",data:{type:"FeatureCollection",features} as GeoJSONSourceSpecification["data"]});
     const color=selectedColor(layer.id,layer.style.color) as string;
     if(family==="Point"){
       map.addLayer({id,source,type:"circle",paint:{
         "circle-color":color,"circle-radius":layer.style.radius,"circle-opacity":layer.style.opacity,
         "circle-stroke-color":"#ffffff","circle-stroke-width":2
-      }});
+      }},before?.layer);
     }else if(family==="LineString"){
       map.addLayer({id,source,type:"line",paint:{
         "line-color":color,"line-width":layer.style.width,"line-opacity":layer.style.opacity
-      }});
+      }},before?.layer);
     }else{
       map.addLayer({id,source,type:"fill",paint:{
         "fill-color":color,"fill-opacity":layer.style.opacity,"fill-outline-color":"#1e293b"
-      }});
+      }},before?.layer);
     }
     return handle;
   }
@@ -332,13 +337,18 @@ export function createMapLibreEngine(container: HTMLElement, events: MapEngineEv
       const desired=[...layers].reverse().flatMap(layer=>{
         if(seen.has(layer.id)||!layer.scopeKey)throw new Error("Invalid render scope");
         seen.add(layer.id);
-        const family=layer.features[0]?.geometry.type;
-        if(!family)return [];
-        for(const item of layer.features){
-          if(item.geometry.type!==family||!boundsOfGeometry(item.geometry))
-            throw new Error("Invalid render geometry");
+        if(!layer.features.length)return [];
+        let geometry=geometrySignatures.get(layer.features);
+        if(!geometry){
+          const family=layer.features[0]!.geometry.type;
+          for(const item of layer.features){
+            if(item.geometry.type!==family||!boundsOfGeometry(item.geometry))
+              throw new Error("Invalid render geometry");
+          }
+          geometry={family,signature:JSON.stringify(layer.features)};
+          if(isImmutableViewportFeatures(layer.features))geometrySignatures.set(layer.features,geometry);
         }
-        return [{layer,family,signature:JSON.stringify([layer.scopeKey,layer.features])}];
+        return [{layer,family:geometry.family,signature:JSON.stringify(layer.scopeKey)+":"+geometry.signature}];
       });
       const prior=new Map(handles.map(h=>[h.logical,h]));
       const desiredById=new Map(desired.map(frame=>[frame.layer.id,frame]));
@@ -354,19 +364,29 @@ export function createMapLibreEngine(container: HTMLElement, events: MapEngineEv
       for(const handle of remove){removeHandle(handle);prior.delete(handle.logical);}
       handles=handles.filter(handle=>prior.has(handle.logical));
       const next:Handle[]=[];
-      for(const f of desired){
+      for(const [index,f] of desired.entries()){
         const existing=prior.get(f.layer.id);
         if(existing){
           updatePaint(existing,f.layer.style);
           next.push(existing);
         }else{
-          next.push(createHandle(f.layer,f.family,f.signature));
+          // Install a new/replacement source directly below its next surviving
+          // logical successor. On the first open there are no successors, so
+          // additions alone establish the exact draw order.
+          const before=desired.slice(index+1).map(candidate=>prior.get(candidate.layer.id)).find(Boolean);
+          next.push(createHandle(f.layer,f.family,f.signature,before));
         }
       }
-      // A newly created replacement is added at the top; restore exact logical
-      // draw order when an arrangement or generation actually changed.
-      if(changedOrder||changedSource){
-        for(const handle of next)map.moveLayer(handle.layer);
+      // Only actual arrangement differences require native moveLayer calls.
+      // Repeated unconditional moves cause redundant style/worker updates
+      // even when sources were added in the correct order initially.
+      const physicalOrder=handles.map(handle=>handle.layer);
+      for(let index=next.length-1; index>=0; index--){
+        const id=next[index]!.layer,before=next[index+1]?.layer,from=physicalOrder.indexOf(id);
+        if(physicalOrder[from+1]===before)continue;
+        map.moveLayer(id,before);
+        physicalOrder.splice(from,1);
+        physicalOrder.splice(before===undefined?physicalOrder.length:physicalOrder.indexOf(before),0,id);
       }
       handles=next;
       map.triggerRepaint();
