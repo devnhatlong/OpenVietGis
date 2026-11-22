@@ -16,7 +16,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor, TimeoutError
 from urllib.parse import urlsplit
 
-from openvietgis_api.domains.external_sources.provider import ProviderUnavailable
+from openvietgis_api.domains.external_sources.provider import ProviderUnavailable, RangeResponse
 
 _REQUEST_SECONDS = 5.0
 _DNS_WORKERS = 4
@@ -100,8 +100,36 @@ def _interrupt(sock: socket.socket) -> None:
         pass
 
 
-def fetch_provider_bytes(url: str, expected: str, limit: int) -> bytes:
-    """GET only, bounded absolute deadline, image/XML/JSON media type checks."""
+def _strong_etag(value: str | None) -> bool:
+    # Strict ASCII strong validator; never echo a weak or malformed value.
+    return value is not None and re.fullmatch(r'"[\x21\x23-\x7e]{1,128}"', value) is not None
+
+
+def _fetch_response(
+    url: str,
+    expected: str,
+    limit: int,
+    *,
+    first: int | None = None,
+    last: int | None = None,
+    etag: str | None = None,
+    total: int | None = None,
+    timeout: float = _REQUEST_SECONDS,
+) -> tuple[bytes, int | None, str | None]:
+    """Bounded HTTPS bytes and (for advanced COG) immutable range metadata."""
+    advanced = first is not None
+    if first is not None and (
+        last is None
+        or expected != "tiff"
+        or not 0 <= first <= last < 2**31
+        or last - first + 1 != limit
+        or ((etag is None) != (total is None))
+        or (etag is not None and not _strong_etag(etag))
+        or (total is not None and not first < total <= 2**31)
+    ):
+        raise ProviderUnavailable()
+    if not 0 < timeout <= _REQUEST_SECONDS:
+        raise ProviderUnavailable()
     try:
         parsed = urlsplit(url)
         if (
@@ -109,6 +137,7 @@ def fetch_provider_bytes(url: str, expected: str, limit: int) -> bytes:
             or not parsed.hostname
             or parsed.netloc not in (parsed.hostname, f"{parsed.hostname}:443")
             or parsed.fragment
+            or (advanced and parsed.query)
             or not parsed.path.startswith("/")
             or not 0 < limit <= 2 * 1024 * 1024
             or expected not in _MEDIA_TYPES
@@ -125,7 +154,7 @@ def fetch_provider_bytes(url: str, expected: str, limit: int) -> bytes:
     connection: http.client.HTTPConnection | None = None
     timer: threading.Timer | None = None
     try:
-        deadline = time.monotonic() + _REQUEST_SECONDS
+        deadline = time.monotonic() + timeout
         address = _public_ipv4(parsed.hostname, deadline)
         # Use a numeric IPv4 socket directly; no second DNS resolution.
         raw = socket.socket(socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP)
@@ -153,7 +182,9 @@ def fetch_provider_bytes(url: str, expected: str, limit: int) -> bytes:
             "User-Agent": "OpenVietGIS-restricted-provider/1",
         }
         if expected == "tiff":
-            headers["Range"] = f"bytes=0-{limit - 1}"
+            headers["Range"] = f"bytes={first}-{last}" if advanced else f"bytes=0-{limit - 1}"
+            if advanced and etag is not None:
+                headers["If-Match"] = etag
         connection.request("GET", path, headers=headers)
         response = connection.getresponse()
         # Never follow even same-origin redirects.
@@ -169,16 +200,35 @@ def fetch_provider_bytes(url: str, expected: str, limit: int) -> bytes:
         declared = response.getheader("Content-Length")
         if declared is not None and (not declared.isdecimal() or int(declared) > limit):
             raise ProviderUnavailable()
+        response_total: int | None = None
+        response_etag: str | None = None
         if expected == "tiff":
-            # A single bounded complete-object range: an ignored range (200),
-            # truncated or multipart response, unknown size, or large file is
-            # never considered a verified raster sample.
             content_range = response.getheader("Content-Range", "")
-            match = re.fullmatch(r"bytes 0-([0-9]{1,10})/([0-9]{1,10})", content_range)
+            match = re.fullmatch(r"bytes ([0-9]{1,10})-([0-9]{1,10})/([0-9]{1,10})", content_range)
             if match is None or declared is None:
                 raise ProviderUnavailable()
-            last, total = int(match[1]), int(match[2])
-            if not (0 < total <= limit and last == total - 1 and int(declared) == total):
+            actual_first, actual_last, response_total = map(int, match.groups())
+            if advanced:
+                # Every subsequent range is pinned with a strong If-Match
+                # validator and exact original object size. No ignored or
+                # clipped range, multipart fallback, or version mixing.
+                assert first is not None and last is not None
+                response_etag = response.getheader("ETag")
+                if (
+                    not _strong_etag(response_etag)
+                    or (etag is not None and response_etag != etag)
+                    or (total is not None and response_total != total)
+                    or not actual_first == first < response_total <= 2**31
+                    or actual_last != min(last, response_total - 1)
+                    or int(declared) != actual_last - actual_first + 1
+                ):
+                    raise ProviderUnavailable()
+            elif not (
+                actual_first == 0
+                and 0 < response_total <= limit
+                and actual_last == response_total - 1
+                and int(declared) == response_total
+            ):
                 raise ProviderUnavailable()
         elif response.getheader("Content-Range") is not None:
             raise ProviderUnavailable()
@@ -188,7 +238,7 @@ def fetch_provider_bytes(url: str, expected: str, limit: int) -> bytes:
             raise ProviderUnavailable()
         if declared is not None and len(payload) != int(declared):
             raise ProviderUnavailable()
-        return payload
+        return payload, response_total, response_etag
     except (OSError, http.client.HTTPException, ValueError, OverflowError) as exc:
         raise ProviderUnavailable() from exc
     finally:
@@ -201,3 +251,27 @@ def fetch_provider_bytes(url: str, expected: str, limit: int) -> bytes:
         if raw is not None:
             raw.close()
         _REQUEST_SLOTS.release()
+
+
+def fetch_provider_bytes(url: str, expected: str, limit: int) -> bytes:
+    """GET only, bounded absolute deadline, image/XML/JSON media type checks."""
+    payload, _, _ = _fetch_response(url, expected, limit)
+    return payload
+
+
+def fetch_provider_range(
+    url: str, first: int, last: int, etag: str | None, total: int | None, timeout: float
+) -> RangeResponse:
+    """Read only one precise COG range of an immutable object."""
+    payload, size, validator = _fetch_response(
+        url,
+        "tiff",
+        last - first + 1,
+        first=first,
+        last=last,
+        etag=etag,
+        total=total,
+        timeout=timeout,
+    )
+    assert size is not None and validator is not None
+    return RangeResponse(payload, size, validator)

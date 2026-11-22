@@ -31,6 +31,7 @@ from openvietgis_api.domains.external_sources.domain import (
 from openvietgis_api.domains.platform_errors import (
     PlatformDomainError,
     PlatformForbiddenError,
+    PlatformValidationError,
 )
 
 PROFILE_ENV = "OPENVIETGIS_EXTERNAL_PROVIDER_PROFILES"
@@ -42,6 +43,16 @@ MAP_SIZE = 256
 
 BBox = tuple[float, float, float, float]
 Fetch = Callable[[str, str, int], bytes]
+
+
+@dataclass(frozen=True, slots=True)
+class RangeResponse:
+    data: bytes
+    total: int
+    etag: str
+
+
+RangeFetch = Callable[[str, int, int, str | None, int | None, float], RangeResponse]
 
 
 class ProviderUnavailable(PlatformDomainError):
@@ -78,6 +89,15 @@ class TileProfile:
 
 
 @dataclass(frozen=True, slots=True)
+class CogProfile:
+    source_bbox: BBox
+    source_width: int
+    source_height: int
+    # Explicitly approve partial range/window access for this source.
+    allow_viewport: bool = False
+
+
+@dataclass(frozen=True, slots=True)
 class ProviderProfile:
     endpoint: str
     protocol: ExternalProtocol
@@ -87,6 +107,7 @@ class ProviderProfile:
     attribution: str
     license_text: str
     tile: TileProfile | None = None
+    cog: CogProfile | None = None
 
 
 def _bbox(raw: Any, crs: int) -> BBox:
@@ -183,6 +204,29 @@ def _tile_profile(raw: Any, endpoint: str, bbox: BBox) -> TileProfile:
     return tile
 
 
+def _cog_profile(raw: Any, crs: int, approved_bbox: BBox) -> CogProfile:
+    if not isinstance(raw, dict) or set(raw) != {
+        "source_bbox",
+        "source_width",
+        "source_height",
+        "allow_viewport",
+    }:
+        raise ValueError("invalid COG profile")
+    source_bbox = _bbox(raw["source_bbox"], crs)
+    width, height = raw["source_width"], raw["source_height"]
+    allow_viewport = raw["allow_viewport"]
+    if not (
+        type(width) is int
+        and type(height) is int
+        and 1 <= width <= 32768
+        and 1 <= height <= 32768
+        and type(allow_viewport) is bool
+        and _contains(source_bbox, approved_bbox)
+    ):
+        raise ValueError("invalid COG extent/dimensions")
+    return CogProfile(source_bbox, width, height, allow_viewport)
+
+
 def load_profiles() -> tuple[ProviderProfile, ...]:
     """Invalid deployment policy is fail-closed, never a wildcard."""
     try:
@@ -203,7 +247,10 @@ def load_profiles() -> tuple[ProviderProfile, ...]:
                 "attribution",
                 "license_text",
             }
-            if not isinstance(entry, dict) or not required <= set(entry) <= required | {"tile"}:
+            if not isinstance(entry, dict) or not required <= set(entry) <= required | {
+                "tile",
+                "cog",
+            }:
                 return ()
             endpoint = entry["endpoint"]
             protocol = ExternalProtocol(entry["protocol"])
@@ -218,6 +265,7 @@ def load_profiles() -> tuple[ProviderProfile, ...]:
                 or (protocol == ExternalProtocol.WFS_OGC_FEATURES and crs != 4326)
                 or (protocol == ExternalProtocol.WMTS_XYZ and crs != 3857)
                 or (protocol != ExternalProtocol.WMTS_XYZ and entry.get("tile") is not None)
+                or (protocol != ExternalProtocol.COG_GEOTIFF and entry.get("cog") is not None)
                 or not isinstance(layer, str)
                 or not (1 <= len(layer) <= 200)
                 or not all(c.isascii() and (c.isalnum() or c in "_-.:") for c in layer)
@@ -235,9 +283,12 @@ def load_profiles() -> tuple[ProviderProfile, ...]:
                 if protocol == ExternalProtocol.WMTS_XYZ
                 else None
             )
+            cog = (
+                _cog_profile(entry.get("cog"), crs, bbox) if entry.get("cog") is not None else None
+            )
             profiles.append(
                 ProviderProfile(
-                    endpoint, protocol, layer, crs, bbox, attribution, license_text, tile
+                    endpoint, protocol, layer, crs, bbox, attribution, license_text, tile, cog
                 )
             )
         return tuple(profiles)
@@ -640,7 +691,9 @@ def _wfs_preview(profile: ProviderProfile, fetch: Fetch) -> dict[str, Any]:
     return {"feature_collection": _feature_collection(raw, profile)}
 
 
-def provider_preview(profile: ProviderProfile, fetch: Fetch) -> dict[str, Any]:
+def provider_preview(
+    profile: ProviderProfile, fetch: Fetch, range_fetch: RangeFetch | None = None
+) -> dict[str, Any]:
     """No persisted success: each explicit preview verifies metadata and bytes."""
     caps = default_external_capabilities(profile.protocol)
     if profile.protocol == ExternalProtocol.WMS:
@@ -656,9 +709,16 @@ def provider_preview(profile: ProviderProfile, fetch: Fetch) -> dict[str, Any]:
         content = tile_preview(profile, fetch)
         caps["render"] = True
     elif profile.protocol == ExternalProtocol.COG_GEOTIFF:
-        from openvietgis_api.domains.external_sources.geotiff_provider import geotiff_preview
+        if profile.cog is not None:
+            from openvietgis_api.domains.external_sources.cog_provider import cog_preview
 
-        content = geotiff_preview(profile, fetch)
+            if range_fetch is None:
+                raise ProviderUnavailable()
+            content = cog_preview(profile, range_fetch, profile.bbox, MAP_SIZE, MAP_SIZE)
+        else:
+            from openvietgis_api.domains.external_sources.geotiff_provider import geotiff_preview
+
+            content = geotiff_preview(profile, fetch)
         caps["render"] = True
     else:
         raise PlatformForbiddenError("unsupported provider protocol", code="PROVIDER_DISABLED")
@@ -669,6 +729,42 @@ def provider_preview(profile: ProviderProfile, fetch: Fetch) -> dict[str, Any]:
         "layer_identifier": profile.layer,
         "crs": profile.crs,
         "bbox": profile.bbox,
+        "attribution": profile.attribution,
+        "license_text": profile.license_text,
+        **content,
+    }
+
+
+def provider_viewport(
+    profile: ProviderProfile,
+    range_fetch: RangeFetch,
+    *,
+    crs: int,
+    bbox: BBox,
+    width: int,
+    height: int,
+) -> dict[str, Any]:
+    """Explicit operator-approved COG window, with no user geography sent to provider."""
+    if (
+        profile.protocol != ExternalProtocol.COG_GEOTIFF
+        or profile.cog is None
+        or not profile.cog.allow_viewport
+    ):
+        raise PlatformForbiddenError("provider viewport not approved", code="VIEWPORT_FORBIDDEN")
+    if crs != profile.crs:
+        raise PlatformValidationError("viewport CRS mismatch", code="INVALID_VIEWPORT")
+    from openvietgis_api.domains.external_sources.cog_provider import cog_preview
+
+    content = cog_preview(profile, range_fetch, bbox, width, height)
+    caps = default_external_capabilities(profile.protocol)
+    caps["render"] = True
+    return {
+        "availability": "available",
+        "capabilities": caps,
+        "scope": "operator_approved_viewport",
+        "layer_identifier": profile.layer,
+        "crs": profile.crs,
+        "bbox": bbox,
         "attribution": profile.attribution,
         "license_text": profile.license_text,
         **content,

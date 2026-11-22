@@ -516,7 +516,7 @@ export function createExternalConnection(
 export interface ExternalProviderPreview {
   availability: "available";
   capabilities: Record<string, boolean>;
-  scope: "operator_approved_sample";
+  scope: "operator_approved_sample" | "operator_approved_viewport";
   connection_id: string;
   cache_generation: number;
   layer_identifier: string;
@@ -537,6 +537,27 @@ export interface ExternalProviderPreview {
         pixel_size: [number, number];
         band_count: number;
         range_bytes: number;
+      }
+    | {
+        kind: "cog_window_sample";
+        tile_width: number;
+        tile_height: number;
+        tile_count: number;
+        band_count: number;
+        overview_index: number;
+        overview_scale: number;
+        overview_count: number;
+        source_size: [number, number];
+        overview_pixel_window: [number, number, number, number];
+        source_pixel_window: [number, number, number, number];
+        pixel_size: [number, number];
+        compression: "none" | "deflate";
+        predictor: number;
+        range_requests: number;
+        range_bytes: number;
+        object_bytes: number;
+        allow_viewport: boolean;
+        approved_bbox: [number, number, number, number];
       };
   feature_collection?: {
     type: "FeatureCollection";
@@ -559,6 +580,27 @@ export function previewExternalProvider(
   return client.request<ExternalProviderPreview>(
     `${projBase(orgId, projectId)}/external-sources/${encodeURIComponent(connectionId)}/preview`,
     { method: "POST", headers: csrfHeaders(csrf), cache: "no-store" }
+  );
+}
+
+export interface ExternalViewportRequest {
+  crs: number;
+  bbox: [number, number, number, number];
+  width: number;
+  height: number;
+}
+
+export function previewExternalProviderViewport(
+  client: ApiClient,
+  orgId: string,
+  projectId: string,
+  connectionId: string,
+  body: ExternalViewportRequest,
+  csrf: string
+): Promise<ExternalProviderPreview> {
+  return client.request<ExternalProviderPreview>(
+    `${projBase(orgId, projectId)}/external-sources/${encodeURIComponent(connectionId)}/viewport`,
+    { method: "POST", headers: csrfHeaders(csrf), body: JSON.stringify(body), cache: "no-store" }
   );
 }
 

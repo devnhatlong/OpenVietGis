@@ -11,7 +11,10 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
 from openvietgis_api.adapters.http.authorization import context_for
-from openvietgis_api.adapters.http.external_provider_transport import fetch_provider_bytes
+from openvietgis_api.adapters.http.external_provider_transport import (
+    fetch_provider_bytes,
+    fetch_provider_range,
+)
 from openvietgis_api.adapters.http.security import (
     AuthenticatedRequest,
     authenticate_request,
@@ -29,6 +32,7 @@ from openvietgis_api.domains.external_sources.domain import (
 from openvietgis_api.domains.external_sources.provider import (
     approved_profile,
     provider_preview,
+    provider_viewport,
 )
 from openvietgis_api.domains.platform_errors import PlatformForbiddenError
 
@@ -89,6 +93,14 @@ class CreateExternalConnectionRequest(BaseModel):
     attribution: str = "External Provider"
     license_text: str = "Provider License Terms"
     crs_codes: list[int] = Field(default_factory=lambda: [4326, 3857])
+
+
+class ExternalViewportRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True, allow_inf_nan=False)
+    crs: int
+    bbox: list[float] = Field(min_length=4, max_length=4)
+    width: int = Field(ge=1, le=512)
+    height: int = Field(ge=1, le=512)
 
 
 @router.post(f"{_ORG}/external-sources/allowlist", status_code=201)
@@ -171,9 +183,44 @@ def preview_external_source(
         context=ctx, connection_id=connection_id
     )
     profile = approved_profile(conn, allowlist)
-    result = provider_preview(profile, fetch_provider_bytes)
+    result = provider_preview(profile, fetch_provider_bytes, fetch_provider_range)
     # Recheck live authorization after the bounded outbound request. Row locks
     # prevent provider revocation/cache mutation during this proof transaction.
+    current, current_allowlist = repository.connection_for_provider_request(
+        context=ctx, connection_id=connection_id
+    )
+    if approved_profile(current, current_allowlist) != profile:
+        raise PlatformForbiddenError("provider profile changed", code="PROVIDER_DISABLED")
+    response.headers["Cache-Control"] = "no-store"
+    return {**result, "connection_id": str(conn.id), "cache_generation": conn.cache_generation}
+
+
+@router.post(f"{_PROJ}/external-sources/{{connection_id}}/viewport")
+def preview_external_viewport(
+    organization_id: UUID,
+    project_id: UUID,
+    connection_id: UUID,
+    body: ExternalViewportRequest,
+    response: Response,
+    auth: Annotated[AuthenticatedRequest, Depends(require_csrf)],
+    session: Annotated[Session, Depends(get_db_session, scope="function")],
+) -> dict[str, Any]:
+    """Only approved COG regions; user coordinates never reach the outbound URL."""
+    ctx = context_for(auth, organization_id=organization_id, project_id=project_id)
+    repository = SqlExternalSourcesRepository(session)
+    conn, allowlist = repository.connection_for_provider_request(
+        context=ctx, connection_id=connection_id
+    )
+    profile = approved_profile(conn, allowlist)
+    x0, y0, x1, y1 = body.bbox
+    result = provider_viewport(
+        profile,
+        fetch_provider_range,
+        crs=body.crs,
+        bbox=(x0, y0, x1, y1),
+        width=body.width,
+        height=body.height,
+    )
     current, current_allowlist = repository.connection_for_provider_request(
         context=ctx, connection_id=connection_id
     )
