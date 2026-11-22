@@ -26,7 +26,7 @@ import { buildAddDataCandidates,currentAddDataCatalog,layerScopeMatches } from "
 import { sameCamera,sameViewportBounds } from "./map-initialization";
 import { buildLayerPanelItemView } from "./layer-view";
 import { createCommands,invokeCommand,type MapCommandId } from "./commands";
-import { BASEMAP_OPTIONS,type BasemapId,type MapEngine,type RenderLayer } from "./engine";
+import { BASEMAP_OPTIONS,isBasemapAvailable,LOCAL_BASEMAP,ONLINE_BASEMAP_UNAVAILABLE,type BasemapId,type MapEngine,type RenderLayer } from "./engine";
 import { loadMapEngine,type MapEngineFactory } from "./map-engine-loader";
 import { createViewportFramePreparer } from "./render-frame";
 import { beginSave,markUnresolved,receiptMatches,saveErrorState,type PendingSave } from "./save";
@@ -87,7 +87,7 @@ function Workspace({organizationId,projectId,accountId,project,initial,canEdit,c
  const [showHistory,setShowHistory]=useState(false),[historyCursor,setHistoryCursor]=useState<number|undefined>();
  const [contextMenu,setContextMenu]=useState(false),[addDataOpen,setAddDataOpen]=useState(false),[technicalDetailsOpen,setTechnicalDetailsOpen]=useState(false);
  const [layoutPreference,setLayoutPreference]=useState<WorkspaceLayoutPreference>(()=>loadWorkspaceLayoutPreference());
- const [basemap,setBasemap]=useState<BasemapId>(()=>window.location.protocol==="https:"?"google-hybrid":"grid");
+ const [basemap,setBasemap]=useState<BasemapId>(LOCAL_BASEMAP);
  useEffect(()=>{engine.current?.setBasemap(basemap);},[basemap]);
  const initialFit=useRef(false),fitGeneration=useRef(0);
  const writable=canEdit&&project.status==="active";
@@ -142,7 +142,7 @@ function Workspace({organizationId,projectId,accountId,project,initial,canEdit,c
   const map=createEngine(canvas.current,{viewport:(bounds,value)=>handlers.current.viewport(bounds,value),pick:(id,multiple)=>handlers.current.pick(id,multiple),ready:setEngineReady,error:()=>setEngineError(true)});
   engine.current=map;
   map.setActiveLayer(initial.configuration.layers[0]?.visible?initial.configuration.layers[0].layer_id:null);
-  map.setBasemap(window.location.protocol==="https:"?"google-hybrid":"grid");map.setCamera(initial.configuration.default_viewpoint??defaultCamera);
+  map.setBasemap(LOCAL_BASEMAP);map.setCamera(initial.configuration.default_viewpoint??defaultCamera);
   return ()=>{map.clear();map.destroy();engine.current=null;};
  },[]);
  const [prepareViewportFrame]=useState(createViewportFramePreparer);
@@ -311,9 +311,10 @@ function Workspace({organizationId,projectId,accountId,project,initial,canEdit,c
      aria-haspopup="dialog"
      onClick={()=>setTechnicalDetailsOpen(true)}
     >Thông tin kỹ thuật</button>
+    <span role="status" title={ONLINE_BASEMAP_UNAVAILABLE} aria-label={ONLINE_BASEMAP_UNAVAILABLE}>Nền trực tuyến chưa phê duyệt</span>
   </div>
   <CommandBar commands={commands}/>
-  <div className="map-basemap-bar" style={{display:"flex",flexWrap:"wrap",alignItems:"center",gap:"0.4rem",padding:"0.4rem 0.9rem",background:"#f1f5f9",borderBottom:"1px solid #cbd5e1",fontSize:"0.84rem"}}><strong>Bản đồ nền:</strong>{BASEMAP_OPTIONS.map(opt=><button key={opt.id} type="button" data-testid={"basemap-"+opt.id} style={{padding:"0.25rem 0.65rem",borderRadius:6,border:"1px solid #94a3b8",cursor:"pointer",background:basemap===opt.id?"#0f172a":"#ffffff",color:basemap===opt.id?"#ffffff":"#0f172a",fontWeight:600}} onClick={()=>setBasemap(opt.id)}>{opt.label}</button>)}</div>
+  <div className="map-basemap-bar" style={{display:"flex",flexWrap:"wrap",alignItems:"center",gap:"0.4rem",padding:"0.4rem 0.9rem",background:"#f1f5f9",borderBottom:"1px solid #cbd5e1",fontSize:"0.84rem"}}><strong>Bản đồ nền:</strong>{BASEMAP_OPTIONS.map(opt=><button key={opt.id} type="button" data-testid={"basemap-"+opt.id} disabled={!opt.available} aria-pressed={basemap===opt.id} title={opt.available?undefined:ONLINE_BASEMAP_UNAVAILABLE} style={{padding:"0.25rem 0.65rem",borderRadius:6,border:"1px solid #94a3b8",cursor:opt.available?"pointer":"not-allowed",background:basemap===opt.id?"#0f172a":"#ffffff",color:basemap===opt.id?"#ffffff":opt.available?"#0f172a":"#64748b",fontWeight:600}} onClick={()=>{if(isBasemapAvailable(opt.id))setBasemap(opt.id);}}>{opt.label}</button>)}</div>
   <WorkspaceLayout
    preference={layoutPreference}
    onPreferenceChange={updateLayoutPreference}
