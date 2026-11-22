@@ -39,6 +39,8 @@ test("three real 10000-feature reference layers settle and pick a real rendered 
   expect(fixture.sources.every(s=>s.validation_state==="ready"&&s.stored_crs?.code===4326)).toBe(true);
 
   const current=await currentMap(page,fixture), configuration=fixtureConfiguration(fixture);
+  // The authoritative save contract canonicalizes colors to uppercase.
+  configuration.layers=configuration.layers.map(layer=>({...layer,style:{...layer.style,color:layer.style.color.toUpperCase()}}));
   if(!isDeepStrictEqual(current.configuration,configuration)){
     const input:SaveMapInput={operation_id:crypto.randomUUID(),expected_revision:current.configuration_revision,
       layers:configuration.layers,basemap:"grid",default_viewpoint:{mode:"set",value:normalMapViewpoint}};
