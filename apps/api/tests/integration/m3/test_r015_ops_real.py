@@ -43,7 +43,13 @@ def test_r014_core_extension_platform_generic_contracts(migrated_database: None)
                 "api_compatibility": "1.x",
                 "display_name": "Survey Notes Extension",
                 "permissions": ["ext.survey_notes.read", "ext.survey_notes.write"],
-                "commands": [{"id": "log_note", "label": "Log Survey Note"}],
+                "commands": [
+                    {
+                        "id": "log_note",
+                        "label": "Log Survey Note",
+                        "required_permission": "ext.survey_notes.write",
+                    }
+                ],
                 "capabilities": ["note_registry"],
                 "entity_schemas": {
                     "note": {
