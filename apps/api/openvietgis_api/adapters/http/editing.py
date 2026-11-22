@@ -85,7 +85,7 @@ class PublicChangesetOperation(BaseModel):
     @classmethod
     def reject_internal_operation_id(cls, value: str) -> str:
         # Field-sync's durable Core recovery IDs belong only to the internal repository.
-        if value.startswith("field-sync-"):
+        if value.strip().startswith("field-sync-"):
             raise ValueError("reserved internal changeset operation ID")
         return value
 

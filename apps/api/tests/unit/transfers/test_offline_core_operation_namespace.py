@@ -9,7 +9,7 @@ from openvietgis_api.adapters.http.editing import (
 )
 
 
-@pytest.mark.parametrize("operation_id", ["field-sync-spoof", "field-sync-"])
+@pytest.mark.parametrize("operation_id", ["field-sync-spoof", "field-sync-", " field-sync-spoof "])
 def test_internal_operation_id_reserved(operation_id: str) -> None:
     with pytest.raises(ValidationError, match="reserved internal"):
         CommitChangesetRequest(
