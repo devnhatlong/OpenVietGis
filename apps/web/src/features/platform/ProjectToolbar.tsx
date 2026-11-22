@@ -23,23 +23,24 @@ export function ProjectToolbar({
       </div>
       <nav className="ovg-toolbar-links" aria-label="GIS Workbenches">
         <Link to={`${base}/map`}>Bản đồ</Link>
-        <Link to={`${base}/spatial`}>Danh mục</Link>
-        <Link to={`${base}/transfers`}>Nhập/Xuất</Link>
+        <Link to={`${base}/extensions/house_numbering`}>Số nhà</Link>
+        <Link to={`${base}/platform-hub?tab=cad`}>AutoCAD & COGO</Link>
+        <Link to={`${base}/platform-hub?tab=external`}>Tích hợp Bên thứ 3 (WMS/COG)</Link>
         <Link to={`${base}/editing`} className={active === "editing" ? "active" : ""}>
-          Biên tập
+          Biên tập GIS
         </Link>
         <Link to={`${base}/queries`} className={active === "queries" ? "active" : ""}>
-          Truy vấn
+          Truy vấn GIS
         </Link>
         <Link to={`${base}/processing`} className={active === "processing" ? "active" : ""}>
-          Xử lý
+          Xử lý (Buffer/Clip)
         </Link>
         <Link to={`${base}/cartography`} className={active === "cartography" ? "active" : ""}>
-          In ấn
+          In ấn Bản đồ
         </Link>
-        <Link to={`${base}/platform-hub`} className={active === "hub" ? "active" : ""}>
-          Công cụ nâng cao
-        </Link>
+        <Link to={`${base}/transfers`}>Nhập/Xuất</Link>
+        <Link to={`${base}/spatial`}>Danh mục & CRS</Link>
+        <Link to={`${base}/platform-hub?tab=field`}>Thực địa Offline</Link>
         <ActiveModuleLinks organizationId={organizationId} projectId={projectId} slot="project_route" />
       </nav>
     </header>

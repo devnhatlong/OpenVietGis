@@ -18,7 +18,7 @@ import {
 } from "@openvietgis/client-sdk";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 import { apiClient } from "../../app/api";
 import { ProjectToolbar } from "./ProjectToolbar";
 import {
@@ -85,8 +85,14 @@ function cadDirectionLabel(direction: string): string {
 
 export function PlatformHubPage() {
   const { organizationId = "", projectId = "" } = useParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const qc = useQueryClient();
-  const [tab, setTab] = useState<HubTab>("ops");
+  const requestedTab = searchParams.get("tab") as HubTab | null;
+  const validTabs: HubTab[] = ["cad", "external", "field", "collab", "extensions", "ops"];
+  const tab: HubTab = requestedTab && validTabs.includes(requestedTab) ? requestedTab : "cad";
+  function setTab(next: HubTab) {
+    setSearchParams({ tab: next });
+  }
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -161,12 +167,12 @@ export function PlatformHubPage() {
         <div className="ovg-tabs" role="tablist">
           {(
             [
-              ["ops", "Vận hành & Sẵn sàng"],
-              ["external", "Nguồn dữ liệu ngoài"],
-              ["collab", "Cộng tác nhóm"],
-              ["cad", "CAD 2D & COGO"],
-              ["field", "Hiện trường & Ngoại tuyến"],
-              ["extensions", "Nền tảng Module"]
+              ["cad", "AutoCAD 2D (DXF) & COGO"],
+              ["external", "Tích hợp Bên thứ 3 (WMS / WMTS / COG / WFS)"],
+              ["extensions", "Quản lý Plugin & Số nhà"],
+              ["field", "Thực địa & Ngoại tuyến (Offline)"],
+              ["collab", "Cộng tác nhóm & Duyệt"],
+              ["ops", "Vận hành & Sẵn sàng"]
             ] as Array<[HubTab, string]>
           ).map(([k, label]) => (
             <button

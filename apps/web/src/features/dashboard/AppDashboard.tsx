@@ -197,28 +197,36 @@ export function AppDashboard() {
                     </div>
                   </div>
                   {project.status !== "deleted" ? (
-                    <div className="dashboard-project-actions">
-                      <Link
-                        to={
-                          "/app/organizations/" +
-                          encodeURIComponent(organization.id) +
-                          "/projects/" +
-                          encodeURIComponent(project.id) +
-                          "/map"
-                        }
-                      >
-                        Mở bản đồ
+                    <div className="dashboard-project-actions" style={{ display: "flex", flexWrap: "wrap", gap: "0.45rem" }}>
+                      <Link to={"/app/organizations/" + encodeURIComponent(organization.id) + "/projects/" + encodeURIComponent(project.id) + "/map"}>
+                        🗺️ Mở bản đồ
                       </Link>
-                      <Link
-                        to={
-                          "/app/organizations/" +
-                          encodeURIComponent(organization.id) +
-                          "/projects/" +
-                          encodeURIComponent(project.id) +
-                          "/spatial"
-                        }
-                      >
-                        Dữ liệu GIS
+                      <Link to={"/app/organizations/" + encodeURIComponent(organization.id) + "/projects/" + encodeURIComponent(project.id) + "/extensions/house_numbering"}>
+                        🏠 Quản lý Số nhà
+                      </Link>
+                      <Link to={"/app/organizations/" + encodeURIComponent(organization.id) + "/projects/" + encodeURIComponent(project.id) + "/platform-hub?tab=cad"}>
+                        📐 AutoCAD / DXF & COGO
+                      </Link>
+                      <Link to={"/app/organizations/" + encodeURIComponent(organization.id) + "/projects/" + encodeURIComponent(project.id) + "/platform-hub?tab=external"}>
+                        🌐 Tích hợp Bên thứ 3 (WMS/COG/WFS)
+                      </Link>
+                      <Link to={"/app/organizations/" + encodeURIComponent(organization.id) + "/projects/" + encodeURIComponent(project.id) + "/editing"}>
+                        ✏️ Biên tập GIS
+                      </Link>
+                      <Link to={"/app/organizations/" + encodeURIComponent(organization.id) + "/projects/" + encodeURIComponent(project.id) + "/queries"}>
+                        🔍 Truy vấn & Lọc
+                      </Link>
+                      <Link to={"/app/organizations/" + encodeURIComponent(organization.id) + "/projects/" + encodeURIComponent(project.id) + "/processing"}>
+                        ⚙️ Phân tích (Buffer/Clip)
+                      </Link>
+                      <Link to={"/app/organizations/" + encodeURIComponent(organization.id) + "/projects/" + encodeURIComponent(project.id) + "/cartography"}>
+                        🖨️ In ấn Bản đồ
+                      </Link>
+                      <Link to={"/app/organizations/" + encodeURIComponent(organization.id) + "/projects/" + encodeURIComponent(project.id) + "/transfers"}>
+                        📥 Nhập / Xuất
+                      </Link>
+                      <Link to={"/app/organizations/" + encodeURIComponent(organization.id) + "/projects/" + encodeURIComponent(project.id) + "/spatial"}>
+                        📂 Dữ liệu GIS & CRS
                       </Link>
                     </div>
                   ) : null}
