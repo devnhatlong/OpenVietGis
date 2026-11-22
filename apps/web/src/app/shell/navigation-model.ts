@@ -1,5 +1,6 @@
 export type NavigationScope = "global" | "organization" | "project";
 export type NavigationAvailability = "visible" | "disabled" | "omitted";
+export type NavigationGroup = "workspace" | "gis" | "data" | "admin";
 
 export interface AppNavigationItem {
   id: string;
@@ -8,6 +9,7 @@ export interface AppNavigationItem {
   scope: NavigationScope;
   availability: NavigationAvailability;
   short: string;
+  group?: NavigationGroup;
 }
 
 export function buildNavigationItems(
@@ -21,7 +23,8 @@ export function buildNavigationItems(
       destination: "/app",
       scope: "global",
       availability: "visible",
-      short: "TQ"
+      short: "TQ",
+      group: "workspace"
     }
   ];
 
@@ -35,7 +38,8 @@ export function buildNavigationItems(
       destination: org + "/projects",
       scope: "organization",
       availability: "visible",
-      short: "DA"
+      short: "DA",
+      group: "admin"
     },
     {
       id: "workspaces",
@@ -43,7 +47,8 @@ export function buildNavigationItems(
       destination: org + "/workspaces",
       scope: "organization",
       availability: "visible",
-      short: "KG"
+      short: "KG",
+      group: "admin"
     },
     {
       id: "membership",
@@ -51,7 +56,8 @@ export function buildNavigationItems(
       destination: org + "/membership",
       scope: "organization",
       availability: "visible",
-      short: "TV"
+      short: "TV",
+      group: "admin"
     }
   );
 
@@ -59,7 +65,7 @@ export function buildNavigationItems(
 
   const project = org + "/projects/" + encodeURIComponent(projectId);
   items.splice(
-    2,
+    1,
     0,
     {
       id: "map",
@@ -67,15 +73,8 @@ export function buildNavigationItems(
       destination: project + "/map",
       scope: "project",
       availability: "visible",
-      short: "BD"
-    },
-    {
-      id: "house-numbering",
-      labelKey: "Quản lý Số nhà",
-      destination: project + "/extensions/house_numbering",
-      scope: "project",
-      availability: "visible",
-      short: "SN"
+      short: "BD",
+      group: "workspace"
     },
     {
       id: "autocad",
@@ -83,15 +82,8 @@ export function buildNavigationItems(
       destination: project + "/platform-hub?tab=cad",
       scope: "project",
       availability: "visible",
-      short: "CAD"
-    },
-    {
-      id: "external-sources",
-      labelKey: "Tích hợp Bên thứ 3 (WMS/COG)",
-      destination: project + "/platform-hub?tab=external",
-      scope: "project",
-      availability: "visible",
-      short: "T3"
+      short: "CAD",
+      group: "gis"
     },
     {
       id: "editing",
@@ -99,7 +91,8 @@ export function buildNavigationItems(
       destination: project + "/editing",
       scope: "project",
       availability: "visible",
-      short: "BT"
+      short: "BT",
+      group: "gis"
     },
     {
       id: "queries",
@@ -107,15 +100,17 @@ export function buildNavigationItems(
       destination: project + "/queries",
       scope: "project",
       availability: "visible",
-      short: "TV"
+      short: "TV",
+      group: "gis"
     },
     {
       id: "processing",
-      labelKey: "Phân tích GIS (Buffer/Clip)",
+      labelKey: "Phân tích (Buffer/Clip)",
       destination: project + "/processing",
       scope: "project",
       availability: "visible",
-      short: "XL"
+      short: "XL",
+      group: "gis"
     },
     {
       id: "cartography",
@@ -123,23 +118,35 @@ export function buildNavigationItems(
       destination: project + "/cartography",
       scope: "project",
       availability: "visible",
-      short: "IN"
+      short: "IN",
+      group: "gis"
+    },
+    {
+      id: "external-sources",
+      labelKey: "Tích hợp Bên thứ 3 (WMS/COG)",
+      destination: project + "/platform-hub?tab=external",
+      scope: "project",
+      availability: "visible",
+      short: "T3",
+      group: "data"
     },
     {
       id: "spatial",
-      labelKey: "Danh mục Lớp & Hệ tọa độ",
+      labelKey: "Danh mục Lớp & CRS",
       destination: project + "/spatial",
       scope: "project",
       availability: "visible",
-      short: "DL"
+      short: "DL",
+      group: "data"
     },
     {
       id: "transfers",
-      labelKey: "Nhập / Xuất (GeoJSON/GPKG)",
+      labelKey: "Nhập / Xuất dữ liệu",
       destination: project + "/transfers",
       scope: "project",
       availability: "visible",
-      short: "NX"
+      short: "NX",
+      group: "data"
     },
     {
       id: "field-offline",
@@ -147,23 +154,26 @@ export function buildNavigationItems(
       destination: project + "/platform-hub?tab=field",
       scope: "project",
       availability: "visible",
-      short: "HT"
+      short: "HT",
+      group: "data"
     },
     {
       id: "collab",
-      labelKey: "Cộng tác & Duyệt thay đổi",
+      labelKey: "Cộng tác & Duyệt",
       destination: project + "/platform-hub?tab=collab",
       scope: "project",
       availability: "visible",
-      short: "CT"
+      short: "CT",
+      group: "admin"
     },
     {
       id: "tools",
-      labelKey: "Quản lý Plugin & Vận hành",
+      labelKey: "Plugin & Hệ thống",
       destination: project + "/platform-hub?tab=extensions",
       scope: "project",
       availability: "visible",
-      short: "CC"
+      short: "CC",
+      group: "admin"
     }
   );
 

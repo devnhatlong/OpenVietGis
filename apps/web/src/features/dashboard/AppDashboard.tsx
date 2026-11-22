@@ -7,6 +7,7 @@ import {
 } from "@openvietgis/client-sdk";
 import { useQueries, useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
+import { ActiveModuleLinks } from "../extensions/ActiveModuleLinks";
 
 import { apiClient } from "../../app/api";
 import {
@@ -201,9 +202,11 @@ export function AppDashboard() {
                       <Link to={"/app/organizations/" + encodeURIComponent(organization.id) + "/projects/" + encodeURIComponent(project.id) + "/map"}>
                         🗺️ Mở bản đồ
                       </Link>
-                      <Link to={"/app/organizations/" + encodeURIComponent(organization.id) + "/projects/" + encodeURIComponent(project.id) + "/extensions/house_numbering"}>
-                        🏠 Quản lý Số nhà
-                      </Link>
+                      <ActiveModuleLinks
+                        organizationId={organization.id}
+                        projectId={project.id}
+                        slot="project_route"
+                      />
                       <Link to={"/app/organizations/" + encodeURIComponent(organization.id) + "/projects/" + encodeURIComponent(project.id) + "/platform-hub?tab=cad"}>
                         📐 AutoCAD / DXF & COGO
                       </Link>

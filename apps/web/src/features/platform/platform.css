@@ -1,8 +1,7 @@
 .ovg-suite {
-  min-height: 100vh;
-  background: #f8fafc;
-  color: #0f172a;
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  min-height: calc(100vh - 60px);
+  background: var(--ovg-bg);
+  color: var(--ovg-text);
 }
 
 .ovg-toolbar {
@@ -10,171 +9,271 @@
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 0.75rem;
-  padding: 0.75rem 1.25rem;
-  background: #0f172a;
-  color: #f8fafc;
+  gap: 16px;
+  padding: 20px 28px 18px;
+  background: #ffffff;
+  border-bottom: 1px solid var(--ovg-border);
+}
+
+.ovg-toolbar-title { display: flex; flex-direction: column; gap: 3px; }
+.ovg-toolbar-kicker {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ovg-primary);
+}
+.ovg-toolbar h1 {
+  margin: 0;
+  font-size: 21px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--ovg-text);
 }
 
 .ovg-toolbar-links {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.5rem;
+  align-items: center;
+  gap: 8px;
 }
 
-.ovg-toolbar a {
-  color: #cbd5e1;
+.ovg-toolbar a,
+.ovg-pill-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: var(--ovg-radius-sm);
+  border: 1px solid var(--ovg-border-strong);
+  background: #ffffff;
+  color: var(--ovg-text-secondary);
   text-decoration: none;
-  padding: 0.3rem 0.65rem;
-  border-radius: 6px;
-  font-size: 0.85rem;
+  font-size: 13px;
+  font-weight: 600;
+  transition: all 0.15s ease;
 }
-
 .ovg-toolbar a:hover,
-.ovg-toolbar a.active {
-  background: #2563eb;
+.ovg-pill-link:hover {
+  border-color: var(--ovg-primary);
+  background: var(--ovg-primary-soft);
+  color: var(--ovg-primary-strong);
+}
+.ovg-pill-link.is-primary {
+  background: var(--ovg-primary);
+  border-color: var(--ovg-primary);
+  color: #ffffff;
+}
+.ovg-pill-link.is-primary:hover {
+  background: var(--ovg-primary-strong);
   color: #ffffff;
 }
 
 .ovg-suite-body {
-  max-width: 1220px;
+  max-width: 1280px;
   margin: 0 auto;
-  padding: 1.25rem;
+  padding: 24px 28px 40px;
   display: grid;
-  gap: 1rem;
+  gap: 18px;
 }
 
 .ovg-card {
   background: #ffffff;
-  border: 1px solid #e2e8f0;
-  border-radius: 10px;
-  padding: 1rem 1.25rem;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  border: 1px solid var(--ovg-border);
+  border-radius: var(--ovg-radius-lg);
+  padding: 22px 24px;
+  box-shadow: var(--ovg-shadow-sm);
+}
+.ovg-card h2 {
+  margin: 0 0 12px;
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  color: var(--ovg-text);
+}
+.ovg-card h3 {
+  margin: 0 0 10px;
+  font-size: 14.5px;
+  font-weight: 700;
+  color: var(--ovg-text-secondary);
+}
+.ovg-card p {
+  margin: 6px 0 12px;
+  color: var(--ovg-text-secondary);
+  font-size: 13.5px;
+}
+.ovg-card ul {
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 10px;
+}
+.ovg-card ul li {
+  padding: 14px 16px;
+  border: 1px solid var(--ovg-border);
+  border-radius: var(--ovg-radius-md);
+  background: var(--ovg-surface-muted);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
 .ovg-grid-2 {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
-  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+  gap: 18px;
 }
 
 .ovg-form-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.65rem;
+  gap: 12px;
   align-items: flex-end;
-  margin-top: 0.5rem;
+  margin-top: 10px;
 }
-
 .ovg-form-row label {
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
-  font-size: 0.82rem;
+  gap: 5px;
+  font-size: 12.5px;
   font-weight: 600;
-  color: #334155;
+  color: var(--ovg-text-secondary);
 }
-
-.ovg-form-row input,
+.ovg-form-row input:not([type="checkbox"]),
 .ovg-form-row select,
 .ovg-form-row textarea {
-  padding: 0.45rem 0.6rem;
-  border: 1px solid #cbd5e1;
-  border-radius: 6px;
-  font-size: 0.88rem;
-  min-width: 150px;
+  min-width: 170px;
 }
 
 .ovg-btn {
-  background: #2563eb;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: var(--ovg-primary);
   color: #ffffff;
-  border: none;
-  border-radius: 6px;
-  padding: 0.5rem 0.9rem;
+  border: 1px solid var(--ovg-primary);
+  border-radius: var(--ovg-radius-sm);
+  padding: 8.5px 16px;
   font-weight: 600;
   cursor: pointer;
-  font-size: 0.85rem;
+  font-size: 13px;
+  text-decoration: none;
+  transition: all 0.15s ease;
 }
-
-.ovg-btn:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
+.ovg-btn:hover:enabled {
+  background: var(--ovg-primary-strong);
+  border-color: var(--ovg-primary-strong);
+  box-shadow: 0 4px 10px rgba(15, 118, 110, 0.22);
 }
-
+.ovg-btn:disabled { opacity: 0.48; cursor: not-allowed; }
 .ovg-btn-secondary {
-  background: #e2e8f0;
-  color: #0f172a;
+  background: #ffffff;
+  color: var(--ovg-text-secondary);
+  border: 1px solid var(--ovg-border-strong);
+}
+.ovg-btn-secondary:hover:enabled {
+  background: var(--ovg-surface-muted);
+  border-color: var(--ovg-text-muted);
+  color: var(--ovg-text);
+  box-shadow: none;
 }
 
 .ovg-notice {
-  padding: 0.65rem 0.9rem;
-  border-radius: 8px;
-  background: #eff6ff;
-  border: 1px solid #bfdbfe;
-  color: #1e40af;
-  font-size: 0.88rem;
+  padding: 12px 16px;
+  border-radius: var(--ovg-radius-md);
+  background: var(--ovg-primary-soft);
+  border: 1px solid #a7f3d0;
+  color: #065f46;
+  font-size: 13.5px;
+  font-weight: 500;
 }
-
 .ovg-error {
-  padding: 0.65rem 0.9rem;
-  border-radius: 8px;
-  background: #fef2f2;
+  padding: 12px 16px;
+  border-radius: var(--ovg-radius-md);
+  background: var(--ovg-danger-soft);
   border: 1px solid #fecaca;
   color: #991b1b;
-  font-size: 0.88rem;
+  font-size: 13.5px;
+  font-weight: 500;
 }
 
 .ovg-table {
   width: 100%;
-  border-collapse: collapse;
-  font-size: 0.84rem;
-  margin-top: 0.5rem;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 13px;
+  margin-top: 12px;
+  border: 1px solid var(--ovg-border);
+  border-radius: var(--ovg-radius-md);
+  overflow: hidden;
 }
-
-.ovg-table th,
-.ovg-table td {
-  border-bottom: 1px solid #e2e8f0;
+.ovg-table thead th {
+  background: var(--ovg-surface-muted);
+  color: var(--ovg-text-muted);
+  font-size: 11.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 11px 14px;
   text-align: left;
-  padding: 0.45rem 0.5rem;
+  border-bottom: 1px solid var(--ovg-border);
 }
+.ovg-table td {
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--ovg-border);
+  color: var(--ovg-text-secondary);
+  vertical-align: middle;
+}
+.ovg-table tbody tr:last-child td { border-bottom: 0; }
+.ovg-table tbody tr:hover td { background: #f8fafc; }
 
 .ovg-tabs {
-  display: flex;
+  display: inline-flex;
   flex-wrap: wrap;
-  gap: 0.4rem;
-}
-
-.ovg-tab {
-  border: 1px solid #cbd5e1;
+  gap: 6px;
+  padding: 6px;
   background: #ffffff;
-  color: #334155;
-  padding: 0.45rem 0.85rem;
-  border-radius: 6px;
+  border: 1px solid var(--ovg-border);
+  border-radius: var(--ovg-radius-md);
+  box-shadow: var(--ovg-shadow-xs);
+}
+.ovg-tab {
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--ovg-text-muted);
+  padding: 8px 14px;
+  border-radius: 9px;
   font-weight: 600;
   cursor: pointer;
-  font-size: 0.84rem;
+  font-size: 13px;
+  transition: all 0.14s ease;
 }
-
+.ovg-tab:hover { background: var(--ovg-surface-muted); color: var(--ovg-text); }
 .ovg-tab.active {
-  background: #0f172a;
+  background: var(--ovg-text);
   color: #ffffff;
-  border-color: #0f172a;
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.2);
 }
 
 .ovg-sketch {
-  margin-top: 1rem;
-  border: 1px solid #cbd5e1;
-  border-radius: 8px;
-  padding: 0.8rem;
+  margin-top: 14px;
+  border: 1px solid var(--ovg-border);
+  border-radius: var(--ovg-radius-md);
+  padding: 16px;
+  background: var(--ovg-surface-muted);
 }
 .ovg-sketch h3 { margin: 0; }
-.ovg-sketch > p { margin: 0.5rem 0; font-size: 0.85rem; }
+.ovg-sketch > p { margin: 6px 0; font-size: 13px; }
 .ovg-edit-canvas {
   display: block;
   width: 100%;
-  height: clamp(240px, 45vw, 420px);
-  border: 1px solid #cbd5e1;
-  margin-top: 0.75rem;
+  height: clamp(260px, 45vw, 420px);
+  border: 1px solid var(--ovg-border-strong);
+  border-radius: var(--ovg-radius-sm);
+  background: #ffffff;
+  margin-top: 10px;
   touch-action: manipulation;
 }
 .ovg-edit-canvas.drawing { cursor: crosshair; }
@@ -183,11 +282,13 @@
 .ovg-sketch-coordinates { font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 
 .ovg-badge {
-  display: inline-block;
-  padding: 0.15rem 0.5rem;
-  border-radius: 999px;
-  font-size: 0.74rem;
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: var(--ovg-radius-pill);
+  font-size: 11.5px;
   font-weight: 600;
-  background: #dcfce7;
-  color: #166534;
+  background: var(--ovg-primary-soft);
+  color: var(--ovg-primary-strong);
+  border: 1px solid #a7f3d0;
 }

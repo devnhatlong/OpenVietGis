@@ -10,3 +10,20 @@
 .ovg-account-dropdown nav{display:grid;padding:6px 0}.ovg-account-dropdown nav a{min-height:44px;display:flex;align-items:center;padding:9px 11px;border-radius:7px;text-decoration:none;color:#294b5f}.ovg-account-dropdown nav a:hover{background:#f0f6f7;color:#0b665e}
 .ovg-signout-button{min-height:44px;width:100%;border:0;border-top:1px solid #e5ecef;background:#fff;color:#a33d38;font:inherit;font-weight:800;text-align:left;padding:11px;border-radius:0 0 7px 7px;cursor:pointer}.ovg-signout-button:hover{background:#fff4f3}.ovg-signout-button:disabled{opacity:.55;cursor:default}
 .ovg-account-dropdown p{margin:7px 10px 4px;color:#9c3e39;font-size:11px}
+
+/* === OpenVietGIS Studio 2.0 Account Menu === */
+.ovg-account-menu { font-family: var(--ovg-font-sans, "Be Vietnam Pro", system-ui, sans-serif); }
+.ovg-app-topbar .ovg-account-menu > summary {
+  min-height: 36px;
+  padding: 4px 10px 4px 5px;
+  border-radius: 999px;
+  border: 1px solid #e2e8f0;
+  background: #ffffff;
+  color: #0f172a;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+.ovg-app-topbar .ovg-account-menu > summary:hover {
+  border-color: #0f766e;
+  background: #f8fafc;
+}
+.ovg-account-avatar { background: linear-gradient(135deg, #14b8a6 0%, #0f766e 100%); }

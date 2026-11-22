@@ -214,3 +214,98 @@
     transition-duration:.01ms!important;
   }
 }
+
+
+/* === OpenVietGIS Studio 2.0 Map Workspace Polish === */
+.gis-workspace {
+  font-family: var(--ovg-font-sans, "Be Vietnam Pro", system-ui, sans-serif) !important;
+  background: #f1f5f9 !important;
+  min-width: 0 !important;
+}
+.gis-header {
+  height: auto !important;
+  min-height: 54px !important;
+  padding: 10px 20px !important;
+  background: #ffffff !important;
+  color: #0f172a !important;
+  border-bottom: 1px solid #e2e8f0 !important;
+}
+.gis-header .gis-logo { display: none !important; }
+.gis-header h1 { font-size: 16px !important; font-weight: 800 !important; color: #0f172a !important; }
+.gis-header h1 small { display: inline !important; margin-left: 8px !important; font-size: 11px !important; font-weight: 600 !important; color: #0f766e !important; background: #ecfdf5; padding: 2px 8px; border-radius: 999px; }
+.gis-header a {
+  color: #334155 !important;
+  font-weight: 600 !important;
+  font-size: 12.5px !important;
+  padding: 5px 10px;
+  border-radius: 7px;
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+  transition: all 0.14s ease;
+}
+.gis-header a:hover { border-color: #0f766e; background: #ecfdf5; color: #0d5e58 !important; }
+.gis-header-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.map-context {
+  padding: 6px 20px !important;
+  background: #f8fafc !important;
+  border-bottom: 1px solid #e2e8f0 !important;
+  font-size: 12px !important;
+}
+.map-commandbar {
+  min-height: 46px !important;
+  padding: 6px 16px !important;
+  background: #ffffff !important;
+  border-bottom: 1px solid #e2e8f0 !important;
+}
+.gis-workspace button {
+  border-radius: 8px !important;
+  font-weight: 600 !important;
+  font-size: 12.5px !important;
+  transition: all 0.14s ease;
+}
+.gis-workspace button:hover:enabled {
+  border-color: #0f766e !important;
+  background: #ecfdf5 !important;
+  color: #0d5e58 !important;
+}
+.map-basemap-bar {
+  background: #ffffff !important;
+  border-bottom: 1px solid #e2e8f0 !important;
+  padding: 6px 16px !important;
+  gap: 6px !important;
+}
+
+
+/* === Studio 2.0 Map Layout Alignment Fix === */
+.map-primary-tools {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 6px;
+  overflow-x: auto;
+}
+.map-primary-tools button {
+  white-space: nowrap !important;
+  padding: 6px 10px !important;
+  font-size: 12px !important;
+}
+.map-basemap-bar {
+  flex-wrap: nowrap !important;
+  overflow-x: auto !important;
+}
+.map-basemap-bar button {
+  white-space: nowrap !important;
+  font-size: 12px !important;
+  padding: 4px 10px !important;
+}
+.map-inspector {
+  padding-top: 48px !important;
+}
+.map-layout-controls {
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(6px);
+  padding: 3px;
+  border-radius: 9px;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.08);
+}

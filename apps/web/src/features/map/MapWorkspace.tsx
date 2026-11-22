@@ -91,7 +91,8 @@ function Workspace({organizationId,projectId,accountId,project,initial,canEdit,c
  const [showHistory,setShowHistory]=useState(false),[historyCursor,setHistoryCursor]=useState<number|undefined>();
  const [contextMenu,setContextMenu]=useState(false),[addDataOpen,setAddDataOpen]=useState(false),[technicalDetailsOpen,setTechnicalDetailsOpen]=useState(false);
  const [layoutPreference,setLayoutPreference]=useState<WorkspaceLayoutPreference>(()=>loadWorkspaceLayoutPreference());
- const [basemap,setBasemap]=useState<BasemapId>(LOCAL_BASEMAP);
+ const defaultBasemap:BasemapId=isBasemapAvailable("google-hybrid")?"google-hybrid":LOCAL_BASEMAP;
+ const [basemap,setBasemap]=useState<BasemapId>(defaultBasemap);
  useEffect(()=>{engine.current?.setBasemap(basemap);},[basemap]);
  const initialFit=useRef(false),fitGeneration=useRef(0);
  const writable=canEdit&&project.status==="active";
@@ -147,7 +148,7 @@ function Workspace({organizationId,projectId,accountId,project,initial,canEdit,c
   const map=createEngine(canvas.current,{viewport:(bounds,value)=>handlers.current.viewport(bounds,value),pick:(id,multiple)=>handlers.current.pick(id,multiple),ready:setEngineReady,error:()=>setEngineError(true)});
   engine.current=map;
   map.setActiveLayer(initial.configuration.layers[0]?.visible?initial.configuration.layers[0].layer_id:null);
-  map.setBasemap(LOCAL_BASEMAP);map.setCamera(initial.configuration.default_viewpoint??defaultCamera);
+  map.setBasemap(defaultBasemap);map.setCamera(initial.configuration.default_viewpoint??defaultCamera);
   return ()=>{map.clear();map.destroy();engine.current=null;};
  },[]);
  const [prepareViewportFrame]=useState(createViewportFramePreparer);
@@ -316,7 +317,7 @@ function Workspace({organizationId,projectId,accountId,project,initial,canEdit,c
   setAddDataOpen(false);
  }
  return <main className="gis-workspace" data-testid="map-workspace">
-  <header className="gis-header"><div><Link to={"/app/organizations/"+organizationId+"/projects"}>← Dự án</Link><span className="gis-logo">OVG</span><h1>{project.name}<small>Không gian bản đồ</small></h1></div><div className="gis-header-meta"><span>{project.status==="archived"?"Chỉ đọc":writable?"Chế độ chỉnh sửa":"Chế độ xem"}</span><Link to={"/app/organizations/"+organizationId+"/projects/"+projectId+"/spatial"}>Danh mục GIS</Link><Link to={"/app/organizations/"+organizationId+"/projects/"+projectId+"/transfers"}>Nhập / Xuất</Link><Link to={"/app/organizations/"+organizationId+"/projects/"+projectId+"/editing"}>Biên tập</Link><Link to={"/app/organizations/"+organizationId+"/projects/"+projectId+"/queries"}>Truy vấn</Link><Link to={"/app/organizations/"+organizationId+"/projects/"+projectId+"/processing"}>Xử lý</Link><Link to={"/app/organizations/"+organizationId+"/projects/"+projectId+"/cartography"}>In ấn</Link><Link to={"/app/organizations/"+organizationId+"/projects/"+projectId+"/platform-hub?tab=cad"}>AutoCAD & COGO</Link><Link to={"/app/organizations/"+organizationId+"/projects/"+projectId+"/platform-hub?tab=external"}>Tích hợp WMS/COG</Link><Link to={"/app/organizations/"+organizationId+"/projects/"+projectId+"/platform-hub"}>Công cụ nâng cao</Link><ActiveModuleLinks organizationId={organizationId} projectId={projectId} slot="project_route" /><ActiveModuleLinks organizationId={organizationId} projectId={projectId} slot="project_tool" sourceId={activeLayer?.source.id??null} featureId={selected[0]??null} /></div></header>
+  <header className="gis-header"><div><Link to={"/app/organizations/"+organizationId+"/projects"}>← Dự án</Link><span className="gis-logo">OVG</span><h1>{project.name}<small>Không gian bản đồ</small></h1></div><div className="gis-header-meta"><span>{project.status==="archived"?"Chỉ đọc":writable?"Chế độ chỉnh sửa":"Chế độ xem"}</span><Link to={"/app/organizations/"+organizationId+"/projects/"+projectId+"/transfers"}>Nhập / Xuất</Link><Link to={"/app/organizations/"+organizationId+"/projects/"+projectId+"/spatial"}>Danh mục GIS</Link><ActiveModuleLinks organizationId={organizationId} projectId={projectId} slot="project_route" /><ActiveModuleLinks organizationId={organizationId} projectId={projectId} slot="project_tool" sourceId={activeLayer?.source.id??null} featureId={selected[0]??null} /></div></header>
   <div className="map-context">
     <span><strong>Phiên bản bản đồ:</strong> {saved.configuration_revision}</span>
     <span className={dirty?"map-context-unsaved":"map-context-saved"} data-save-state={saveIndicatorView.state}>{saveIndicatorView.label}</span>
@@ -326,7 +327,7 @@ function Workspace({organizationId,projectId,accountId,project,initial,canEdit,c
      aria-haspopup="dialog"
      onClick={()=>setTechnicalDetailsOpen(true)}
     >Thông tin kỹ thuật</button>
-    <span role="status" title={ONLINE_BASEMAP_UNAVAILABLE} aria-label={ONLINE_BASEMAP_UNAVAILABLE}>Nền trực tuyến chưa phê duyệt</span>
+    <span role="status" title={isBasemapAvailable("google-hybrid")?"Bản đồ nền trực tuyến sẵn sàng (HTTPS)":ONLINE_BASEMAP_UNAVAILABLE} aria-label={isBasemapAvailable("google-hybrid")?"Bản đồ nền trực tuyến sẵn sàng":ONLINE_BASEMAP_UNAVAILABLE}>{isBasemapAvailable("google-hybrid")?"Nền vệ tinh & OSM trực tuyến: Sẵn sàng":"Nền trực tuyến chưa phê duyệt"}</span>
   </div>
   <CommandBar commands={commands}/>
   <div className="map-basemap-bar" style={{display:"flex",flexWrap:"wrap",alignItems:"center",gap:"0.4rem",padding:"0.4rem 0.9rem",background:"#f1f5f9",borderBottom:"1px solid #cbd5e1",fontSize:"0.84rem"}}><strong>Bản đồ nền:</strong>{BASEMAP_OPTIONS.map(opt=><button key={opt.id} type="button" data-testid={"basemap-"+opt.id} disabled={!opt.available} aria-pressed={basemap===opt.id} title={opt.available?undefined:ONLINE_BASEMAP_UNAVAILABLE} style={{padding:"0.25rem 0.65rem",borderRadius:6,border:"1px solid #94a3b8",cursor:opt.available?"pointer":"not-allowed",background:basemap===opt.id?"#0f172a":"#ffffff",color:basemap===opt.id?"#ffffff":opt.available?"#0f172a":"#64748b",fontWeight:600}} onClick={()=>{if(isBasemapAvailable(opt.id))setBasemap(opt.id);}}>{opt.label}</button>)}</div>
@@ -341,7 +342,7 @@ function Workspace({organizationId,projectId,accountId,project,initial,canEdit,c
     <p id="map-accessible-summary" className="sr-only" data-testid="accessible-map-summary" aria-live="polite">{accessibleSummary.text}</p>
     <div ref={canvas} className="map-canvas" data-testid="map-canvas"/>
     <div className="map-engine-signal" data-testid="map-engine-ready" data-ready={ready?"true":"false"} aria-hidden="true"/>
-    <div className="map-stage-status" role="status"><strong data-testid="map-status" data-state={state}>{mapStateLabel(state)}</strong><span>Lưới cục bộ · Hiển thị EPSG:3857 · Tọa độ địa lý đầu vào EPSG:4326 X/Y</span></div>
+    <div className="map-stage-status" role="status"><strong data-testid="map-status" data-state={state}>{mapStateLabel(state)}</strong><span>{BASEMAP_OPTIONS.find(b=>b.id===basemap)?.label??"Lưới cục bộ"} · Hiển thị EPSG:3857 · EPSG:4326 X/Y</span></div>
     {state==="empty"?<div className="map-blank-message"><h2>Bản đồ dự án</h2><p>{configuration.layers.length?"Không có hình học có thể đọc trong khung nhìn này.":"Hãy thêm một lớp dữ liệu từ bảng bên trái để bắt đầu."}</p></div>:null}
     {state==="partial"?<div className="map-partial" role="status">Khung nhìn đang hiển thị một phần dữ liệu. Hãy phóng to để xem chi tiết hơn. Bảng thuộc tính đọc độc lập các bản ghi đúng phiên bản.</div>:null}
     {contextMenu?<div className="map-context-menu" role="menu">{commands.filter(isCanvasCommand).map(c=><button role="menuitem" key={c.id} disabled={!c.enabled} title={c.reason??c.label} onClick={()=>invokeCommand(commands,c.id,"context")}>{c.label}</button>)}</div>:null}
