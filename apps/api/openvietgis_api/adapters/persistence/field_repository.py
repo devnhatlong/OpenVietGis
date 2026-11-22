@@ -37,6 +37,7 @@ from openvietgis_api.domains.field.domain import (
     MAX_OFFLINE_TTL_HOURS,
     OfflinePackageRecord,
     SyncBatchRecord,
+    offline_core_feature_id,
 )
 from openvietgis_api.domains.platform_errors import (
     PlatformConflictError,
@@ -509,6 +510,49 @@ class SqlFieldRepository:
             )
         )
         validate_offline_ops(snapshot, operations)
+        # New identified captures receive a server-owned Core ID. Legacy clients
+        # preserve existing wire intent and identity for previously attempted groups.
+        feature_ids: list[str] = []
+        for op in operations:
+            local_id = str(op["feature_id"])
+            core_id = local_id
+            if op.get("op_type") == "create" and "client_operation_id" in op:
+                core_id = offline_core_feature_id(
+                    actor_id=context.actor.actor_id,
+                    organization_id=org_id,
+                    project_id=project_id,
+                    package_id=package_id,
+                    source_id=source_id,
+                    client_operation_id=UUID(op["client_operation_id"]),
+                )
+                if core_id == local_id:
+                    raise PlatformValidationError(
+                        "local feature identity must differ from Core identity"
+                    )
+            feature_ids.append(core_id)
+        if len(set(feature_ids)) != len(feature_ids):
+            raise PlatformValidationError("offline operations target the same Core feature")
+
+        def exact_receipt(row: RowMapping) -> SyncBatchRecord:
+            # Request intent and all operation identities are bound by the existing
+            # canonical group hash before this function is reached. The durable
+            # batch outcome + deterministic mapping reconstruct the same receipt
+            # after ACK loss without storing a second operation ledger.
+            batch = _sync_from_row(row)
+            applied = batch.status == "applied"
+            operation_receipts = [
+                {
+                    "client_operation_id": op["client_operation_id"],
+                    "local_feature_id": op["feature_id"],
+                    "core_feature_id": feature_id if applied else None,
+                    "status": "applied" if applied else "not_applied",
+                    "changeset_id": batch.applied_changeset_ids[0] if applied else None,
+                }
+                for op, feature_id in zip(operations, feature_ids, strict=True)
+                if "client_operation_id" in op
+            ]
+            return replace(batch, operation_id=clean_op, operation_receipts=operation_receipts)
+
         layer_ok = self._session.execute(
             text("""
             SELECT 1 FROM spatial.layers
@@ -555,7 +599,7 @@ class SqlFieldRepository:
                 raise PlatformConflictError(
                     "operation identity reused with different content", code="OPERATION_ID_CONFLICT"
                 )
-            return replace(_sync_from_row(existing), operation_id=clean_op)
+            return exact_receipt(existing)
 
         core_op = f"field-sync-{scope_hash}"
         core_summary = f"Offline package {pkg.id}; intent {payload_hash}"
@@ -582,11 +626,11 @@ class SqlFieldRepository:
         edit_ops = [
             EditOperationInput(
                 op_type=EditOpType(str(o["op_type"])),
-                feature_id=str(o["feature_id"]),
+                feature_id=feature_id,
                 geometry=o.get("geometry"),
                 properties=o.get("properties"),
             )
-            for o in operations
+            for o, feature_id in zip(operations, feature_ids, strict=True)
         ]
 
         applied_ids: list[str] = []
@@ -650,7 +694,7 @@ class SqlFieldRepository:
                 raise PlatformConflictError(
                     "operation identity reused with different content", code="OPERATION_ID_CONFLICT"
                 )
-            return replace(_sync_from_row(raced), operation_id=clean_op)
+            return exact_receipt(raced)
         row = (
             self._session.execute(
                 text("""
@@ -683,4 +727,4 @@ class SqlFieldRepository:
             .one()
         )
         self._session.commit()
-        return replace(_sync_from_row(row), operation_id=clean_op)
+        return exact_receipt(row)

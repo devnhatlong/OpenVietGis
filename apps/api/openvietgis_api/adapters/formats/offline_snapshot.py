@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 from uuid import UUID
 
+from openvietgis_api.domains.editing.domain import validate_feature_id
 from openvietgis_api.domains.platform_errors import PlatformValidationError
 from openvietgis_api.domains.spatial.domain import (
     FieldType,
@@ -109,14 +110,38 @@ def validate_offline_ops(snapshot: dict[str, Any], operations: list[dict[str, An
         for i, f in enumerate(snapshot["fields"])
     }
     seen: set[str] = set()
+    seen_operations: set[UUID] = set()
     bbox = snapshot["aoi_bbox"]
     for op in operations:
-        if set(op) - {"op_type", "feature_id", "geometry", "properties"}:
+        if set(op) - {"op_type", "feature_id", "geometry", "properties", "client_operation_id"}:
             raise PlatformValidationError("unknown offline operation fields")
         ident = op.get("feature_id")
         if not isinstance(ident, str) or ident in seen:
             raise PlatformValidationError("missing or repeated feature identity")
         seen.add(ident)
+        # Legacy exact replay remains byte-compatible; new clients explicitly
+        # identify each operation independently from its local feature label.
+        if "client_operation_id" in op:
+            raw_id = op["client_operation_id"]
+            try:
+                parsed = UUID(raw_id) if isinstance(raw_id, str) and len(raw_id) == 36 else None
+            except ValueError:
+                parsed = None
+            if (
+                parsed is None
+                or not parsed.int
+                or str(parsed) != raw_id
+                or parsed in seen_operations
+            ):
+                raise PlatformValidationError(
+                    "client_operation_id must be a unique canonical non-nil UUID",
+                    code="INVALID_OFFLINE_OPERATION_ID",
+                )
+            seen_operations.add(parsed)
+            if len(ident) > 128 or validate_feature_id(ident) != ident:
+                raise PlatformValidationError(
+                    "invalid local feature identity", code="INVALID_FEATURE_ID"
+                )
         props = op.get("properties")
         if not isinstance(props, dict) or set(props) != field_map.keys():
             raise PlatformValidationError("offline properties must match packaged fields")

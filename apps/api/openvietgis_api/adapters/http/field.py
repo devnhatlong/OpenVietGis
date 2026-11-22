@@ -55,6 +55,7 @@ def _sync_wire(s: SyncBatchRecord) -> dict[str, Any]:
         "submitted_ops_count": s.submitted_ops_count,
         "applied_changeset_ids": s.applied_changeset_ids,
         "conflicts": s.conflicts,
+        "operation_receipts": s.operation_receipts,
         "created_at": s.created_at.isoformat(),
     }
 

@@ -47,7 +47,15 @@ describe("verified offline package",()=>{
     expect(second.drafts).toHaveLength(1);
     expect(second.drafts[0]?.properties).toEqual({size:"13"});
     expect(()=>queueDraft({...second,batch:{id:second.batch?.id??"",attempted:true}},d)).toThrow(/không thể/);
-    expect(wireDrafts(second.drafts)).toEqual([{op_type:"update",feature_id:"p1",properties:{size:"13"}}]);
+    const id = queued.drafts[0]?.client_operation_id;
+    expect(id).toMatch(/^[0-9a-f-]{36}$/);
+    expect(second.drafts[0]?.client_operation_id).toBe(id);
+    expect(wireDrafts(second.drafts)).toEqual([{op_type:"update",feature_id:"p1",properties:{size:"13"},client_operation_id:id}]);
+    const distinct=queueDraft(second,{...d,feature_id:"p2"});
+    expect(distinct.drafts[1]?.client_operation_id).not.toBe(id);
+    // Persisted legacy, already-attempted wire intent must not acquire a new ID.
+    expect(wireDrafts([d])).toEqual([d]);
+    expect(wireDrafts([{...d, client_operation_id:""}])[0]?.client_operation_id).toBe("");
   });
 });
 

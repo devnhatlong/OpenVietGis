@@ -79,6 +79,61 @@ def test_intent_must_use_issued_scope_and_canonical_value() -> None:
         validate_offline_ops(s, [update, update])
 
 
+def test_identified_operations_are_canonical_and_unique() -> None:
+    s = sample_snapshot()
+    operation_id = str(uuid4())
+    update = {
+        "op_type": "update",
+        "feature_id": "point1",
+        "properties": {"value": "12.5"},
+        "client_operation_id": operation_id,
+    }
+    create = {
+        "op_type": "create",
+        "feature_id": "capture1",
+        "geometry": {"type": "Point", "coordinates": [105.5, 20.5]},
+        "properties": {"value": "0"},
+        "client_operation_id": str(uuid4()),
+    }
+    validate_offline_ops(s, [update, create])
+    for invalid in (
+        None,
+        "",
+        "not-uuid",
+        "00000000-0000-0000-0000-000000000000",
+        "A" * 36,
+        "AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA",
+    ):
+        with pytest.raises(PlatformValidationError):
+            validate_offline_ops(s, [{**update, "client_operation_id": invalid}])
+    with pytest.raises(PlatformValidationError):
+        validate_offline_ops(s, [update, {**create, "client_operation_id": operation_id}])
+    for bad_label in (" draft", "bad/id", "a" * 129):
+        with pytest.raises(PlatformValidationError):
+            validate_offline_ops(s, [{**create, "feature_id": bad_label}])
+
+
+def test_core_feature_identity_has_all_scope_dimensions() -> None:
+    from openvietgis_api.domains.field.domain import offline_core_feature_id
+
+    scope = {
+        key: uuid4()
+        for key in (
+            "actor_id",
+            "organization_id",
+            "project_id",
+            "package_id",
+            "source_id",
+            "client_operation_id",
+        )
+    }
+    expected = offline_core_feature_id(**scope)
+    assert expected.startswith("field-core-")
+    assert offline_core_feature_id(**scope) == expected
+    for key in scope:
+        assert offline_core_feature_id(**{**scope, key: uuid4()}) != expected
+
+
 def test_invalid_bounds_rejected() -> None:
     with pytest.raises(PlatformValidationError):
         validate_bbox({"min_x": 1, "min_y": 1, "max_x": 0, "max_y": 2})

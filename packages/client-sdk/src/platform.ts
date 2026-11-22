@@ -950,6 +950,14 @@ export function offlinePackageDownloadUrl(
   return `/api/v1${projBase(orgId, projectId)}/field/packages/${encodeURIComponent(packageId)}/download`;
 }
 
+export interface OfflineOperationReceipt {
+  client_operation_id: string;
+  local_feature_id: string;
+  core_feature_id: string | null;
+  status: "applied" | "not_applied";
+  changeset_id: string | null;
+}
+
 export function syncOfflineOutbox(
   client: ApiClient,
   orgId: string,
@@ -957,7 +965,7 @@ export function syncOfflineOutbox(
   packageId: string,
   body: { operation_id: string; operations: Array<Record<string, unknown>> },
   csrf: string
-): Promise<{ id: string; status: string; applied_changeset_ids: string[]; conflicts: unknown[] }> {
+): Promise<{ id: string; status: string; applied_changeset_ids: string[]; conflicts: unknown[]; operation_receipts?: OfflineOperationReceipt[] }> {
   return client.request(
     `${projBase(orgId, projectId)}/field/packages/${encodeURIComponent(packageId)}/sync`,
     { method: "POST", body: JSON.stringify(body), headers: csrfHeaders(csrf) }

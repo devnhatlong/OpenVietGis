@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import hashlib
+from dataclasses import dataclass, field
 from datetime import datetime
 from uuid import UUID
 
@@ -43,3 +44,28 @@ class SyncBatchRecord:
     conflicts: list[dict[str, object]]
     actor_id: UUID
     created_at: datetime
+    operation_receipts: list[dict[str, object]] = field(default_factory=list)
+
+
+def offline_core_feature_id(
+    *,
+    actor_id: UUID,
+    organization_id: UUID,
+    project_id: UUID,
+    package_id: UUID,
+    source_id: UUID,
+    client_operation_id: UUID,
+) -> str:
+    """Server-owned deterministic feature identity, independent of local draft label/group."""
+    scope = (
+        actor_id,
+        organization_id,
+        project_id,
+        package_id,
+        source_id,
+        client_operation_id,
+    )
+    digest = hashlib.sha256(
+        ("ovg-field-feature-v1:" + ":".join(str(item) for item in scope)).encode("ascii")
+    ).hexdigest()
+    return f"field-core-{digest[:48]}"

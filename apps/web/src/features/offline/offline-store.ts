@@ -1,4 +1,4 @@
-import type { OfflinePackage } from "@openvietgis/client-sdk";
+import type { OfflineOperationReceipt, OfflinePackage } from "@openvietgis/client-sdk";
 
 export type Value = string | number | boolean | null;
 export type Field = { field_id: string; name: string; type: "text" | "integer" | "decimal" | "boolean" | "timestamp"; nullable: boolean };
@@ -14,10 +14,11 @@ export type Snapshot = {
 };
 export type Draft = {
   op_type: "create" | "update"; feature_id: string; properties: Record<string, Value>;
+  client_operation_id?: string; // legacy attempted batches may omit this
   geometry?: { type: "Point"; coordinates: Point };
   capture?: { source: "manual" | "device"; time: string; accuracy: number | null };
 };
-export type Receipt = { id: string; status: string; applied_changeset_ids: string[]; conflicts: unknown[] };
+export type Receipt = { id: string; status: string; applied_changeset_ids: string[]; conflicts: unknown[]; operation_receipts?: OfflineOperationReceipt[] };
 export type PackageRecord = {
   id: string; actorId: string; organizationId: string; projectId: string; name: string;
   snapshotBytes: ArrayBuffer; snapshotSha: string; gpkgBytes: ArrayBuffer; gpkgSha: string;
@@ -211,12 +212,15 @@ export function normalizeField(field: Field, input: string, isNull: boolean): Va
 
 export function queueDraft(record: PackageRecord, draft: Draft): PackageRecord {
   if (record.batch?.attempted) throw new Error("Nhóm đã thử gửi; không thể thay đổi nội dung.");
-  const drafts = [...record.drafts.filter(d => d.feature_id !== draft.feature_id), draft];
+  const previous = record.drafts.find(d => d.feature_id === draft.feature_id);
+  const identified = {...draft, client_operation_id: previous?.client_operation_id ?? crypto.randomUUID()};
+  const drafts = [...record.drafts.filter(d => d.feature_id !== draft.feature_id), identified];
   if (drafts.length > 2000) throw new Error("Tối đa 2000 thay đổi/nhóm.");
   return { ...record, drafts, batch: record.batch ?? { id: crypto.randomUUID(), attempted: false } };
 }
 export function wireDrafts(drafts: Draft[]) {
-  return drafts.map(({ op_type, feature_id, properties, geometry }) => ({
-    op_type, feature_id, properties, ...(geometry ? { geometry } : {})
+  return drafts.map(({ op_type, feature_id, properties, geometry, client_operation_id }) => ({
+    op_type, feature_id, properties, ...(geometry ? { geometry } : {}),
+    ...(client_operation_id !== undefined ? { client_operation_id } : {})
   }));
 }

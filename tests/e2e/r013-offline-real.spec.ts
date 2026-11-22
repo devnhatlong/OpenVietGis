@@ -7,7 +7,7 @@ import { createMapProject, grantMapCollaborator, mapMutation, mapRead, mapSignIn
 
 test.use({ viewport:{width:1280,height:900}, trace:"off", screenshot:"off", video:"off" });
 
-type Receipt = { id:string; status:string; applied_changeset_ids:string[]; conflicts:unknown[] };
+type Receipt = { id:string; status:string; applied_changeset_ids:string[]; conflicts:unknown[]; operation_receipts:{client_operation_id:string;local_feature_id:string;core_feature_id:string|null;status:string;changeset_id:string|null}[] };
 const map = (p:Page) => p.getByTestId("offline-map");
 const draftName = (p:Page) => p.getByLabel("name (text)", {exact:true});
 const receipt = (p:Page) => p.getByTestId("offline-receipt");
@@ -123,7 +123,15 @@ test("R013 real OIDC + PostGIS: disconnected durable group, lost server acknowle
   const first=await current(p,fixture.api,layer.id);
   expect(first.features).toHaveLength(2);
   expect(first.features.find(f=>f.feature_id==="field_original")?.attributes.name).toBe("Offline edit");
-  expect(first.features.find(f=>f.attributes.name==="Offline capture")?.geometry).toMatchObject({type:"Point",coordinates:[105.85,21.03]});
+  const captured=first.features.find(f=>f.attributes.name==="Offline capture");
+  expect(captured?.geometry).toMatchObject({type:"Point",coordinates:[105.85,21.03]});
+  expect(actual!.operation_receipts).toHaveLength(2);
+  const captureReceipt=actual!.operation_receipts.find(r=>r.core_feature_id===captured?.feature_id)!;
+  expect(captureReceipt.client_operation_id).toMatch(/^[0-9a-f-]{36}$/);
+  expect(captureReceipt.core_feature_id).toMatch(/^field-core-/);
+  expect(captureReceipt.local_feature_id).not.toBe(captureReceipt.core_feature_id);
+  expect(captureReceipt.changeset_id).toBe(actual!.applied_changeset_ids[0]);
+  expect(actual!.operation_receipts.find(r=>r.local_feature_id==="field_original")?.core_feature_id).toBe("field_original");
   await context.unroute("**"+pkgApi+"/sync");
   await p.reload();
   await openPack(p,"R013 real pack A");
@@ -134,6 +142,8 @@ test("R013 real OIDC + PostGIS: disconnected durable group, lost server acknowle
   await expect(receipt(p)).toContainText("Đã chấp nhận toàn bộ nhóm");
   await expect(receipt(p)).toContainText(actual!.id);
   await expect(receipt(p)).toContainText(actual!.applied_changeset_ids[0]!);
+  await expect(receipt(p)).toContainText(captureReceipt.core_feature_id!);
+  await expect(receipt(p)).toContainText(captureReceipt.client_operation_id);
   const afterReplay=await current(p,fixture.api,layer.id);
   expect(afterReplay.layer.source.content_revision).toBe(first.layer.source.content_revision);
   expect(afterReplay.features).toHaveLength(2);
