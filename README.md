@@ -1,7 +1,8 @@
 # OpenVietGIS
 
-OpenVietGIS is a platform-first spatial workspace for the web. Spec 001 intentionally builds only
-the architecture runway and a disposable non-GIS vertical slice.
+OpenVietGIS is a platform-first spatial workspace for the web. The original Spec 001 built the
+architecture runway and a disposable non-GIS vertical slice; later feature slices extend that
+foundation.
 
 ## Product direction and roadmap
 
@@ -10,9 +11,15 @@ the architecture runway and a disposable non-GIS vertical slice.
 - Foundation: [Spec 001](specs/001-platform-foundation/spec.md), roadmap entry [R001](ROADMAP.md#r001)
 - Identity/organization/tenancy: [Spec 002](specs/002-identity-organization-tenancy/spec.md), roadmap entry [R002](ROADMAP.md#r002)
 
-Only 001 and 002 have feature specifications at the roadmap baseline. Future numbered labels are
-provisional capability slices, not implemented functionality. Before opening another feature, read
-the product direction and its roadmap entry; update both directions of the roadmap/spec links.
+The original roadmap baseline began with 001 and 002. This candidate also contains R003–R017
+specifications and implementation slices, plus the R018 product audit/remediation. Consult the
+[requirement inventory](specs/018-full-product-audit/evidence/requirements.md),
+[reconciliation index](specs/018-full-product-audit/remediation/requirement-evidence-reconciliation.md)
+and [integrated evidence](specs/018-full-product-audit/remediation/final-next-integration-evidence.md)
+for tested capability boundaries and remaining gates. Task checkboxes and source presence alone
+do not establish full requirement acceptance or production release certification. Before opening
+another feature, read the product direction and roadmap entry and maintain both directions of
+the roadmap/spec links.
 
 ## Governance and architecture
 
@@ -37,14 +44,15 @@ Node 26 and is the authoritative runtime gate.
 
 ## Bootstrap
 
-From the repository root:
+From the repository root, copy the non-secret environment template to `.env` only when there
+is no existing local configuration. On PowerShell use `Copy-Item .env.example .env`; on Bash
+use `cp .env.example .env`. Then run:
 
-```powershell
-Copy-Item .env.example .env
+```sh
 npm install --global pnpm@12.21.0
-pnpm install
+pnpm install --frozen-lockfile
 uv python install 3.13
-uv sync --project apps/api
+uv sync --locked --project apps/api
 docker compose -f infra/dev/compose.yaml up -d postgres postgres-test
 uv run --project apps/api alembic -c apps/api/alembic.ini upgrade head
 pnpm exec playwright install chromium
@@ -75,8 +83,11 @@ migration `0005_retire_foundation_sample`; existing sample-only records are inte
 The historical Spec 001 evidence remains unchanged. Create/read/restart and browser persistence
 regressions now exercise an authenticated tenant Project instead.
 
-It does **not** contain map rendering, GIS editing, billing, processing, field/offline workflows,
-or House Numbering.
+The current candidate also contains the scoped spatial catalog, map, editing, query, processing,
+cartography, external sources, collaboration, CAD, offline and module framework workflows.
+Supported formats, capabilities, constraints and acceptance evidence are in their individual
+specifications and R018 remediation evidence; the candidate is not certified for external release.
+Core does not depend on the reference vertical modules under `modules/`.
 
 ## Identity and tenancy development profile
 
@@ -138,8 +149,9 @@ Integration and browser tests use the dedicated local `openvietgis_test` databas
 `54330`. They ignore the application `OPENVIETGIS_DATABASE_URL`; an optional exported
 `OPENVIETGIS_TEST_DATABASE_URL` must still name `openvietgis_test` on localhost/127.0.0.1.
 URL query parameters and other drivers are rejected before migrations or child processes run.
-Migration tests may downgrade/recreate the dedicated test schema; never store working data there.
-Development application data remains on port `54329`.
+Destructive migration-cycle tests create fresh disposable loopback PostGIS databases rather than
+downgrading shared test history; never store working data in any test database. Development
+application data remains on port `54329`.
 
 ## Safe development reset
 
@@ -152,8 +164,10 @@ The reset command refuses:
 - non-local database hosts;
 - database names other than exactly `openvietgis`, `openvietgis_dev`, or `openvietgis_test`.
 
-It downgrades and reapplies migrations. Never point development configuration at a production
-database.
+It attempts to downgrade and reapply migrations for the configured local development/test
+database. A downgrade can intentionally refuse to discard retained extension histories (migration
+0019); that refusal is a safety guard, not a reset mechanism to bypass. Never point development or
+migration configuration at a production database.
 
 ## Acceptance measurements
 
