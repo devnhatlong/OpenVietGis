@@ -31,3 +31,5 @@
 NOT CERTIFIED. Release preflight on common candidate explicitly refuses because no accepted deployment profile, exact independent verification record or mandatory release certification. Human acceptance R002 SC-013, R004 SC-009, R005 SC-008 and the 656-requirement evidence reconciliation remain open. Automated focused evidence is not equivalent to 656 accepted requirements. No bypass, production deployment or promotion is authorized by this checkpoint.
 
 See per-track evidence under the remediation and release specifications for isolated recovery, provider, processing and offline results; do not add their counts to the integrated suite as if disjoint.
+
+Follow-up: [second integrated remediation checkpoint (2026-11-22)](final-next-integration-evidence.md).
