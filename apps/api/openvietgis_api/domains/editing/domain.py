@@ -206,6 +206,44 @@ def validate_typed_attributes(
     return out
 
 
+def changeset_request_digest(
+    *,
+    base_content_revision: str,
+    summary: str,
+    operations: Sequence[EditOperationInput],
+    reverted_from_changeset_id: UUID | None,
+) -> str:
+    """Canonical request identity, independent of current source state."""
+    try:
+        payload = json.dumps(
+            {
+                "base": base_content_revision,
+                "summary": summary,
+                "reverted_from": str(reverted_from_changeset_id)
+                if reverted_from_changeset_id
+                else None,
+                "operations": [
+                    {
+                        "op_type": op.op_type.value,
+                        "feature_id": validate_feature_id(op.feature_id),
+                        "geometry": op.geometry,
+                        "properties": op.properties,
+                    }
+                    for op in operations
+                ],
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        ).encode("utf-8")
+    except (TypeError, ValueError) as exc:
+        raise PlatformValidationError(
+            "changeset must contain finite JSON values",
+            code="INVALID_CHANGESET_REQUEST",
+        ) from exc
+    return hashlib.sha256(payload).hexdigest()
+
+
 def compute_content_revision(
     source_id: UUID,
     base_revision: str,

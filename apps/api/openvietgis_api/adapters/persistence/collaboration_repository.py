@@ -25,6 +25,7 @@ from openvietgis_api.domains.collaboration.domain import (
     ReviewCommentRecord,
     ReviewStatus,
     analyze_draft_conflicts,
+    validate_rebase_draft,
 )
 from openvietgis_api.domains.platform_errors import (
     PlatformConflictError,
@@ -347,6 +348,27 @@ class SqlCollaborationRepository:
         )
         if rev is None:
             raise PlatformNotFoundError("change review not found")
+        if feature_id is not None:
+            # A feature comment references immutable evidence in the exact
+            # reviewed changeset, not an arbitrary current or foreign feature.
+            anchor = self._session.execute(
+                text("""
+                    SELECT 1 FROM editing.changeset_operations
+                    WHERE organization_id = :org AND project_id = :proj
+                      AND changeset_id = :cid AND feature_id = :fid
+                """),
+                {
+                    "org": context.organization_id,
+                    "proj": context.project_id,
+                    "cid": rev["changeset_id"],
+                    "fid": feature_id,
+                },
+            ).first()
+            if anchor is None:
+                raise PlatformValidationError(
+                    "feature comment must reference an operation in the reviewed changeset",
+                    code="INVALID_REVIEW_ANCHOR",
+                )
         now = datetime.now(UTC)
         row = (
             self._session.execute(
@@ -457,13 +479,17 @@ class SqlCollaborationRepository:
         base_content_revision: str,
         draft_operations: Sequence[Mapping[str, Any]],
     ) -> dict[str, Any]:
-        prepare_project_scope(self._session, context, permission=Permission.PROJECT_READ)
+        prepare_project_scope(self._session, context, permission=Permission.PROJECT_EDIT)
         assert context.organization_id is not None and context.project_id is not None
+        # The mutation scope binds the current project authorization and serialization
+        # lock. The source row remains pinned for this read-only advisory report.
         src = (
             self._session.execute(
                 text("""
-                SELECT content_revision FROM spatial.data_sources
+                SELECT content_revision, lifecycle, validation_state, kind
+                FROM spatial.data_sources
                 WHERE organization_id = :org AND project_id = :proj AND id = :src
+                FOR SHARE
             """),
                 {"org": context.organization_id, "proj": context.project_id, "src": source_id},
             )
@@ -472,33 +498,86 @@ class SqlCollaborationRepository:
         )
         if src is None:
             raise PlatformNotFoundError("data source not found")
+        if (
+            src["lifecycle"] != "active"
+            or src["validation_state"] != "ready"
+            or src["kind"] == "reference_fixture"
+        ):
+            raise PlatformValidationError("source is not editable", code="SOURCE_NOT_READY")
 
-        # Collect feature_ids changed in changesets since base_content_revision
+        validated = validate_rebase_draft(draft_operations)
+        current = str(src["content_revision"])
+        params = {
+            "org": context.organization_id,
+            "proj": context.project_id,
+            "src": source_id,
+        }
+        # Revision hashes are opaque: != base does NOT mean "after base".
+        # Walk backward from the pinned current revision through the immutable
+        # changeset chain, until the caller's exact base is reached. A missing
+        # link (e.g. another publication path), invalid base or oversized history
+        # cannot authorize reapplication and must require a fresh draft.
+        chain_ids: list[UUID] = []
+        cursor = current
+        if cursor != base_content_revision:
+            history = (
+                self._session.execute(
+                    text("""
+                    SELECT id, base_content_revision, resulting_content_revision
+                    FROM editing.changesets
+                    WHERE organization_id = :org AND project_id = :proj AND source_id = :src
+                    ORDER BY resulting_catalog_revision DESC
+                    LIMIT 2001
+                """),
+                    params,
+                )
+                .mappings()
+                .all()
+            )
+            for row in history:
+                if cursor == base_content_revision:
+                    break
+                if len(chain_ids) >= 2000 or str(row["resulting_content_revision"]) != cursor:
+                    break
+                chain_ids.append(row["id"])
+                cursor = str(row["base_content_revision"])
+            if cursor != base_content_revision:
+                raise PlatformConflictError(
+                    "cannot prove a continuous edit history from the requested base; refresh",
+                    code="REBASE_HISTORY_UNAVAILABLE",
+                    details={"current_content_revision": current, "draft_preserved": True},
+                )
+        feature_ids = [str(op["feature_id"]) for op in validated]
         intervening = (
             self._session.execute(
                 text("""
-                SELECT DISTINCT op.feature_id
-                FROM editing.changesets cs
-                JOIN editing.changeset_operations op
-                  ON op.organization_id = cs.organization_id
-                 AND op.project_id = cs.project_id
-                 AND op.changeset_id = cs.id
-                WHERE cs.organization_id = :org AND cs.project_id = :proj
-                  AND cs.source_id = :src
-                  AND cs.resulting_content_revision != :base_rev
+                SELECT DISTINCT feature_id FROM editing.changeset_operations
+                WHERE organization_id = :org AND project_id = :proj
+                  AND changeset_id = ANY(CAST(:ids AS uuid[]))
+                  AND feature_id = ANY(CAST(:feature_ids AS varchar[]))
             """),
-                {
-                    "org": context.organization_id,
-                    "proj": context.project_id,
-                    "src": source_id,
-                    "base_rev": base_content_revision,
-                },
+                {**params, "ids": chain_ids, "feature_ids": feature_ids},
+            )
+            .scalars()
+            .all()
+            if chain_ids
+            else []
+        )
+        existing = (
+            self._session.execute(
+                text("""
+                SELECT feature_id FROM spatial.reference_features
+                WHERE organization_id = :org AND project_id = :proj AND source_id = :src
+                  AND feature_id = ANY(CAST(:feature_ids AS varchar[]))
+            """),
+                {**params, "feature_ids": feature_ids},
             )
             .scalars()
             .all()
         )
         return analyze_draft_conflicts(
-            draft_operations=draft_operations,
+            draft_operations=validated,
             intervening_changed_feature_ids={str(x) for x in intervening},
-            current_content_revision=str(src["content_revision"]),
+            current_content_revision=current,
+            existing_feature_ids={str(x) for x in existing},
         )

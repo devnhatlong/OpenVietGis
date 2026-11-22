@@ -27,6 +27,7 @@ from openvietgis_api.domains.editing.domain import (
     ChangesetRecord,
     EditOperationInput,
     EditOpType,
+    changeset_request_digest,
     compute_content_revision,
     geometry_to_wkt,
     validate_feature_id,
@@ -172,13 +173,26 @@ class SqlEditingRepository:
         org_id, project_id = context.organization_id, context.project_id
         clean_op_id = validate_operation_id(operation_id)
         clean_summary = summary.strip()[:500] or "Feature changeset"
-        # Idempotency check first (safe lost-ack replay)
+        if len(operations) > 2000:
+            raise PlatformValidationError(
+                "changeset exceeds maximum 2000 operations", code="CHANGESET_TOO_LARGE"
+            )
+        request_digest = changeset_request_digest(
+            base_content_revision=base_content_revision,
+            summary=clean_summary,
+            operations=operations,
+            reverted_from_changeset_id=reverted_from_changeset_id,
+        )
+        # The immutable audit row binds the exact request; legacy rows without a
+        # digest cannot safely be re-acknowledged from a different payload.
         existing = (
             self._session.execute(
                 text("""
-                SELECT * FROM editing.changesets
-                WHERE organization_id = :org AND project_id = :proj
-                  AND source_id = :src AND operation_id = :op
+                SELECT cs.*, ae.metadata->>'request_sha256' AS request_digest
+                FROM editing.changesets cs JOIN audit.audit_events ae
+                  ON ae.organization_id = cs.organization_id AND ae.id = cs.audit_event_id
+                WHERE cs.organization_id = :org AND cs.project_id = :proj
+                  AND cs.source_id = :src AND cs.operation_id = :op
             """),
                 {"org": org_id, "proj": project_id, "src": source_id, "op": clean_op_id},
             )
@@ -186,9 +200,13 @@ class SqlEditingRepository:
             .first()
         )
         if existing is not None:
-            if str(existing["base_content_revision"]) != base_content_revision:
+            if (
+                existing["actor_id"] != context.actor.actor_id
+                or existing["actor_type"] != str(context.actor.actor_type)
+                or existing["request_digest"] != request_digest
+            ):
                 raise PlatformConflictError(
-                    "operation_id already committed against a different base revision",
+                    "operation_id already committed with different or unverified request identity",
                     code="OPERATION_ID_CONFLICT",
                 )
             return _changeset_from_row(
@@ -199,11 +217,6 @@ class SqlEditingRepository:
             raise PlatformValidationError(
                 "changeset requires at least one operation", code="EMPTY_CHANGESET"
             )
-        if len(operations) > 2000:
-            raise PlatformValidationError(
-                "changeset exceeds maximum 2000 operations", code="CHANGESET_TOO_LARGE"
-            )
-
         # Lock source row for short atomic revision-checked commit
         src_row = (
             self._session.execute(
@@ -485,6 +498,7 @@ class SqlEditingRepository:
             resource_id=source_id,
             metadata={
                 "operation_id": clean_op_id,
+                "request_sha256": request_digest,
                 "operation_count": len(prepared_ops),
                 "base_content_revision": source.content_revision,
                 "resulting_content_revision": new_content_rev,

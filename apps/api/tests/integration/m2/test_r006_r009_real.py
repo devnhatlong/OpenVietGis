@@ -139,39 +139,37 @@ def test_r006_editing_changesets_conflicts_validation_and_revert(migrated_databa
         assert bad.json()["code"] == "INVALID_GEOMETRY"
 
         # 2. Valid atomic changeset: create p3, update p1, delete p2
-        cs1 = client.post(
-            f"{base}/sources/{source_id}/changesets",
-            json={
-                "base_content_revision": rev0,
-                "operation_id": "cs-edit-1",
-                "summary": "Add p3, update p1, delete p2",
-                "operations": [
-                    {
-                        "op_type": "create",
-                        "feature_id": "p3",
-                        "geometry": {
-                            "type": "Polygon",
-                            "coordinates": [
-                                [
-                                    [105.84, 21.00],
-                                    [105.85, 21.00],
-                                    [105.85, 21.01],
-                                    [105.84, 21.01],
-                                    [105.84, 21.00],
-                                ]
-                            ],
-                        },
-                        "properties": {"code": "A3", "area_m2": 360},
+        cs1_payload = {
+            "base_content_revision": rev0,
+            "operation_id": "cs-edit-1",
+            "summary": "Add p3, update p1, delete p2",
+            "operations": [
+                {
+                    "op_type": "create",
+                    "feature_id": "p3",
+                    "geometry": {
+                        "type": "Polygon",
+                        "coordinates": [
+                            [
+                                [105.84, 21.00],
+                                [105.85, 21.00],
+                                [105.85, 21.01],
+                                [105.84, 21.01],
+                                [105.84, 21.00],
+                            ]
+                        ],
                     },
-                    {
-                        "op_type": "update",
-                        "feature_id": "p1",
-                        "properties": {"code": "A1-UPDATED", "area_m2": 150},
-                    },
-                    {"op_type": "delete", "feature_id": "p2"},
-                ],
-            },
-        )
+                    "properties": {"code": "A3", "area_m2": 360},
+                },
+                {
+                    "op_type": "update",
+                    "feature_id": "p1",
+                    "properties": {"code": "A1-UPDATED", "area_m2": 150},
+                },
+                {"op_type": "delete", "feature_id": "p2"},
+            ],
+        }
+        cs1 = client.post(f"{base}/sources/{source_id}/changesets", json=cs1_payload)
         assert cs1.status_code == 201, cs1.text
         cs1_data = cs1.json()
         rev1 = cs1_data["resulting_content_revision"]
@@ -182,15 +180,18 @@ def test_r006_editing_changesets_conflicts_validation_and_revert(migrated_databa
         # 3. Idempotent replay returns same changeset
         cs1_replay = client.post(
             f"{base}/sources/{source_id}/changesets",
-            json={
-                "base_content_revision": rev0,
-                "operation_id": "cs-edit-1",
-                "summary": "Add p3, update p1, delete p2",
-                "operations": [],
-            },
+            json=cs1_payload,
         )
         assert cs1_replay.status_code == 201
         assert cs1_replay.json()["id"] == cs1_data["id"]
+        for changed in (
+            {**cs1_payload, "operations": []},
+            {**cs1_payload, "operations": [{"op_type": "delete", "feature_id": "p1"}]},
+            {**cs1_payload, "summary": "Different intent"},
+        ):
+            conflict = client.post(f"{base}/sources/{source_id}/changesets", json=changed)
+            assert conflict.status_code == 409, conflict.text
+            assert conflict.json()["code"] == "OPERATION_ID_CONFLICT"
 
         # 4. Stale revision returns 409 Conflict with draft_preserved=True
         stale = client.post(
