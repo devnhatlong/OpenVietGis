@@ -39,12 +39,21 @@ live_oidc = pytest.mark.skipif(
     reason="opt-in loopback Keycloak acceptance; set OPENVIETGIS_LIVE_OIDC=1",
 )
 
-ISSUER = "http://127.0.0.1:18080/realms/openvietgis"
-PROVIDER_ORIGIN = "http://127.0.0.1:18080"
-APP_ORIGIN = "http://127.0.0.1:8000"
+def _loopback_origin(name: str, default: int) -> str:
+    raw = os.environ.get(name, str(default))
+    if re.fullmatch(r"\d{1,5}", raw) is None or not 1024 <= int(raw) <= 65535:
+        raise RuntimeError(f"{name} must designate an unprivileged loopback port")
+    return f"http://127.0.0.1:{int(raw)}"
+
+
+PROVIDER_ORIGIN = _loopback_origin("OPENVIETGIS_E2E_OIDC_PORT", 18080)
+APP_ORIGIN = _loopback_origin("OPENVIETGIS_E2E_API_PORT", 8000)
+WEB_ORIGIN = _loopback_origin("OPENVIETGIS_E2E_WEB_PORT", 5173)
+if len({PROVIDER_ORIGIN, APP_ORIGIN, WEB_ORIGIN}) != 3:
+    raise RuntimeError("live OIDC origins must use distinct loopback ports")
+ISSUER = PROVIDER_ORIGIN + "/realms/openvietgis"
 CALLBACK_PATH = "/api/v1/auth/callback/keycloak"
 CALLBACK_URL = APP_ORIGIN + CALLBACK_PATH
-WEB_ORIGIN = "http://127.0.0.1:5173"
 CLIENT_ID = "openvietgis-web"
 FIXTURE_USERNAME = "owner-a"
 REDIRECT_CODES = {301, 302, 303, 307, 308}
@@ -160,7 +169,7 @@ def _provider_url(value: str) -> bool:
     parts = urlsplit(value)
     return (
         parts.scheme == "http"
-        and parts.netloc == "127.0.0.1:18080"
+        and parts.netloc == urlsplit(PROVIDER_ORIGIN).netloc
         and parts.path.startswith("/realms/openvietgis/")
         and not parts.fragment
     )
@@ -182,8 +191,12 @@ def _check_loopback_cookie_policy() -> None:
     # Test the precise exception without constructing or sending real cookies.
     _require(
         policy.return_ok_secure(secure_cookie, Request(ISSUER + "/login-actions/authenticate"))
-        and not policy.return_ok_secure(secure_cookie, Request("http://127.0.0.1:18081/realms/openvietgis/"))
-        and not policy.return_ok_secure(secure_cookie, Request("http://127.0.0.1:18080/realms/other/"))
+        and not policy.return_ok_secure(
+            secure_cookie, Request(APP_ORIGIN + "/realms/openvietgis/")
+        )
+        and not policy.return_ok_secure(
+            secure_cookie, Request(PROVIDER_ORIGIN + "/realms/other/")
+        )
         and not policy.return_ok_secure(secure_cookie, Request("http://example.test/realms/openvietgis/"))
         and not policy.return_ok_secure(secure_cookie, Request(APP_ORIGIN + CALLBACK_PATH)),
         "loopback provider Secure cookie policy was not narrowly confined",
@@ -194,7 +207,7 @@ def _callback_url(value: str) -> bool:
     parts = urlsplit(value)
     return (
         parts.scheme == "http"
-        and parts.netloc == "127.0.0.1:8000"
+        and parts.netloc == urlsplit(APP_ORIGIN).netloc
         and parts.path == CALLBACK_PATH
         and not parts.fragment
     )
